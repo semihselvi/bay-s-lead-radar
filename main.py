@@ -46,9 +46,17 @@ def main():
         title = entry.find("title")
         link = entry.find("link")
 
-        print()
-        print("TITLE:", title.get_text(" ", strip=True) if title else "")
-        print("URL:", link.get("href", "") if link else "")
+        print(
+            "TITLE:",
+            title.get_text(" ", strip=True)
+            if title else ""
+        )
+
+        print(
+            "URL:",
+            link.get("href", "")
+            if link else ""
+        )
 
 
 if __name__ == "__main__":
