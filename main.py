@@ -21,32 +21,32 @@ from config import (
     ROUTES,
 )
 
-
-# =========================================================
-# BAY-S LEAD RADAR
-# Reddit-first buyer intent scanner
-# =========================================================
-
-USER_AGENT = (
-    "BAY-S-Lead-Radar/2.0 "
-    "(buyer intent research; +https://github.com/semihselvi)"
-)
-
-REDDIT_SEARCH_URL = "https://www.reddit.com/search.rss"
-
-REQUEST_TIMEOUT = 15
-REDDIT_DELAY = 2.5
-MAX_RETRIES = 2
-MAX_TELEGRAM_LEADS = 10
-
-
-# BeautifulSoup XMLParsedAsHTMLWarning sadece uyarıdır.
-# lxml gerektirmeden Reddit Atom/RSS verisini okuyacağız.
 warnings.filterwarnings(
     "ignore",
     category=XMLParsedAsHTMLWarning,
 )
 
+
+# =========================================================
+# SETTINGS
+# =========================================================
+
+USER_AGENT = (
+    "BAY-S-Lead-Radar/3.0 "
+    "(buyer research; +https://github.com/semihselvi)"
+)
+
+REDDIT_SEARCH_URL = "https://www.reddit.com/search.rss"
+
+REQUEST_TIMEOUT = 15
+
+# Reddit'i zorlamıyoruz.
+REDDIT_DELAY = 8
+
+# 429 geldiğinde uzun retry döngüsüne girmiyoruz.
+MAX_RETRIES = 1
+
+MAX_TELEGRAM_LEADS = 10
 
 session = requests.Session()
 
@@ -64,11 +64,150 @@ session.headers.update({
 
 
 # =========================================================
+# REAL ESTATE SIGNALS
+# =========================================================
+
+PROPERTY_TERMS = [
+    "property",
+    "real estate",
+    "home",
+    "house",
+    "apartment",
+    "condo",
+    "flat",
+    "villa",
+    "townhouse",
+    "residence",
+    "residential",
+    "land",
+    "rental property",
+    "investment property",
+    "first home",
+    "first house",
+    "bedroom",
+    "mortgage",
+    "down payment",
+    "deposit",
+    "closing cost",
+    "rental income",
+    "rental yield",
+    "golden visa",
+    "residency by investment",
+
+    # Turkish
+    "ev",
+    "konut",
+    "daire",
+    "villa",
+    "gayrimenkul",
+    "mülk",
+    "arsa",
+    "kira",
+    "yatırım",
+
+    # Russian
+    "недвижимость",
+    "квартира",
+    "дом",
+    "вилла",
+    "ипотека",
+    "инвестиции",
+    "аренда",
+    "золотая виза",
+]
+
+
+BUYER_TERMS = [
+    "looking to buy",
+    "looking for",
+    "want to buy",
+    "wanting to buy",
+    "planning to buy",
+    "ready to buy",
+    "buying",
+    "buy property",
+    "buy a house",
+    "buy an apartment",
+    "buy apartment",
+    "buy a home",
+    "purchase",
+    "first time buyer",
+    "first-time buyer",
+    "first home buyer",
+    "cash buyer",
+    "budget",
+    "how much can i afford",
+    "should i buy",
+    "thinking of buying",
+    "moving and buying",
+    "relocating and buying",
+    "relocation",
+
+    # Turkish
+    "ev almak",
+    "ev arıyorum",
+    "ev almak istiyorum",
+    "satın almak",
+    "gayrimenkul almak",
+    "mülk almak",
+    "yatırım yapmak",
+    "yatırım için",
+
+    # Russian
+    "хочу купить",
+    "ищу квартиру",
+    "купить квартиру",
+    "купить дом",
+    "купить недвижимость",
+    "нужна квартира",
+    "планирую купить",
+    "переезд",
+]
+
+
+HARD_EXCLUDES = [
+    "real estate agent",
+    "estate agent",
+    "realtor",
+    "broker",
+    "brokerage",
+    "property developer",
+    "property developer",
+    "developer selling",
+    "property listing",
+    "listing page",
+    "for sale by owner",
+    "our properties",
+    "our project",
+    "contact our agent",
+    "contact us",
+    "whatsapp us",
+    "call us",
+    "commission",
+    "lead generation",
+    "marketing agency",
+    "property management service",
+    "we sell",
+    "available units",
+    "new project",
+    "open house event",
+
+    "агентство недвижимости",
+    "риэлтор",
+    "застройщик",
+    "продам квартиру",
+    "продаю квартиру",
+]
+
+
+# =========================================================
 # FIREBASE
 # =========================================================
 
 def firebase_client():
-    raw = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
+    raw = os.getenv(
+        "FIREBASE_SERVICE_ACCOUNT_JSON"
+    )
 
     if not raw:
         raise RuntimeError(
@@ -94,13 +233,138 @@ def firebase_client():
 
 
 # =========================================================
+# QUERY BUILDER
+# =========================================================
+
+def build_queries():
+
+    # Daha az HTTP isteği,
+    # daha geniş buyer kapsamı.
+    #
+    # Reddit'i azaltmıyoruz;
+    # tek istekte daha geniş alan tarıyoruz.
+
+    queries = [
+        # General English buyer radar
+        '"looking to buy" (property OR house OR apartment)',
+        '"want to buy" (property OR house OR apartment)',
+        '"planning to buy" (property OR house OR apartment)',
+        '"first time buyer" (house OR home OR apartment)',
+        '"cash buyer" (property OR house)',
+        '"property investment" budget',
+        '"investment property" budget',
+        '"rental income" property',
+        '"rental yield" property',
+        '"moving" "buying a home"',
+        '"relocating" "buying property"',
+        '"holiday home" property',
+
+        # Golden Visa / Europe
+        '"Golden Visa" property',
+        '"EU Golden Visa" property',
+        '"residency by investment" property',
+        '"Golden Visa" Greece',
+        '"Golden Visa" Portugal',
+        '"Golden Visa" Spain',
+
+        # North Cyprus / Cyprus
+        '"North Cyprus" property buyer',
+        '"Northern Cyprus" property buyer',
+        '"Kuzey Kıbrıs" ev',
+        '"Iskele" property buyer',
+        '"Long Beach" Cyprus property',
+
+        # Turkey
+        '"Turkey" property buyer',
+        '"Turkey" buying property',
+        '"Antalya" buying property',
+        '"Alanya" buying property',
+        '"Istanbul" buying property',
+        '"Bodrum" buying property',
+
+        # Partner markets
+        '"Germany" property buyer',
+        '"Netherlands" property buyer',
+        '"Belgium" property buyer',
+        '"France" property buyer',
+        '"Lithuania" property buyer',
+        '"Switzerland" property buyer',
+
+        # Russia / Kazakhstan
+        '"Russia" "buy property abroad"',
+        '"Kazakhstan" "buy property abroad"',
+        '"хочу купить" недвижимость',
+        '"ищу квартиру" недвижимость',
+        '"недвижимость за рубежом"',
+
+        # UK / Montenegro / UAE
+        '"UK" property buyer',
+        '"United Kingdom" buying property',
+        '"Montenegro" property buyer',
+        '"Dubai" property buyer',
+    ]
+
+    # Config'deki marketleri de coverage olarak ekle.
+    # Her marketten maksimum bir güçlü genel query.
+    market_queries = set()
+
+    for market, places in MARKETS.items():
+
+        if not places:
+            continue
+
+        # İlk 2-3 önemli terimi kullan.
+        selected = places[:3]
+
+        joined = " OR ".join(
+            f'"{x}"'
+            for x in selected
+        )
+
+        market_queries.add(
+            f"({joined}) "
+            f'("looking to buy" OR "want to buy" OR '
+            f'"property investment")'
+        )
+
+    queries.extend(
+        sorted(market_queries)
+    )
+
+    # Duplicate temizliği.
+    unique = []
+    seen = set()
+
+    for query in queries:
+
+        query = query.strip()
+
+        if not query:
+            continue
+
+        normalized = query.lower()
+
+        if normalized in seen:
+            continue
+
+        seen.add(normalized)
+        unique.append(query)
+
+    return unique
+
+
+# =========================================================
 # REDDIT
 # =========================================================
 
 def reddit_search(query):
-    for attempt in range(MAX_RETRIES + 1):
+
+    for attempt in range(
+        MAX_RETRIES + 1
+    ):
 
         try:
+
             response = session.get(
                 REDDIT_SEARCH_URL,
                 params={
@@ -114,55 +378,40 @@ def reddit_search(query):
 
             if response.status_code == 429:
 
-                retry_after = (
-                    response.headers.get("Retry-After")
-                )
-
-                try:
-                    wait = int(retry_after)
-                except (TypeError, ValueError):
-                    wait = 5
-
-                wait = max(3, min(wait, 20))
-
                 print(
                     f"REDDIT_429 "
-                    f"attempt={attempt + 1} "
-                    f"wait={wait}s "
                     f"query={query}"
                 )
 
-                if attempt < MAX_RETRIES:
-                    time.sleep(wait)
-                    continue
-
+                # Retry bekleyerek 10 dakikayı öldürme.
                 return []
 
             response.raise_for_status()
 
-            return parse_reddit(response.text)
+            return parse_reddit(
+                response.text
+            )
 
         except requests.RequestException as exc:
 
             print(
                 f"REDDIT_ERROR "
-                f"attempt={attempt + 1} "
                 f"query={query} "
                 f"error={exc}"
             )
 
-            if attempt < MAX_RETRIES:
-                time.sleep(3 + attempt * 2)
-            else:
-                return []
+            return []
 
         finally:
-            time.sleep(REDDIT_DELAY)
+            time.sleep(
+                REDDIT_DELAY
+            )
 
     return []
 
 
 def parse_reddit(xml_text):
+
     soup = BeautifulSoup(
         xml_text,
         "html.parser",
@@ -170,15 +419,29 @@ def parse_reddit(xml_text):
 
     results = []
 
-    for entry in soup.find_all("entry")[
-        :MAX_RESULTS_PER_SOURCE
-    ]:
+    for entry in soup.find_all(
+        "entry"
+    )[:MAX_RESULTS_PER_SOURCE]:
 
-        link = entry.find("link")
-        title = entry.find("title")
-        content = entry.find("content")
-        published = entry.find("published")
-        author = entry.find("name")
+        link = entry.find(
+            "link"
+        )
+
+        title = entry.find(
+            "title"
+        )
+
+        content = entry.find(
+            "content"
+        )
+
+        published = entry.find(
+            "published"
+        )
+
+        author = entry.find(
+            "name"
+        )
 
         results.append({
             "source": "Reddit",
@@ -228,134 +491,10 @@ def parse_reddit(xml_text):
 
 
 # =========================================================
-# QUERY BUILDER
+# TEXT / MARKET
 # =========================================================
 
-def build_queries():
-
-    queries = [
-        # Global English
-        '"looking to buy" property',
-        '"looking for" apartment',
-        '"looking for" house',
-        '"want to buy" property',
-        '"want to buy" house',
-        '"buying property" budget',
-        '"buying a home" budget',
-        '"property investment" budget',
-        '"investment property" budget',
-        '"cash buyer" property',
-        '"ready to buy" property',
-        '"planning to buy" property',
-        '"looking to purchase" property',
-        '"moving to" "buying a home"',
-        '"relocating to" "buy property"',
-        '"holiday home" "looking to buy"',
-        '"Golden Visa" property',
-        '"EU Golden Visa" property',
-        '"residency by investment" property',
-
-        # Turkish
-        '"ev almak istiyorum"',
-        '"ev arıyorum"',
-        '"gayrimenkul almak"',
-        '"satın almak istiyorum" ev',
-        '"yatırım için ev"',
-        '"gayrimenkul yatırımı"',
-        '"Kıbrıs" ev almak',
-        '"Kuzey Kıbrıs" ev almak',
-        '"Kuzey Kıbrıs" gayrimenkul',
-
-        # Russian
-        '"хочу купить" недвижимость',
-        '"ищу квартиру"',
-        '"купить квартиру"',
-        '"купить дом"',
-        '"купить недвижимость"',
-        '"недвижимость за рубежом"',
-        '"инвестиции в недвижимость"',
-        '"планирую купить" недвижимость',
-
-        # Golden Visa
-        '"Golden Visa" Greece property',
-        '"Golden Visa" Portugal property',
-        '"Golden Visa" Spain property',
-        '"Golden Visa" Europe property',
-        '"EU Golden Visa" buyer',
-
-        # Partner markets
-        '"Germany" "looking to buy property"',
-        '"Netherlands" "looking to buy property"',
-        '"Belgium" "looking to buy property"',
-        '"France" "looking to buy property"',
-        '"Lithuania" "looking to buy property"',
-        '"Switzerland" "looking to buy property"',
-        '"Russia" "buy property abroad"',
-        '"Kazakhstan" "buy property abroad"',
-        '"Montenegro" "looking to buy property"',
-        '"UK" "looking to buy property"',
-    ]
-
-    # Config'deki tüm market ve şehirleri de sorgulara ekle.
-    for market, places in MARKETS.items():
-
-        selected = places[:4]
-
-        for place in selected:
-
-            queries.extend([
-                f'"{place}" "looking to buy" property',
-                f'"{place}" "looking for" apartment',
-                f'"{place}" "looking for" house',
-                f'"{place}" "property investment" budget',
-            ])
-
-            if market in ("russia", "kazakhstan"):
-
-                queries.extend([
-                    f'"{place}" "хочу купить" недвижимость',
-                    f'"{place}" "ищу квартиру"',
-                    f'"{place}" "купить недвижимость"',
-                ])
-
-    # Duplicate temizleme.
-    unique = []
-    seen = set()
-
-    for query in queries:
-
-        query = query.strip()
-
-        if not query:
-            continue
-
-        if query in seen:
-            continue
-
-        seen.add(query)
-        unique.append(query)
-
-    return unique
-
-
-# =========================================================
-# HELPERS
-# =========================================================
-
-def fingerprint(item):
-
-    raw = "|".join([
-        item.get("url", ""),
-        item.get("title", ""),
-        item.get("author", ""),
-    ])
-
-    return hashlib.sha256(
-        raw.lower().encode("utf-8")
-    ).hexdigest()
-
-
-def text_of(item):
+def combined_text(item):
 
     return (
         f"{item.get('title', '')} "
@@ -382,40 +521,35 @@ def detect_city_region(
     market,
 ):
 
-    value = text.lower()
-
     if market not in MARKETS:
         return "Not stated"
 
-    places = MARKETS[market]
+    value = text.lower()
 
-    for place in places:
+    country_names = {
+        "turkey",
+        "türkiye",
+        "greece",
+        "germany",
+        "netherlands",
+        "belgium",
+        "france",
+        "lithuania",
+        "switzerland",
+        "russia",
+        "kazakhstan",
+        "montenegro",
+        "united kingdom",
+        "uk",
+    }
 
-        if place.lower() in value:
+    for place in MARKETS[market]:
 
-            # Ülke adını şehir yerine yazma.
-            country_terms = {
-                "Turkey",
-                "Türkiye",
-                "Greece",
-                "Germany",
-                "Netherlands",
-                "Belgium",
-                "France",
-                "Lithuania",
-                "Switzerland",
-                "Russia",
-                "Kazakhstan",
-                "Montenegro",
-                "United Kingdom",
-                "UK",
-                "North Cyprus",
-                "Northern Cyprus",
-            }
-
-            if place in country_terms:
-                continue
-
+        if (
+            place.lower() in value
+            and place.lower()
+            not in country_names
+        ):
             return place
 
     return "Not stated"
@@ -425,12 +559,15 @@ def detect_language(text):
 
     value = text.lower()
 
-    if re.search(r"[а-яё]", value):
+    if re.search(
+        r"[а-яё]",
+        value,
+    ):
         return "Russian"
 
     if any(
-        term in value
-        for term in [
+        x in value
+        for x in [
             "ev almak",
             "ev arıyorum",
             "gayrimenkul",
@@ -505,12 +642,79 @@ def extract_timeframe(text):
 
 
 # =========================================================
+# FILTERS
+# =========================================================
+
+def has_property_signal(text):
+
+    value = text.lower()
+
+    return any(
+        term.lower() in value
+        for term in PROPERTY_TERMS
+    )
+
+
+def has_buyer_signal(text):
+
+    value = text.lower()
+
+    return any(
+        term.lower() in value
+        for term in BUYER_TERMS
+    )
+
+
+def has_hard_exclude(text):
+
+    value = text.lower()
+
+    return any(
+        term.lower() in value
+        for term in HARD_EXCLUDES
+    )
+
+
+def valid_buyer_signal(item):
+
+    text = combined_text(
+        item
+    )
+
+    # Gayrimenkul kelimesi şart.
+    if not has_property_signal(
+        text
+    ):
+        return False
+
+    # Buyer niyeti şart.
+    if not has_buyer_signal(
+        text
+    ):
+        return False
+
+    # Bariz satış/agent içeriklerini çıkar.
+    if has_hard_exclude(
+        text
+    ):
+        return False
+
+    # Çok kısa içerikler genelde gerçek buyer lead değildir.
+    if len(text.strip()) < 80:
+        return False
+
+    return True
+
+
+# =========================================================
 # SCORING
 # =========================================================
 
 def score(item, market):
 
-    text = text_of(item).lower()
+    text = combined_text(
+        item
+    ).lower()
 
     intent_hits = sum(
         phrase.lower() in text
@@ -533,12 +737,11 @@ def score(item, market):
     )
 
     personal = any(
-        phrase in text
-        for phrase in [
+        x in text
+        for x in [
             " i ",
             " i'm ",
             " we ",
-            " we're ",
             " my ",
             " our ",
             "ben ",
@@ -552,12 +755,12 @@ def score(item, market):
 
     intent = min(
         100,
-        35
-        + intent_hits * 8
+        45
+        + intent_hits * 7
         + (12 if budget else 0)
         + (10 if timeframe else 0)
         + (8 if personal else 0)
-        - exclude_hits * 20,
+        - exclude_hits * 15,
     )
 
     credibility = min(
@@ -565,19 +768,19 @@ def score(item, market):
         55
         + (15 if budget else 0)
         + (10 if timeframe else 0)
-        + (8 if personal else 0)
+        + (10 if personal else 0)
         + (10 if detailed else 0)
-        - exclude_hits * 25,
+        - exclude_hits * 20,
     )
 
     fit = (
-        70
+        65
         if market != "unknown"
-        else 40
+        else 35
     )
 
     if budget:
-        fit += 10
+        fit += 12
 
     if market in {
         "north_cyprus",
@@ -624,6 +827,36 @@ def score(item, market):
 
 
 # =========================================================
+# FINGERPRINT
+# =========================================================
+
+def fingerprint(item):
+
+    raw = "|".join([
+        item.get(
+            "url",
+            "",
+        ),
+
+        item.get(
+            "title",
+            "",
+        ),
+
+        item.get(
+            "author",
+            "",
+        ),
+    ])
+
+    return hashlib.sha256(
+        raw.lower().encode(
+            "utf-8"
+        )
+    ).hexdigest()
+
+
+# =========================================================
 # TELEGRAM
 # =========================================================
 
@@ -648,13 +881,17 @@ def send_telegram(text):
     try:
 
         response = requests.post(
-            "https://api.telegram.org/"
-            f"bot{token}/sendMessage",
+            (
+                "https://api.telegram.org/"
+                f"bot{token}/sendMessage"
+            ),
+
             json={
                 "chat_id": chat_id,
                 "text": text,
                 "disable_web_page_preview": False,
             },
+
             timeout=10,
         )
 
@@ -667,54 +904,62 @@ def send_telegram(text):
         )
 
 
-def reply_suggestion(market):
+def reply_suggestion(
+    market
+):
 
     suggestions = {
 
         "north_cyprus":
             "Before looking at specific projects, "
             "I’d compare location, total acquisition "
-            "cost, title/ownership structure and "
-            "realistic rental potential.",
+            "cost, ownership structure and realistic "
+            "rental potential.",
 
         "turkey":
-            "I’d compare the total purchase cost, "
+            "I’d compare total purchase cost, "
             "location, financing and rental demand "
             "before choosing a property.",
 
         "greece":
             "For Greece, I’d compare purchase costs, "
-            "taxes and the Golden Visa requirements "
+            "taxes and Golden Visa requirements "
             "before selecting a property.",
 
         "germany":
-            "I’d compare the purchase price, financing, "
+            "I’d compare purchase price, financing, "
             "taxes and ongoing ownership costs first.",
 
         "netherlands":
-            "I’d separate the purchase budget from "
-            "closing and ongoing ownership costs before "
-            "comparing neighborhoods.",
+            "I’d separate purchase budget from closing "
+            "and ongoing ownership costs before comparing "
+            "neighborhoods.",
 
         "france":
             "I’d compare the property budget, "
-            "acquisition costs and the actual living "
-            "or investment objective first.",
+            "acquisition costs and the actual "
+            "living or investment objective first.",
     }
 
     return suggestions.get(
         market,
         "Before choosing a property, I’d compare "
-        "the total acquisition cost, location, legal "
-        "considerations and the investment or living goal.",
+        "the total acquisition cost, location, "
+        "legal considerations and the investment "
+        "or living goal.",
     )
 
 
-def format_lead(lead):
+def format_lead(
+    lead
+):
 
     emoji = (
         "🔥"
-        if lead["classification"] == "HOT"
+        if lead[
+            "classification"
+        ] == "HOT"
+
         else "🟠"
     )
 
@@ -722,20 +967,29 @@ def format_lead(lead):
         f"{emoji} BAY-S RADAR — "
         f"{lead['classification']}\n\n"
 
-        f"Source: {lead['source']}\n"
+        f"Source: "
+        f"{lead['source']}\n"
+
         f"Author: "
         f"{lead.get('author') or 'Not stated'}\n"
-        f"Language: {lead['language']}\n"
 
-        f"Target: {lead['market']}\n"
+        f"Language: "
+        f"{lead['language']}\n"
+
+        f"Market: "
+        f"{lead['market']}\n"
+
         f"City/Region: "
-        f"{lead['city_region']}\n"
+        f"{lead['city_region']}\n\n"
 
         f"What they want:\n"
         f"{lead['title']}\n\n"
 
-        f"Budget: {lead['budget']}\n"
-        f"Timeframe: {lead['timeframe']}\n\n"
+        f"Budget: "
+        f"{lead['budget']}\n"
+
+        f"Timeframe: "
+        f"{lead['timeframe']}\n\n"
 
         f"Intent: "
         f"{lead['intent_score']}/100\n"
@@ -752,7 +1006,8 @@ def format_lead(lead):
         f"Reply suggestion:\n"
         f"{lead['reply_suggestion']}\n\n"
 
-        f"🔗 {lead['url']}"
+        f"🔗 "
+        f"{lead['url']}"
     )
 
 
@@ -767,22 +1022,27 @@ def main():
     )
 
     print(
-        "BAY-S LEAD RADAR V2 STARTED"
+        "BAY-S LEAD RADAR V3 STARTED"
     )
 
     queries = build_queries()
 
     print(
-        f"QUERY_COUNT: {len(queries)}"
+        f"QUERY_COUNT: "
+        f"{len(queries)}"
     )
 
     db = firebase_client()
 
     seen = set()
+
     new_leads = []
 
     source_results = 0
+
     source_errors = 0
+
+    reddit_429_count = 0
 
     for index, query in enumerate(
         queries,
@@ -794,20 +1054,14 @@ def main():
             f"{query}"
         )
 
-        try:
+        results = reddit_search(
+            query
+        )
 
-            results = reddit_search(
-                query
-            )
+        if not results:
 
-        except Exception as exc:
-
-            source_errors += 1
-
-            print(
-                f"QUERY_ERROR: {exc}"
-            )
-
+            # Empty result does NOT necessarily mean
+            # source error. Continue safely.
             continue
 
         source_results += len(
@@ -816,12 +1070,9 @@ def main():
 
         for item in results:
 
-            url = item.get(
-                "url",
-                "",
-            ).strip()
-
-            if not url:
+            if not item.get(
+                "url"
+            ):
                 continue
 
             key = fingerprint(
@@ -833,7 +1084,13 @@ def main():
 
             seen.add(key)
 
-            text = text_of(
+            # Strong filtering BEFORE scoring.
+            if not valid_buyer_signal(
+                item
+            ):
+                continue
+
+            text = combined_text(
                 item
             )
 
@@ -859,29 +1116,56 @@ def main():
 
             reference = (
                 db
-                .collection(COLLECTION)
-                .document(key)
+                .collection(
+                    COLLECTION
+                )
+                .document(
+                    key
+                )
             )
 
-            if reference.get().exists:
+            try:
+
+                exists = (
+                    reference
+                    .get()
+                    .exists
+                )
+
+            except Exception as exc:
+
+                source_errors += 1
 
                 print(
-                    f"EXISTING_LEAD: {key}"
+                    "FIRESTORE_READ_ERROR:",
+                    exc,
+                )
+
+                continue
+
+            if exists:
+
+                print(
+                    "EXISTING_LEAD:",
+                    key,
                 )
 
                 continue
 
             lead = {
+
                 **item,
 
-                "lead_id": key,
+                "lead_id":
+                    key,
 
                 "language":
                     detect_language(
                         text
                     ),
 
-                "market": market,
+                "market":
+                    market,
 
                 "city_region":
                     detect_city_region(
@@ -926,19 +1210,34 @@ def main():
                     started.isoformat(),
             }
 
-            reference.set(
-                lead
-            )
+            try:
+
+                reference.set(
+                    lead
+                )
+
+            except Exception as exc:
+
+                source_errors += 1
+
+                print(
+                    "FIRESTORE_WRITE_ERROR:",
+                    exc,
+                )
+
+                continue
 
             new_leads.append(
                 lead
             )
 
             print(
-                f"NEW_LEAD: "
-                f"{classification} | "
-                f"{market} | "
-                f"{url}"
+                "NEW_LEAD:",
+                classification,
+                "|",
+                market,
+                "|",
+                item["url"],
             )
 
     completed = datetime.now(
@@ -974,22 +1273,33 @@ def main():
         "source_errors":
             source_errors,
 
+        "reddit_429_count":
+            reddit_429_count,
     }
 
-    scan_id = started.strftime(
-        "%Y%m%dT%H%M%SZ"
-    )
+    try:
 
-    (
-        db
-        .collection(
-            SCAN_LOG_COLLECTION
+        (
+            db
+            .collection(
+                SCAN_LOG_COLLECTION
+            )
+            .document(
+                started.strftime(
+                    "%Y%m%dT%H%M%SZ"
+                )
+            )
+            .set(
+                scan
+            )
         )
-        .document(
-            scan_id
+
+    except Exception as exc:
+
+        print(
+            "SCAN_LOG_ERROR:",
+            exc,
         )
-        .set(scan)
-    )
 
     print(
         json.dumps(
@@ -1000,7 +1310,7 @@ def main():
     )
 
     # =====================================================
-    # TELEGRAM NOTIFICATION
+    # TELEGRAM
     # =====================================================
 
     if new_leads:
@@ -1032,7 +1342,7 @@ def main():
         )
 
     print(
-        "BAY-S LEAD RADAR V2 FINISHED"
+        "BAY-S LEAD RADAR V3 FINISHED"
     )
 
 
