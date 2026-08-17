@@ -17,6 +17,7 @@ NEWS_DELAY = 0.5
 MAX_RESULTS = max(10, min(int(MAX_RESULTS_PER_SOURCE), 25))
 REDDIT_PER_RUN = 18
 NEWS_PER_RUN = 8
+MAX_TELEGRAM_LEADS = 10
 
 S = requests.Session()
 S.headers.update({'User-Agent': UA, 'Accept-Language': 'en-US,en;q=0.9'})
