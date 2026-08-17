@@ -1,6 +1,6 @@
 name: BAY-S Lead Radar Test
 
-on:
+"on":
   workflow_dispatch:
 
 jobs:
@@ -18,7 +18,8 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          python -m pip install -r requirements.txt
 
       - name: Show source
         run: |
