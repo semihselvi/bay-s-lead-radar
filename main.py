@@ -824,49 +824,65 @@ def tg_priority(group):
     return "NORMAL"
 
 def tg_score(text, group):
-    buy = tg_matches(text, TG_BUY)
-    weak = tg_matches(text, TG_WEAK)
-    context = tg_matches(text, TG_CONTEXT)
-    sell = tg_matches(text, TG_SELL)
-    rent = tg_matches(text, TG_RENT)
+    buyer_matches = tg_matches(text, TG_BUY)
+    weak_matches = tg_matches(text, TG_WEAK)
+    context_matches = tg_matches(text, TG_CONTEXT)
+    seller_matches = tg_matches(text, TG_SELL)
+    rent_matches = tg_matches(text, TG_RENT)
+
+    text_norm = tg_norm(text)
     budget = bool(TG_BUDGET_RE.search(text or ""))
-    negative = any(p in tg_norm(text) for p in TG_NEGATIVE)
+    negative = any(
+        phrase in text_norm
+        for phrase in TG_NEGATIVE
+    )
     priority = tg_priority(group)
 
     score = (
-        min(60, 18 * len(buy))
-        + min(18, 5 * len(weak))
-        + min(12, 4 * len(context))
+        min(60, 18 * len(buyer_matches))
+        + min(18, 5 * len(weak_matches))
+        + min(12, 4 * len(context_matches))
         + (12 if budget else 0)
-        + (14 if priority == "HIGH" else 7 if priority == "MEDIUM" else 0)
-        - min(75, 30 * len(sell))
-        - min(75, 35 * len(rent))
+        + (
+            14 if priority == "HIGH"
+            else 7 if priority == "MEDIUM"
+            else 0
+        )
+        - min(75, 30 * len(seller_matches))
+        - min(75, 35 * len(rent_matches))
         - (50 if negative else 0)
     )
     score = max(0, min(100, score))
 
-    buyer_question = bool(context) and (
-        bool(buy)
-        or budget
-        or any(
-            term in tg_norm(text)
-            for term in [
-                "квартира", "дом", "вилла", "недвижимость",
-                "daire", "ev", "konut", "villa", "arsa",
-                "property", "apartment", "house",
-            ]
+    buyer_question = (
+        bool(context_matches)
+        and (
+            bool(buyer_matches)
+            or budget
+            or any(
+                term in text_norm
+                for term in [
+                    "квартира", "дом", "вилла", "недвижимость",
+                    "daire", "ev", "konut", "villa", "arsa",
+                    "property", "apartment", "house",
+                ]
+            )
         )
     )
 
-    if rent and not buy and not buyer_question:
+    if rent_matches and not buyer_matches and not buyer_question:
         label = "REJECT_RENT"
-    elif sell and not buy and not buyer_question:
+    elif seller_matches and not buyer_matches and not buyer_question:
         label = "REJECT_SELLER"
     elif negative:
         label = "REJECT_STATUS"
-    elif score >= 65 or (buyer_question and priority == "HIGH" and score >= 50):
+    elif score >= 65 or (
+        buyer_question and priority == "HIGH" and score >= 50
+    ):
         label = "HOT"
-    elif score >= 35 or (buyer_question and priority in {"HIGH", "MEDIUM"} and score >= 30):
+    elif score >= 35 or (
+        buyer_question and priority in {"HIGH", "MEDIUM"} and score >= 30
+    ):
         label = "WARM"
     elif score >= 15:
         label = "REVIEW"
@@ -874,9 +890,19 @@ def tg_score(text, group):
         label = "LOW"
 
     return (
-        score, label, buy, weak, sell, rent, budget,
-        negative, tg_market(text, group), priority,
+        score,
+        label,
+        buyer_matches,
+        weak_matches,
+        seller_matches,
+        rent_matches,
+        budget,
+        negative,
+        tg_market(text, group),
+        priority,
+        context_matches,
     )
+
 
 def tg_sender(msg):
     sender = getattr(msg, "sender", None)
@@ -1039,6 +1065,7 @@ async def telegram_buyer_scan(db_client, started):
                         negative,
                         market,
                         priority,
+                        context_matches,
                     ) = tg_score(text, group)
 
                     if label not in {"HOT", "WARM"}:
@@ -1090,6 +1117,7 @@ async def telegram_buyer_scan(db_client, started):
                         "market": market,
                         "budget_detected": bool(budget),
                         "buyer_matches": buy,
+                        "context_matches": context_matches,
                         "context_matches": context,
                         "weak_matches": weak,
                         "seller_matches": sell,
@@ -1161,7 +1189,7 @@ def main():
     queries = build_queries()
 
     print(
-        f"BAY-S RADAR V4.5.5-UNIFIED STARTED | "
+        f"BAY-S RADAR V4.5.5.1-UNIFIED STARTED | "
         f"queries={len(queries)}"
     )
 
