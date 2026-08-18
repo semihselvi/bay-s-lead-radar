@@ -288,18 +288,29 @@ def serper_search(query):
         r = S.post(
             SERPER_URL,
             headers={
-                "X-API-KEY": api_key,
+                "X-API-KEY": api_key.strip(),
                 "Content-Type": "application/json",
             },
             json={
                 "q": query,
-                "gl": "tr",
-                "hl": "tr",
                 "num": MAX_RESULTS,
             },
             timeout=TIMEOUT,
         )
-        r.raise_for_status()
+
+        if r.status_code != 200:
+            # Serper returns the exact reason in the response body.
+            # Print only the API error message, never the API key.
+            try:
+                detail = r.json()
+            except ValueError:
+                detail = {"raw": r.text[:500]}
+            print(
+                f"SERPER_HTTP_{r.status_code}: "
+                f"{detail}"
+            )
+            return [], 1
+
         data = r.json()
         rows = []
 
@@ -439,7 +450,7 @@ def process_rows(rows, db, seen, leads, rejected, errors, started):
 
 def main():
     started=datetime.now(timezone.utc)
-    print("BAY-S LEAD RADAR V4.6 STARTED")
+    print("BAY-S LEAD RADAR V4.6.1 STARTED")
 
     db=db_client()
     seen=set()
@@ -548,7 +559,7 @@ def main():
             telegram(format_lead(lead))
     else:
         telegram(
-            "ℹ️ BAY-S RADAR V4.6\n\n"
+            "ℹ️ BAY-S RADAR V4.6.1\n\n"
             "Tarama tamamlandı.\n"
             "Yeni HOT/WARM buyer lead bulunamadı.\n\n"
             f"Serper sonuçları: {counts['Serper']}\n"
@@ -556,7 +567,7 @@ def main():
             "Yeni lead: 0"
         )
 
-    print("BAY-S LEAD RADAR V4.6 FINISHED")
+    print("BAY-S LEAD RADAR V4.6.1 FINISHED")
 
 if __name__=="__main__":
     main()
