@@ -682,6 +682,16 @@ TG_BUY = [
     r"\bищу виллу\b", r"\bищу дом\b", r"\bищу недвижимость\b",
     r"\bготов купить\b", r"\bготовы купить\b", r"\bпланирую купить\b",
     r"\bдля инвестиц", r"\bбюджет\b", r"\bсрочно нужна квартира\b",
+    r"\bнужна квартира\b", r"\bнужен дом\b", r"\bнужна вилла\b",
+    r"\bхочу жилье\b", r"\bхочу жильё\b", r"\bищу жилье\b", r"\bищу жильё\b",
+    r"\bподбираю квартиру\b", r"\bподбираем квартиру\b", r"\bищу вариант\b",
+    r"\bищем квартиру\b", r"\bищем дом\b", r"\bищем виллу\b",
+    r"\bинтересует квартира\b", r"\bинтересует недвижимость\b",
+    r"\bпосоветуйте квартиру\b", r"\bпосоветуйте район\b",
+    r"\bкакая квартира лучше\b", r"\bкакой район лучше\b",
+    r"\bсколько стоит квартира\b", r"\bсколько стоит дом\b",
+    r"\bцена квартиры\b", r"\bцены на квартиры\b",
+    r"\bквартиру за\b", r"\bдом за\b", r"\bбюджет до\b",
     r"\bнужна квартира\b", r"\bкуплю квартиру\b", r"\bкуплю дом\b",
     r"\bкуплю недвижимость\b", r"\bищу жилье\b", r"\bищу жильё\b",
     r"\bкакую квартиру купить\b", r"\bгде купить квартиру\b",
@@ -707,6 +717,19 @@ TG_RENT = [
     r"\brental\b", r"\bсниму\b", r"\bаренд", r"\bснять квартиру\b",
     r"\bснять виллу\b",
 ]
+TG_CONTEXT = [
+    r"\bподскажите\b", r"\bпорекомендуйте\b", r"\bсоветуйте\b",
+    r"\bкто покупал\b", r"\bкто знает\b", r"\bесть ли\b",
+    r"\bкак купить\b", r"\bгде купить\b", r"\bс чего начать\b",
+    r"\bкакие документы\b", r"\bкак оформить\b", r"\bбезопасно ли\b",
+    r"\bпосоветуйте\b", r"\bподелитесь опытом\b",
+    r"\bhangi bölge\b", r"\bhangi proje\b", r"\bhangi ev\b",
+    r"\bnasıl alabilirim\b", r"\bnereden alabilirim\b",
+    r"\bkim aldı\b", r"\bdeneyiminiz\b", r"\bkaç para\b",
+    r"\bкак с покупкой\b", r"\bкак оформить покупку\b",
+    r"\bипотека\b", r"\bрассрочка\b",
+]
+
 TG_BUDGET_RE = re.compile(
     r"(?:£|€|\$|₺|₽)\s?\d[\d\s.,]*|"
     r"\b\d[\d\s.,]*\s?(?:gbp|eur|usd|try|tl|руб|млн|million|k)\b",
@@ -803,6 +826,7 @@ def tg_priority(group):
 def tg_score(text, group):
     buy = tg_matches(text, TG_BUY)
     weak = tg_matches(text, TG_WEAK)
+    context = tg_matches(text, TG_CONTEXT)
     sell = tg_matches(text, TG_SELL)
     rent = tg_matches(text, TG_RENT)
     budget = bool(TG_BUDGET_RE.search(text or ""))
@@ -810,27 +834,41 @@ def tg_score(text, group):
     priority = tg_priority(group)
 
     score = (
-        min(70, 25 * len(buy))
-        + min(16, 6 * len(weak))
+        min(60, 18 * len(buy))
+        + min(18, 5 * len(weak))
+        + min(12, 4 * len(context))
         + (12 if budget else 0)
-        + (12 if priority == "HIGH" else 6 if priority == "MEDIUM" else 0)
-        - min(80, 30 * len(sell))
-        - min(80, 40 * len(rent))
+        + (14 if priority == "HIGH" else 7 if priority == "MEDIUM" else 0)
+        - min(75, 30 * len(sell))
+        - min(75, 35 * len(rent))
         - (50 if negative else 0)
     )
     score = max(0, min(100, score))
 
-    if rent and not buy:
+    buyer_question = bool(context) and (
+        bool(buy)
+        or budget
+        or any(
+            term in tg_norm(text)
+            for term in [
+                "квартира", "дом", "вилла", "недвижимость",
+                "daire", "ev", "konut", "villa", "arsa",
+                "property", "apartment", "house",
+            ]
+        )
+    )
+
+    if rent and not buy and not buyer_question:
         label = "REJECT_RENT"
-    elif sell and not buy:
+    elif sell and not buy and not buyer_question:
         label = "REJECT_SELLER"
     elif negative:
         label = "REJECT_STATUS"
-    elif score >= 70:
+    elif score >= 65 or (buyer_question and priority == "HIGH" and score >= 50):
         label = "HOT"
-    elif score >= 42:
+    elif score >= 35 or (buyer_question and priority in {"HIGH", "MEDIUM"} and score >= 30):
         label = "WARM"
-    elif score >= 20:
+    elif score >= 15:
         label = "REVIEW"
     else:
         label = "LOW"
@@ -1052,6 +1090,7 @@ async def telegram_buyer_scan(db_client, started):
                         "market": market,
                         "budget_detected": bool(budget),
                         "buyer_matches": buy,
+                        "context_matches": context,
                         "weak_matches": weak,
                         "seller_matches": sell,
                         "rent_matches": rent,
@@ -1122,7 +1161,7 @@ def main():
     queries = build_queries()
 
     print(
-        f"BAY-S RADAR V4.5.4.3-UNIFIED STARTED | "
+        f"BAY-S RADAR V4.5.5-UNIFIED STARTED | "
         f"queries={len(queries)}"
     )
 
