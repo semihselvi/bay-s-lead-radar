@@ -1,412 +1,948 @@
-import os, re, json, time, hashlib, warnings
+import os
+import re
+import hashlib
+import json
+import time
 from datetime import datetime, timezone
 from urllib.parse import quote_plus
+
 import requests
-from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
+from bs4 import BeautifulSoup
 from google.cloud import firestore
 from google.oauth2 import service_account
-from config import COLLECTION, SCAN_LOG_COLLECTION, MAX_RESULTS_PER_SOURCE, INTENT_PHRASES, ROUTES
 
-warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
+from config import *
 
-UA = "BAY-S-Lead-Radar/4.5 (+https://github.com/semihselvi)"
-TIMEOUT = 15
-MAX_RESULTS = max(10, min(int(MAX_RESULTS_PER_SOURCE), 20))
-MAX_TELEGRAM_LEADS = 5
-NEWS_DELAY = 0.5
 
-S = requests.Session()
-S.headers.update({
+UA = (
+    "Mozilla/5.0 (compatible; BAY-S-Web-Radar/2.0; "
+    "+https://github.com/semihselvi/bay-s-web-radar)"
+)
+
+SESSION = requests.Session()
+SESSION.headers.update({
     "User-Agent": UA,
-    "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
 })
 
-MARKETS = {
-    "north_cyprus": (["north cyprus","northern cyprus","kuzey kıbrıs","iskele","long beach","kyrenia","girne","esentepe","famagusta","gazimağusa"], "Prime Kıbrıs"),
-    "turkey": (["turkey","türkiye","antalya","alanya","mersin","istanbul","izmir","bodrum","fethiye","ankara","bursa","muğla"], "Turkey Partner"),
-    "greece": (["greece","athens","thessaloniki","crete","rhodes","corfu","mykonos"], "Golden Visa Partner"),
-    "germany": (["germany","berlin","munich","frankfurt","hamburg","cologne","deutschland"], "Germany Partner"),
-    "netherlands": (["netherlands","amsterdam","rotterdam","the hague","utrecht","nederland"], "Netherlands Partner"),
-    "belgium": (["belgium","brussels","antwerp","ghent"], "Partner Network"),
-    "france": (["france","paris","nice","cannes","marseille","lyon"], "Partner Network"),
-    "switzerland": (["switzerland","zurich","geneva","lausanne","basel","zug","lugano"], "Partner Network"),
-    "lithuania": (["lithuania","vilnius","kaunas","klaipeda"], "Partner Network"),
-    "russia": (["russia","россия","moscow","москва","st petersburg","санкт-петербург"], "Partner Network"),
-    "kazakhstan": (["kazakhstan","казахстан","almaty","алматы","astana","астана"], "Partner Network"),
-    "montenegro": (["montenegro","budva","kotor","tivat","podgorica","bar"], "Partner Network"),
-    "uk": (["united kingdom","uk","britain","london","manchester","birmingham","leeds","brighton"], "Partner Network"),
-    "spain": (["spain","madrid","barcelona","valencia","malaga","alicante","marbella"], "Golden Visa Partner"),
-    "portugal": (["portugal","lisbon","porto","algarve","cascais"], "Golden Visa Partner"),
-    "italy": (["italy","rome","milan","florence","naples","sicily"], "Partner Network"),
-    "poland": (["poland","warsaw","krakow","wroclaw","gdańsk"], "Partner Network"),
-    "austria": (["austria","vienna","salzburg","graz"], "Partner Network"),
-    "ireland": (["ireland","dublin","cork","galway"], "Partner Network"),
-    "uae": (["uae","united arab emirates","dubai","abu dhabi"], "Partner Network"),
-    "qatar": (["qatar","doha"], "Partner Network"),
-    "saudi_arabia": (["saudi arabia","riyadh","jeddah"], "Partner Network"),
-}
+REQUEST_TIMEOUT = 12
+REDDIT_DELAY = 1.5
+NEWS_DELAY = 0.4
+MAX_RETRIES = 2
+GOOGLE_BATCH_SIZE = 10
+GOOGLE_BATCH_PAUSE = 12
 
-EXCLUDED_GEOGRAPHY = [
-    "usa","u.s.a.","united states","united states of america","america",
-    "new york","los angeles","california","texas","florida","miami","chicago",
-    "houston","phoenix","seattle","boston","san francisco",
-    "canada","toronto","vancouver","montreal",
-    "australia","australian","sydney","melbourne","brisbane","perth","adelaide","canberra",
-    "new zealand","auckland","wellington",
-]
 
-PROPERTY = ["property","real estate","home","house","apartment","condo","flat","villa","townhouse","residence","residential","land","mortgage","down payment","deposit","rental income","rental yield","golden visa","residency by investment","ev","konut","daire","gayrimenkul","mülk","arsa","kira","квартира","дом","недвижимость","ипотека","аренда"]
-BUY_INTENT = ["looking to buy","want to buy","wanting to buy","planning to buy","ready to buy","thinking of buying","buying a home","buying a house","buying property","buy an apartment","buy apartment","looking for an apartment","looking for a house","cash buyer","first time buyer","first-time buyer","first home buyer","property buyer","looking to purchase","purchase","how much can i afford","ev almak","ev arıyorum","ev almak istiyorum","satın almak","gayrimenkul almak","yatırım için ev","хочу купить","ищу квартиру","купить квартиру","купить дом","купить недвижимость","планирую купить","недвижимость за рубежом","ev sahibi olmak","ev almayı düşünüyorum","ev alacağım","ev almayı planlıyorum","konut kredisi"]
-STRONG_INTENT = ["looking to buy","want to buy","planning to buy","ready to buy","looking to purchase","buying property","buy an apartment","property buyer","cash buyer","ev almak","satın almak","хочу купить","купить квартиру","купить недвижимость","ev sahibi olmak","ev almayı düşünüyorum","ev alacağım","ev almayı planlıyorum"]
-CONCRETE = ["budget","$","€","£","aed","eur","gbp","usd","chf","try","kzt","rub","tl","milyon","million","mortgage","down payment","deposit","bedroom","1br","2br","3br","1+1","2+1","3+1","1 bhk","2 bhk","3 bhk","rent","rental income","yield","first home","moving","relocating","next month","next year","this year","2026","2027","bütçe","kredi","kapora","kira","taşınmak","peşinat","taksit","konut kredisi","мой бюджет","ипотека","переезд"]
-PERSONAL = [" i "," i'm"," i am "," we "," we're"," my "," our "," my family"," for myself"," for me","ben ","biz ","ailem","kendim için","я ","мы ","моя семья","для себя"]
-AGENCY = ["for my client","for a client","my clients","client looking","buyer client","real estate agent","estate agent","realtor","broker","developer","property developer","property listing","listing page","our properties","our project","contact us","whatsapp us","call us","we sell","available units","new project","commission","lead generation","marketing agency","property management service","агентство недвижимости","риэлтор","застройщик","продам","продается","продаю"]
+def get(url, params=None, timeout=REQUEST_TIMEOUT):
+    return SESSION.get(
+        url,
+        params=params,
+        timeout=timeout,
+        allow_redirects=True,
+    )
 
-SEARCH_QUERIES = [
-    'site:forum.donanimhaber.com "ev alacağım" konut',
-    'site:forum.donanimhaber.com "konut kredisi" "ev al"',
-    'site:forum.donanimhaber.com "ev almayı düşünüyorum"',
-    'site:forum.donanimhaber.com "kira getirisi" ev yatırım',
-    'site:technopat.net/sosyal "ev almak" emlak',
-    'site:technopat.net/sosyal "konut kredisi" ev',
-    'site:technopat.net/sosyal "yatırım için" daire',
-    'site:r10.net "ev satın almak" gayrimenkul',
-    'site:r10.net "ev almak istiyorum"',
-    'site:r10.net "yatırım için ev"',
-    'site:expat.com/en/forum "property in Northern Cyprus"',
-    'site:expat.com/en/forum "buying property in Cyprus"',
-    'site:expat.com/en/forum "buying property in Turkey"',
-    'site:britishexpats.com/forum "property" Cyprus',
-    'site:britishexpats.com/forum "buying" "North Cyprus"',
-    'site:britishexpats.com/forum "holiday home" Cyprus',
-    'site:forums.moneysavingexpert.com "property abroad" buying',
-    'site:forums.moneysavingexpert.com "buying property abroad" budget',
-    'site:forums.moneysavingexpert.com "mortgage" "property abroad"',
-    'site:forums.moneysavingexpert.com "buying property" overseas',
-    '"Kıbrıs" "ev almak" bütçe',
-    '"Kuzey Kıbrıs" "ev almak"',
-    '"Türkiye" "ev almak istiyorum" bütçe',
-    '"gayrimenkul yatırımı" "bütçe"',
-]
 
-NEWS_QUERIES = [
-    '"Kuzey Kıbrıs" "ev almak"',
-    '"Kuzey Kıbrıs" gayrimenkul yatırım',
-    '"Kıbrıs" property buyer',
-    '"Türkiye" "ev almak" bütçe',
-    '"konut kredisi" "ev alacağım"',
-    '"gayrimenkul yatırımı" Türkiye',
-    '"Golden Visa" property Greece',
-    '"buying property abroad" budget',
-]
+# ---------------------------------------------------------
+# REDDIT
+# ---------------------------------------------------------
 
-def db_client():
-    raw = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
-    if not raw:
-        raise RuntimeError("FIREBASE_SERVICE_ACCOUNT_JSON missing")
-    creds = service_account.Credentials.from_service_account_info(json.loads(raw))
-    return firestore.Client(credentials=creds)
+def reddit_search(query):
+    """
+    Reddit RSS.
+    429 durumunda kısa backoff uygular.
+    Reddit kapsamı korunur; sadece istekler kontrollü yapılır.
+    """
 
-def has(value, terms):
-    v = value.lower()
-    return any(t.lower() in v for t in terms)
+    url = "https://www.reddit.com/search.rss"
 
-def text(item):
-    return f"{item.get('title','')} {item.get('text','')}".strip()
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            r = get(
+                url,
+                {
+                    "q": query,
+                    "sort": "new",
+                    "t": "day",
+                    "limit": MAX_RESULTS_PER_SOURCE,
+                },
+            )
 
-def market_for(value):
-    v = value.lower()
-    for market, (terms, _) in MARKETS.items():
-        for term in terms:
-            if term.lower() in v:
-                return market
-    return "unknown"
+            if r.status_code == 429:
+                retry_after = r.headers.get("Retry-After")
 
-def budget(value):
-    for pattern in [
-        r"[$€£₺]\s?[\d,.]+(?:\s?[kKmM])?",
-        r"\b(?:USD|EUR|GBP|AED|CHF|TRY|KZT|RUB|TL)\s?[\d,.]+(?:\s?[kKmM])?\b",
-        r"\b\d{1,3}(?:[.,]\d{3})+(?:\s?(?:TL|tl))?\b",
-        r"\b\d+(?:[.,]\d+)?\s?(?:milyon|million|M|K|bin)\b",
-    ]:
-        m = re.search(pattern, value, re.I)
-        if m:
-            return m.group(0)
-    return "Not stated"
+                try:
+                    wait = min(int(retry_after), 8) if retry_after else 4
+                except Exception:
+                    wait = 4
 
-def timeframe(value):
-    for pattern in [
-        r"\b(?:within|in|next)\s+\d+\s+(?:days?|weeks?|months?|years?)\b",
-        r"\b(?:\d+)\s+(?:ay|months?)\b",
-        r"\bthis year\b", r"\bnext year\b", r"\bsoon\b", r"\bimmediately\b", r"\b2026\b", r"\b2027\b",
-    ]:
-        m = re.search(pattern, value, re.I)
-        if m:
-            return m.group(0)
-    return "Not stated"
+                print(
+                    f"REDDIT_429 retry={attempt + 1} "
+                    f"wait={wait}s query={query}"
+                )
 
-def language(value):
-    if re.search(r"[а-яё]", value.lower()):
-        return "Russian"
-    if has(value, ["ev almak","ev arıyorum","gayrimenkul","kıbrıs","satın almak","konut kredisi"]):
-        return "Turkish"
-    return "English"
+                if attempt < MAX_RETRIES:
+                    time.sleep(wait)
+                    continue
 
-def city(value, market):
-    if market == "unknown":
-        return "Not stated"
-    v = value.lower()
-    country_terms = {"turkey","türkiye","greece","germany","netherlands","belgium","france","lithuania","switzerland","russia","kazakhstan","montenegro","uk","united kingdom","north cyprus","northern cyprus"}
-    for term in MARKETS[market][0]:
-        if term.lower() in v and term.lower() not in country_terms:
-            return term
-    return "Not stated"
+                return []
 
-def fingerprint(item):
-    raw = "|".join([item.get("url",""), item.get("title",""), item.get("author","")]).lower()
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+            r.raise_for_status()
 
-def excluded_geo(value):
-    v = value.lower()
-    return any(t in v for t in EXCLUDED_GEOGRAPHY)
+            # XML parser problemi yaşamamak için lxml'e bağlı değiliz.
+            soup = BeautifulSoup(r.text, "html.parser")
 
-def valid(item, source):
-    value = text(item)
-    if len(value) < 100:
-        return False, "too_short"
-    if not has(value, PROPERTY):
-        return False, "no_property"
-    if not has(value, BUY_INTENT):
-        return False, "no_buyer"
-    if has(value, AGENCY):
-        return False, "agency_or_listing"
-    if excluded_geo(value):
-        return False, "excluded_geography"
-    if not has(value, CONCRETE) and not has(value, PERSONAL):
-        return False, "no_concrete_or_personal"
-    market = market_for(value)
-    overseas = has(value, ["abroad","overseas","relocat","moving to","cyprus","north cyprus","northern cyprus","greece","portugal","spain","turkey","golden visa","residency by investment","недвижимость за рубежом"])
-    strong = has(value, STRONG_INTENT)
-    if not strong and source != "Google Search":
-        return False, "weak_intent"
-    if market == "unknown" and not overseas and not has(value, ["property investment","investment property","rental income","rental yield","golden visa","residency by investment","buying property abroad","konut kredisi","ev almak","ev almayı düşünüyorum"]):
-        return False, "no_target_market"
-    return True, "ok"
+            out = []
 
-def score(item, market):
-    value = text(item).lower()
-    strong_hits = sum(1 for p in STRONG_INTENT if p.lower() in value)
-    intent_hits = sum(1 for p in INTENT_PHRASES if p.lower() in value)
-    has_budget = budget(value) != "Not stated"
-    has_time = timeframe(value) != "Not stated"
-    concrete = has(value, CONCRETE)
-    personal = has(value, PERSONAL)
-    target = market != "unknown"
-    abroad = has(value, ["abroad","overseas","relocat","moving to","golden visa","residency by investment","north cyprus","northern cyprus","cyprus"])
+            for entry in soup.find_all("entry")[:MAX_RESULTS_PER_SOURCE]:
 
-    intent = min(100, 40 + strong_hits*8 + min(intent_hits*3,12) + (12 if has_budget else 0) + (10 if has_time else 0) + (8 if personal else 0) + (10 if abroad else 0))
-    credibility = min(100, 50 + (18 if personal else 0) + (14 if has_budget else 0) + (8 if has_time else 0) + (8 if concrete else 0) + (7 if len(value) >= 400 else 0))
-    fit = 35 + (30 if target else 0) + (25 if market == "north_cyprus" else 0) + (15 if market in {"turkey","greece","portugal","spain"} else 0) + (10 if abroad else 0) + (10 if has_budget else 0)
-    fit = min(100, fit)
-    if market == "north_cyprus" and intent >= 80 and credibility >= 75:
-        cls = "HOT"
-    elif intent >= 72 and credibility >= 68 and fit >= 50:
-        cls = "WARM"
-    else:
-        cls = "REVIEW"
-    return intent, credibility, fit, cls
+                link = entry.find("link")
 
-def search_web(query):
-    url = "https://www.google.com/search?q=" + quote_plus(query) + "&num=10&hl=en"
+                title = entry.find("title")
+                content = entry.find("content")
+                published = entry.find("published")
+                author = entry.find("name")
+
+                out.append({
+                    "source": "Reddit",
+                    "url": link.get("href", "") if link else "",
+                    "title": title.get_text(" ", strip=True)
+                    if title else "",
+                    "text": content.get_text(" ", strip=True)
+                    if content else "",
+                    "published": published.get_text(strip=True)
+                    if published else "",
+                    "author": author.get_text(strip=True)
+                    if author else "",
+                })
+
+            return out
+
+        except requests.exceptions.RequestException as e:
+            print(
+                f"REDDIT_ERROR attempt={attempt + 1} "
+                f"query={query} error={e}"
+            )
+
+            if attempt < MAX_RETRIES:
+                time.sleep(2 + attempt * 2)
+            else:
+                return []
+
+        except Exception as e:
+            print(
+                f"REDDIT_PARSE_ERROR query={query} error={e}"
+            )
+            return []
+
+        finally:
+            time.sleep(REDDIT_DELAY)
+
+
+# ---------------------------------------------------------
+# GOOGLE NEWS
+# ---------------------------------------------------------
+
+def google_news(query):
+    """
+    Google News RSS.
+    when:1d ile son 24 saati hedefler.
+    """
+
+    url = "https://news.google.com/rss/search"
+
     try:
-        r = S.get(url, timeout=TIMEOUT)
+        r = get(
+            url,
+            {
+                "q": f"{query} when:1d",
+                "hl": "en-US",
+                "gl": "US",
+                "ceid": "US:en",
+            },
+        )
+
         r.raise_for_status()
+
+        # lxml gerektirmeden XML benzeri RSS'i parse ediyoruz.
         soup = BeautifulSoup(r.text, "html.parser")
-        rows = []
-        seen_urls = set()
-        for result in soup.select("div.MjjYud, div.g"):
-            a = result.find("a", href=True)
-            h = result.find(["h3"])
-            if not a or not h:
-                continue
-            href = a["href"]
-            if not href.startswith("http"):
-                continue
-            if href in seen_urls:
-                continue
-            seen_urls.add(href)
-            title = h.get_text(" ", strip=True)
-            container = result.get_text(" ", strip=True)
-            rows.append({
-                "source": "Google Search",
-                "url": href,
-                "title": title[:300],
-                "text": container[:5000],
-                "published": "",
+
+        out = []
+
+        for item in soup.find_all("item")[:MAX_RESULTS_PER_SOURCE]:
+
+            link = item.find("link")
+            title = item.find("title")
+            description = item.find("description")
+            pub_date = item.find("pubDate")
+
+            out.append({
+                "source": "Google News",
+                "url": link.get_text(strip=True)
+                if link else "",
+                "title": title.get_text(" ", strip=True)
+                if title else "",
+                "text": description.get_text(" ", strip=True)
+                if description else "",
+                "published": pub_date.get_text(strip=True)
+                if pub_date else "",
                 "author": "",
             })
-        return rows, 0
-    except requests.RequestException as exc:
-        print(f"GOOGLE_SEARCH_ERROR: {exc}")
-        return [], 1
 
-def google_news_search(query):
+        return out
+
+    except Exception as e:
+        print(
+            f"GOOGLE_NEWS_ERROR query={query} error={e}"
+        )
+        return []
+
+    finally:
+        time.sleep(NEWS_DELAY)
+
+
+# ---------------------------------------------------------
+# GOOGLE WEB SEARCH
+# ---------------------------------------------------------
+
+def google_web_search(query):
+    url = "https://www.google.com/search"
     try:
-        r = S.get("https://news.google.com/rss/search", params={"q":query+" when:1d","hl":"en-US","gl":"US","ceid":"US:en"}, timeout=TIMEOUT)
-        r.raise_for_status()
-        soup = BeautifulSoup(r.text, "html.parser")
-        rows = []
-        for e in soup.find_all("item")[:MAX_RESULTS]:
-            link=e.find("link"); title=e.find("title"); desc=e.find("description"); pub=e.find("pubDate")
-            rows.append({
-                "source":"Google News",
-                "url":link.get_text(strip=True) if link else "",
-                "title":title.get_text(" ",strip=True) if title else "",
-                "text":desc.get_text(" ",strip=True) if desc else "",
-                "published":pub.get_text(strip=True) if pub else "",
-                "author":"",
-            })
-        return rows, 0
-    except requests.RequestException as exc:
-        print(f"GOOGLE_NEWS_ERROR: {exc}")
-        return [], 1
+        r = get(
+            url,
+            {
+                "q": query,
+                "num": 10,
+                "hl": "en",
+            },
+        )
+        if r.status_code == 429:
+            print(
+                f"GOOGLE_429 query={query}"
+            )
+            return [], True
 
-def telegram(message):
-    token=os.getenv("TELEGRAM_BOT_TOKEN")
-    chat=os.getenv("TELEGRAM_CHAT_ID")
+        r.raise_for_status()
+        soup = BeautifulSoup(
+            r.text,
+            "html.parser",
+        )
+
+        out = []
+        seen_urls = set()
+
+        for container in soup.select("div.g, div.MjjYud"):
+            a = container.find(
+                "a",
+                href=True,
+            )
+            h = container.find("h3")
+
+            if not a or not h:
+                continue
+
+            href = a.get("href", "")
+            title = h.get_text(
+                " ",
+                strip=True,
+            )
+
+            if not href.startswith("http"):
+                continue
+
+            if href in seen_urls:
+                continue
+
+            seen_urls.add(href)
+
+            text = container.get_text(
+                " ",
+                strip=True,
+            )
+
+            out.append(
+                {
+                    "source": "Google Search",
+                    "url": href,
+                    "title": title,
+                    "text": text,
+                    "published": "",
+                    "author": "",
+                }
+            )
+
+        return out, False
+
+    except Exception as e:
+        print(
+            f"GOOGLE_SEARCH_ERROR "
+            f"query={query} error={e}"
+        )
+        return [], False
+
+# ---------------------------------------------------------
+# QUERY BUILDER
+# ---------------------------------------------------------
+
+def build_queries():
+
+    queries = []
+
+    # Ana buyer intent kümeleri.
+    intent_groups = [
+        '"looking to buy" property',
+        '"looking for" apartment house',
+        '"want to buy" property',
+        '"buying a home" budget',
+        '"property investment" budget',
+        '"moving" "buying a home"',
+        '"relocating" "buying property"',
+        '"Golden Visa" property',
+        '"residency by investment" property',
+    ]
+
+    # Her market için geniş ama tek tek patlamayan sorgular.
+    for market, places in MARKETS.items():
+
+        if not places:
+            continue
+
+        selected_places = places[:6]
+
+        place_query = " OR ".join(
+            f'"{p}"'
+            for p in selected_places
+        )
+
+        for intent in intent_groups:
+            queries.append(
+                f"({place_query}) {intent}"
+            )
+
+        # Rusça pazar
+        if market in ("russia", "kazakhstan"):
+
+            queries.extend([
+                f"({place_query}) "
+                f'"хочу купить" недвижимость',
+
+                f"({place_query}) "
+                f'"ищу квартиру"',
+
+                f"({place_query}) "
+                f'"купить недвижимость за рубежом"',
+            ])
+
+    # Global buyer / Golden Visa taraması.
+    queries.extend([
+        '"EU Golden Visa" property buyer',
+        '"Golden Visa" Greece property buyer',
+        '"Greece" "looking to buy" property',
+        '"Germany" "looking to buy" property',
+        '"Netherlands" "looking to buy" property',
+        '"Belgium" "looking to buy" property',
+        '"France" "looking to buy" property',
+        '"Lithuania" "looking to buy" property',
+        '"Switzerland" "looking to buy" property',
+        '"Russia" "buy property abroad"',
+        '"Kazakhstan" "buy property abroad"',
+        '"Turkey" "buy property" budget',
+        '"North Cyprus" "buy property"',
+    ])
+
+    # Aynı sorgular varsa temizle.
+    return list(dict.fromkeys(queries))
+
+
+# ---------------------------------------------------------
+# MARKET
+# ---------------------------------------------------------
+
+def market_for(text):
+
+    t = text.lower()
+
+    for market, places in MARKETS.items():
+
+        for place in places:
+
+            if place.lower() in t:
+                return market
+
+    return "unknown"
+
+
+# ---------------------------------------------------------
+# SCORING
+# ---------------------------------------------------------
+
+def score(item, market):
+
+    t = (
+        item.get("title", "")
+        + " "
+        + item.get("text", "")
+    ).lower()
+
+    intent_hits = sum(
+        p.lower() in t
+        for p in INTENT_PHRASES
+    )
+
+    exclude_hits = sum(
+        p.lower() in t
+        for p in EXCLUDE_PHRASES
+    )
+
+    budget = bool(
+        re.search(
+            r'[$€£₺]\s?[\d,.]+'
+            r'|\b\d{2,3}\s?[kKmM]\b'
+            r'|\b\d{4,}\b',
+            t,
+        )
+    )
+
+    timeframe = any(
+        x in t
+        for x in [
+            "month",
+            "months",
+            "weeks",
+            "year",
+            "soon",
+            "this year",
+            "2026",
+            "2027",
+            "within",
+            "next month",
+            "next year",
+        ]
+    )
+
+    personal = any(
+        x in t
+        for x in [
+            "i ",
+            "we ",
+            "my ",
+            "our ",
+            "i'm ",
+            "we're ",
+            "ben ",
+            "biz ",
+            "я ",
+            "мы ",
+        ]
+    )
+
+    intent = min(
+        100,
+        35
+        + intent_hits * 7
+        + (12 if budget else 0)
+        + (10 if timeframe else 0)
+        + (8 if personal else 0)
+        - exclude_hits * 20,
+    )
+
+    credibility = min(
+        100,
+        55
+        + (12 if budget else 0)
+        + (10 if timeframe else 0)
+        + (10 if len(t) > 450 else 0)
+        + (8 if personal else 0)
+        - exclude_hits * 25,
+    )
+
+    fit = 55 if market != "unknown" else 35
+
+    if budget:
+        fit += 12
+
+    if market in (
+        "north_cyprus",
+        "greece",
+        "germany",
+        "netherlands",
+        "france",
+        "switzerland",
+    ):
+        fit += 8
+
+    fit = max(0, min(100, fit))
+
+    if (
+        intent >= 82
+        and credibility >= 75
+        and fit >= 60
+    ):
+        classification = "HOT"
+
+    elif (
+        intent >= 62
+        and credibility >= 65
+        and fit >= 45
+    ):
+        classification = "WARM"
+
+    else:
+        classification = "REVIEW"
+
+    return (
+        intent,
+        credibility,
+        fit,
+        classification,
+    )
+
+
+# ---------------------------------------------------------
+# FINGERPRINT
+# ---------------------------------------------------------
+
+def fp(item):
+
+    raw = "|".join([
+        item.get("url", ""),
+        item.get("title", ""),
+        item.get("author", ""),
+    ])
+
+    return hashlib.sha256(
+        raw.lower().encode("utf-8")
+    ).hexdigest()
+
+
+# ---------------------------------------------------------
+# FIRESTORE
+# ---------------------------------------------------------
+
+def db():
+
+    raw = os.environ.get(
+        "FIREBASE_SERVICE_ACCOUNT_JSON"
+    )
+
+    if not raw:
+        raise RuntimeError(
+            "FIREBASE_SERVICE_ACCOUNT_JSON missing"
+        )
+
+    creds = (
+        service_account
+        .Credentials
+        .from_service_account_info(
+            json.loads(raw)
+        )
+    )
+
+    return firestore.Client(
+        credentials=creds
+    )
+
+
+# ---------------------------------------------------------
+# TELEGRAM
+# ---------------------------------------------------------
+
+def telegram(text):
+
+    token = os.environ.get(
+        "TELEGRAM_BOT_TOKEN"
+    )
+
+    chat = os.environ.get(
+        "TELEGRAM_CHAT_ID"
+    )
+
     if not token or not chat:
         print("TELEGRAM_NOT_CONFIGURED")
         return
+
     try:
-        r=S.post(f"https://api.telegram.org/bot{token}/sendMessage",json={"chat_id":chat,"text":message,"disable_web_page_preview":False},timeout=10)
+
+        r = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={
+                "chat_id": chat,
+                "text": text,
+                "disable_web_page_preview": False,
+            },
+            timeout=10,
+        )
+
         r.raise_for_status()
-    except requests.RequestException as exc:
-        print(f"TELEGRAM_ERROR: {exc}")
 
-def format_lead(x):
-    emoji = "🔥" if x["classification"]=="HOT" else "🟠"
-    return (
-        f"{emoji} BAY-S RADAR — {x['classification']}\n\n"
-        f"Source: {x['source']}\n"
-        f"Market: {x['market']}\n"
-        f"City/Region: {x['city_region']}\n"
-        f"Budget: {x['budget']}\n"
-        f"Timeframe: {x['timeframe']}\n"
-        f"Intent: {x['intent_score']}/100\n"
-        f"Credibility: {x['credibility_score']}/100\n"
-        f"Market Fit: {x['market_fit_score']}/100\n\n"
-        f"{x['title']}\n\n"
-        f"🔗 {x['url']}"
-    )
+    except Exception as e:
 
-def process_rows(rows, db, seen, leads, rejected, errors, started):
-    for item in rows:
-        if not item.get("url"):
-            continue
-        key=fingerprint(item)
-        if key in seen:
-            continue
-        seen.add(key)
-        ok, reason = valid(item, item.get("source",""))
-        if not ok:
-            rejected[reason]=rejected.get(reason,0)+1
-            continue
-        value=text(item)
-        market=market_for(value)
-        intent,cred,fit,classification=score(item, market)
-        if classification not in {"HOT","WARM"}:
-            rejected["low_score"]=rejected.get("low_score",0)+1
-            continue
-        ref=db.collection(COLLECTION).document(key)
-        try:
-            if ref.get().exists:
-                print(f"EXISTING_LEAD: {key}")
-                continue
-            lead={
-                **item,
-                "lead_id":key,
-                "language":language(value),
-                "market":market,
-                "city_region":city(value,market),
-                "budget":budget(value),
-                "timeframe":timeframe(value),
-                "intent_score":intent,
-                "credibility_score":cred,
-                "market_fit_score":fit,
-                "classification":classification,
-                "route_to":MARKETS.get(market,("",ROUTES.get(market,"Direct Review")))[1],
-                "found_at":started.isoformat(),
-            }
-            ref.set(lead)
-            leads.append(lead)
-            print(f"NEW_LEAD: {classification} | {item.get('source')} | {market} | {item['url']}")
-        except Exception as exc:
-            errors["Firestore"]+=1
-            print(f"FIRESTORE_ERROR: {exc}")
+        print(
+            f"TELEGRAM_ERROR {e}"
+        )
+
+
+# ---------------------------------------------------------
+# MAIN
+# ---------------------------------------------------------
 
 def main():
-    started=datetime.now(timezone.utc)
-    print("BAY-S LEAD RADAR V4.5 STARTED")
-    db=db_client()
 
-    seen=set()
-    leads=[]
-    rejected={}
-    errors={"Google Search":0,"Google News":0,"Firestore":0}
-    counts={"Google Search":0,"Google News":0}
+    started = datetime.now(
+        timezone.utc
+    )
 
-    for i, query in enumerate(SEARCH_QUERIES, 1):
-        print(f"[SEARCH {i}/{len(SEARCH_QUERIES)}] {query}")
-        rows, err = search_web(query)
-        counts["Google Search"] += len(rows)
-        errors["Google Search"] += err
-        process_rows(rows, db, seen, leads, rejected, errors, started)
-        time.sleep(0.4)
+    queries = build_queries()
 
-    for i, query in enumerate(NEWS_QUERIES, 1):
-        print(f"[NEWS {i}/{len(NEWS_QUERIES)}] {query}")
-        rows, err = google_news_search(query)
-        counts["Google News"] += len(rows)
-        errors["Google News"] += err
-        process_rows(rows, db, seen, leads, rejected, errors, started)
-        time.sleep(NEWS_DELAY)
+    print(
+        f"BAY-S RADAR V4.5-BATCH STARTED | "
+        f"queries={len(queries)}"
+    )
 
-    finished=datetime.now(timezone.utc)
-    scan={
-        "started_at":started.isoformat(),
-        "completed_at":finished.isoformat(),
-        "status":"completed",
-        "source_results":counts,
-        "unique_results":len(seen),
-        "new_hot_warm":len(leads),
-        "source_errors":errors,
-        "rejected":rejected,
-        "search_queries":len(SEARCH_QUERIES),
-        "news_queries":len(NEWS_QUERIES),
-        "mode":"web_search_first",
+    client = db()
+
+    seen = set()
+    candidates = []
+
+    errors = 0
+
+    source_counts = {
+        "Reddit": 0,
+        "Google News": 0,
+        "Google Search": 0,
+        "Google Search": 0,
     }
 
-    try:
-        db.collection(SCAN_LOG_COLLECTION).document(started.strftime("%Y%m%dT%H%M%SZ")).set(scan)
-    except Exception as exc:
-        print(f"SCAN_LOG_ERROR: {exc}")
+    source_errors = {
+        "Reddit": 0,
+        "Google News": 0,
+        "Google Search": 0,
+    }
 
-    print(json.dumps(scan,ensure_ascii=False,indent=2))
+    # -----------------------------------------------------
+    # SEARCH
+    # -----------------------------------------------------
 
-    leads.sort(key=lambda x:(0 if x["classification"]=="HOT" else 1,-x["intent_score"],-x["credibility_score"],-x["market_fit_score"]))
-    if leads:
-        for lead in leads[:MAX_TELEGRAM_LEADS]:
-            telegram(format_lead(lead))
-    else:
-        telegram(
-            "ℹ️ BAY-S RADAR V4.5\n\n"
-            "Tarama tamamlandı.\n"
-            "Yeni HOT/WARM buyer lead bulunamadı.\n\n"
-            f"Google Search sonuçları: {counts['Google Search']}\n"
-            f"Google News sonuçları: {counts['Google News']}\n"
-            "Yeni lead: 0"
+    google_queries = list(queries)
+    google_stopped = False
+    google_429_count = 0
+    google_results = 0
+
+    # Google is tested in batches. After each batch we run
+    # Google News and pause before the next Google batch.
+    for batch_start in range(
+        0,
+        len(google_queries),
+        GOOGLE_BATCH_SIZE,
+    ):
+        batch = google_queries[
+            batch_start:
+            batch_start + GOOGLE_BATCH_SIZE
+        ]
+
+        batch_no = (
+            batch_start // GOOGLE_BATCH_SIZE
+        ) + 1
+
+        total_batches = (
+            (len(google_queries)
+             + GOOGLE_BATCH_SIZE - 1)
+            // GOOGLE_BATCH_SIZE
         )
-    print("BAY-S LEAD RADAR V4.5 FINISHED")
 
-if __name__=="__main__":
+        print(
+            f"GOOGLE_BATCH "
+            f"{batch_no}/{total_batches} "
+            f"size={len(batch)}"
+        )
+
+        for index, q in enumerate(
+            batch,
+            start=batch_start + 1,
+        ):
+            print(
+                f"[GOOGLE "
+                f"{index}/{len(google_queries)}] "
+                f"{q}"
+            )
+
+            try:
+                results, limited = (
+                    google_web_search(q)
+                )
+
+                google_results += len(
+                    results
+                )
+
+                if limited:
+                    google_429_count += 1
+                    google_stopped = True
+                    print(
+                        "GOOGLE_STOPPED_AFTER_429"
+                    )
+                    break
+
+                source_counts[
+                    "Google Search"
+                ] = google_results
+
+                for item in results:
+                    if not item.get("url"):
+                        continue
+
+                    key = fp(item)
+
+                    if key in seen:
+                        continue
+
+                    seen.add(key)
+
+                    market = market_for(
+                        item.get("title", "")
+                        + " "
+                        + item.get("text", "")
+                    )
+
+                    intent, credibility, fit, classification = score(
+                        item,
+                        market,
+                    )
+
+                    if classification not in (
+                        "HOT",
+                        "WARM",
+                    ):
+                        continue
+
+                    ref = (
+                        client
+                        .collection(COLLECTION)
+                        .document(key)
+                    )
+
+                    if ref.get().exists:
+                        continue
+
+                    lead = {
+                        **item,
+                        "lead_id": key,
+                        "market": market,
+                        "route_to": ROUTES.get(
+                            market,
+                            "Direct Review",
+                        ),
+                        "intent_score": intent,
+                        "credibility_score": credibility,
+                        "market_fit_score": fit,
+                        "classification": classification,
+                        "found_at": started.isoformat(),
+                    }
+
+                    ref.set(lead)
+                    candidates.append(lead)
+
+            except Exception as e:
+                errors += 1
+                source_errors[
+                    "Google Search"
+                ] += 1
+                print(
+                    f"GOOGLE_LOOP_ERROR "
+                    f"{e}"
+                )
+
+        # Google News between Google batches.
+        if google_stopped:
+            break
+
+        print(
+            f"[GOOGLE NEWS BRIDGE] "
+            f"batch={batch_no}"
+        )
+
+        bridge_queries = (
+            queries[
+                batch_start:
+                batch_start + 4
+            ]
+        )
+
+        for q in bridge_queries:
+            try:
+                results = google_news(q)
+
+                source_counts[
+                    "Google News"
+                ] += len(results)
+
+                for item in results:
+                    if not item.get("url"):
+                        continue
+
+                    key = fp(item)
+
+                    if key in seen:
+                        continue
+
+                    seen.add(key)
+
+                    market = market_for(
+                        item.get("title", "")
+                        + " "
+                        + item.get("text", "")
+                    )
+
+                    intent, credibility, fit, classification = score(
+                        item,
+                        market,
+                    )
+
+                    if classification not in (
+                        "HOT",
+                        "WARM",
+                    ):
+                        continue
+
+                    ref = (
+                        client
+                        .collection(COLLECTION)
+                        .document(key)
+                    )
+
+                    if ref.get().exists:
+                        continue
+
+                    lead = {
+                        **item,
+                        "lead_id": key,
+                        "market": market,
+                        "route_to": ROUTES.get(
+                            market,
+                            "Direct Review",
+                        ),
+                        "intent_score": intent,
+                        "credibility_score": credibility,
+                        "market_fit_score": fit,
+                        "classification": classification,
+                        "found_at": started.isoformat(),
+                    }
+
+                    ref.set(lead)
+                    candidates.append(lead)
+
+            except Exception as e:
+                errors += 1
+                source_errors[
+                    "Google News"
+                ] += 1
+
+        if (
+            batch_start
+            + GOOGLE_BATCH_SIZE
+            < len(google_queries)
+        ):
+            print(
+                f"GOOGLE_BATCH_PAUSE "
+                f"{GOOGLE_BATCH_PAUSE}s"
+            )
+            time.sleep(
+                GOOGLE_BATCH_PAUSE
+            )
+
+    # -----------------------------------------------------
+    # SCAN LOG
+    # -----------------------------------------------------
+
+    completed = datetime.now(
+        timezone.utc
+    )
+
+    scan = {
+        "started_at": started.isoformat(),
+        "completed_at": completed.isoformat(),
+        "status": "completed",
+        "queries": len(queries),
+        "unique_results": len(seen),
+        "new_hot_warm": len(candidates),
+        "google_results": google_results,
+        "google_429_count": google_429_count,
+        "google_stopped": google_stopped,
+        "google_batch_size": GOOGLE_BATCH_SIZE,
+        "google_batch_pause": GOOGLE_BATCH_PAUSE,
+        "source_counts": source_counts,
+        "source_errors": source_errors,
+        "errors": errors,
+    }
+
+    scan_id = started.strftime(
+        "%Y%m%dT%H%M%SZ"
+    )
+
+    (
+        client
+        .collection(SCAN_LOG_COLLECTION)
+        .document(scan_id)
+        .set(scan)
+    )
+
+    # -----------------------------------------------------
+    # TELEGRAM
+    # -----------------------------------------------------
+
+    if candidates:
+
+        for x in candidates[:10]:
+
+            emoji = (
+                "🔥"
+                if x["classification"] == "HOT"
+                else "🟡"
+            )
+
+            msg = (
+                f"{emoji} BAY-S RADAR — "
+                f"{x['classification']}\n\n"
+                f"{x.get('source', '')}\n"
+                f"{x.get('market', '')} | "
+                f"{x.get('route_to', '')}\n\n"
+                f"{x.get('title', '')}\n\n"
+                f"Intent: "
+                f"{x['intent_score']}/100\n"
+                f"Credibility: "
+                f"{x['credibility_score']}/100\n"
+                f"Market Fit: "
+                f"{x['market_fit_score']}/100\n\n"
+                f"🔗 {x.get('url', '')}"
+            )
+
+            telegram(msg)
+
+    else:
+
+        telegram(
+            "ℹ️ BAY-S RADAR\n\n"
+            "Tarama tamamlandı.\n"
+            "Son taramadan beri yeni "
+            "HOT/WARM buyer lead bulunamadı.\n\n"
+            f"Tarama: {len(queries)} sorgu\n"
+            f"Reddit sonuçları: "
+            f"{source_counts['Reddit']}\n"
+            f"Google News sonuçları: "
+            f"{source_counts['Google News']}\n"
+            f"Hata: {errors}"
+        )
+
+    print(
+        json.dumps(
+            {
+                "scan": scan,
+                "new_leads": candidates,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+
+
+if __name__ == "__main__":
     main()
