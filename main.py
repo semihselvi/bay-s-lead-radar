@@ -105,32 +105,31 @@ AGENCY = [
 ]
 
 SEARCH_QUERIES = [
-    'site:forum.donanimhaber.com "ev alacağım" konut',
-    'site:forum.donanimhaber.com "konut kredisi" "ev al"',
-    'site:forum.donanimhaber.com "ev almayı düşünüyorum"',
-    'site:forum.donanimhaber.com "kira getirisi" ev yatırım',
-    'site:technopat.net/sosyal "ev almak" emlak',
-    'site:technopat.net/sosyal "konut kredisi" ev',
-    'site:technopat.net/sosyal "yatırım için" daire',
-    'site:r10.net "ev satın almak" gayrimenkul',
-    'site:r10.net "ev almak istiyorum"',
-    'site:r10.net "yatırım için ev"',
-    'site:expat.com/en/forum "property in Northern Cyprus"',
-    'site:expat.com/en/forum "buying property in Cyprus"',
-    'site:expat.com/en/forum "buying property in Turkey"',
-    'site:britishexpats.com/forum "property" Cyprus',
-    'site:britishexpats.com/forum "buying" "North Cyprus"',
-    'site:britishexpats.com/forum "holiday home" Cyprus',
-    'site:forums.moneysavingexpert.com "property abroad" buying',
-    'site:forums.moneysavingexpert.com "buying property abroad" budget',
-    'site:forums.moneysavingexpert.com "mortgage" "property abroad"',
-    'site:forums.moneysavingexpert.com "buying property" overseas',
+    '"ev alacağım" konut bütçe',
+    '"konut kredisi" "ev al"',
+    '"ev almayı düşünüyorum" emlak',
+    '"kira getirisi" ev yatırım',
+    '"ev almak" emlak Türkiye',
+    '"konut kredisi" ev Türkiye',
+    '"yatırım için" daire bütçe',
+    '"ev satın almak" gayrimenkul',
+    '"ev almak istiyorum" bütçe',
+    '"yatırım için ev" kira',
+    '"property in Northern Cyprus"',
+    '"buying property in Cyprus"',
+    '"buying property in Turkey"',
+    '"property" Cyprus holiday home',
+    '"buying" "North Cyprus"',
+    '"holiday home" Cyprus property',
+    '"property abroad" buying',
+    '"buying property abroad" budget',
+    '"mortgage" "property abroad"',
+    '"buying property" overseas',
     '"Kıbrıs" "ev almak" bütçe',
     '"Kuzey Kıbrıs" "ev almak"',
     '"Türkiye" "ev almak istiyorum" bütçe',
     '"gayrimenkul yatırımı" "bütçe"',
 ]
-
 NEWS_QUERIES = [
     '"Kuzey Kıbrıs" "ev almak"',
     '"Kuzey Kıbrıs" gayrimenkul yatırım',
@@ -212,6 +211,22 @@ def excluded_geo(value):
     v = value.lower()
     return any(t in v for t in EXCLUDED_GEOGRAPHY)
 
+ALLOWED_DOMAINS = {
+    "forum.donanimhaber.com",
+    "technopat.net",
+    "r10.net",
+    "expat.com",
+    "britishexpats.com",
+    "forums.moneysavingexpert.com",
+}
+
+def domain_allowed(url):
+    u = (url or "").lower()
+    return any(
+        d in u
+        for d in ALLOWED_DOMAINS
+    )
+
 def valid(item):
     value = text(item)
     if len(value) < 90:
@@ -265,9 +280,10 @@ def score(item, market):
                       (14 if has_budget else 0) + (8 if has_time else 0) +
                       (8 if concrete else 0) + (7 if len(value) >= 400 else 0))
 
+    forum_bonus = 8 if domain_allowed(item.get("url","")) else 0
     fit = 35 + (30 if target else 0) + (25 if market == "north_cyprus" else 0) + \
           (15 if market in {"turkey","greece","portugal","spain"} else 0) + \
-          (10 if abroad else 0) + (10 if has_budget else 0)
+          (10 if abroad else 0) + (10 if has_budget else 0) + forum_bonus
     fit = min(100, fit)
 
     if market == "north_cyprus" and intent >= 80 and credibility >= 75:
@@ -450,7 +466,7 @@ def process_rows(rows, db, seen, leads, rejected, errors, started):
 
 def main():
     started=datetime.now(timezone.utc)
-    print("BAY-S LEAD RADAR V4.6.1 STARTED")
+    print("BAY-S LEAD RADAR V4.6.2 STARTED")
 
     db=db_client()
     seen=set()
@@ -567,7 +583,7 @@ def main():
             "Yeni lead: 0"
         )
 
-    print("BAY-S LEAD RADAR V4.6.1 FINISHED")
+    print("BAY-S LEAD RADAR V4.6.2 FINISHED")
 
 if __name__=="__main__":
     main()
