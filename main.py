@@ -1,937 +1,384 @@
-import os
-import re
-import hashlib
-import json
-import time
-from datetime import datetime, timezone
-from urllib.parse import quote_plus
+import asyncio, csv, html, os, re
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from dotenv import load_dotenv
+from telethon import TelegramClient
+from telethon.errors import FloodWaitError
 
-import requests
-from bs4 import BeautifulSoup
-from google.cloud import firestore
-from google.oauth2 import service_account
+BASE=Path(__file__).resolve().parent
+OUT=BASE/'output'
+OUT.mkdir(exist_ok=True)
+load_dotenv(BASE/'.env')
 
-from config import *
+API_ID=int(os.getenv('TELEGRAM_API_ID','0') or '0')
+API_HASH=os.getenv('TELEGRAM_API_HASH','').strip()
+PHONE=os.getenv('TELEGRAM_PHONE','').strip()
+HOURS=int(os.getenv('RADAR_HOURS','24'))
+LIMIT=int(os.getenv('RADAR_PER_CHAT_LIMIT','700'))
+SESSION=str(BASE/'radar_session')
 
+BUY=[
+r'\balmak istiyorum\b',r'\bsatın almak istiyorum\b',r'\bev arıyorum\b',r'\bdaire arıyorum\b',
+r'\bvilla arıyorum\b',r'\barsa arıyorum\b',r'\byatırım için\b',r'\bbütçem\b',r'\balıcıyım\b',
+r'\blooking to buy\b',r'\bwant to buy\b',r'\bplanning to buy\b',r'\bready to buy\b',
+r'\bcash buyer\b',r'\bbuyer looking\b',r'\bproperty wanted\b',r'\bhouse wanted\b',
+r'\bapartment wanted\b',r'\bvilla wanted\b',r'\bseeking to buy\b',r'\binterested in buying\b',
+r'\bwtb\b',r'\blooking for (?:an? )?(?:apartment|flat|house|villa|property|land)\b',
+r'\bхочу купить\b',r'\bхотим купить\b',r'\bкуплю\b',r'\bищу купить\b',r'\bищу квартиру\b',
+r'\bищу апартамент',r'\bищу виллу\b',r'\bищу дом\b',r'\bищу недвижимость\b',
+r'\bготов купить\b',r'\bготовы купить\b',r'\bпланирую купить\b',r'\bдля инвестиц',r'\bбюджет\b',r'\bсрочно нужна квартира\b',r'\bнужна квартира\b',r'\bкуплю квартиру\b',r'\bкуплю дом\b',r'\bкуплю недвижимость\b',r'\bищу жилье\b',r'\bищу жильё\b',r'\bкакую квартиру купить\b',r'\bгде купить квартиру\b',r'\bacil(?:en)? .*?daire\b',r'\bdaire lazım\b',r'\bkonut arıyorum\b'
+]
+WEAK=[r'\bönerir misiniz\b',r'\bhangi bölge\b',r'\bmortgage\b',r'\bwhere should i buy\b',
+r'\bwhich area\b',r'\binvestment property\b',r'\bгде купить\b',r'\bкакой район\b',r'\bипотек']
+SELL=[r'\bsatılık\b',r'\bsatışta\b',r'\bportföy\b',r'\bkomisyon\b',r'\bkampanya\b',
+r'\bfor sale\b',r'\bavailable now\b',r'\bcontact us\b',r'\bagent\b',r'\bagency\b',
+r'\bcommission\b',r'\bdeveloper\b',r'\bпродам\b',r'\bпродается\b',r'\bпродаётся\b',
+r'\bагент\b',r'\bагентство\b',r'\bкомисси',r'\bзастройщик\b']
+RENT=[r'\bkiralık\b',r'\bkiralık arıyorum\b',r'\bfor rent\b',r'\blooking to rent\b',
+r'\brental\b',r'\bсниму\b',r'\bаренд',r'\bснять квартиру\b',r'\bснять виллу\b']
+BUDGET_RE=re.compile(r'(?:£|€|\$|₺|₽)\s?\d[\d\s.,]*|\b\d[\d\s.,]*\s?(?:gbp|eur|usd|try|tl|руб|млн|million|k)\b',re.I)
 
-UA = (
-    "Mozilla/5.0 (compatible; BAY-S-Web-Radar/2.0; "
-    "+https://github.com/semihselvi/bay-s-web-radar)"
-)
-
-SESSION = requests.Session()
-SESSION.headers.update({
-    "User-Agent": UA,
-    "Accept-Language": "en-US,en;q=0.9",
-})
-
-REQUEST_TIMEOUT = 12
-REDDIT_DELAY = 1.5
-NEWS_DELAY = 0.4
-MAX_RETRIES = 2
-
-
-def get(url, params=None, timeout=REQUEST_TIMEOUT):
-    return SESSION.get(
-        url,
-        params=params,
-        timeout=timeout,
-        allow_redirects=True,
-    )
-
-
-# ---------------------------------------------------------
-# REDDIT
-# ---------------------------------------------------------
-
-def reddit_search(query):
-    """
-    Reddit RSS.
-    429 durumunda kısa backoff uygular.
-    Reddit kapsamı korunur; sadece istekler kontrollü yapılır.
-    """
-
-    url = "https://www.reddit.com/search.rss"
-
-    for attempt in range(MAX_RETRIES + 1):
-        try:
-            r = get(
-                url,
-                {
-                    "q": query,
-                    "sort": "new",
-                    "t": "day",
-                    "limit": MAX_RESULTS_PER_SOURCE,
-                },
-            )
-
-            if r.status_code == 429:
-                retry_after = r.headers.get("Retry-After")
-
-                try:
-                    wait = min(int(retry_after), 8) if retry_after else 4
-                except Exception:
-                    wait = 4
-
-                print(
-                    f"REDDIT_429 retry={attempt + 1} "
-                    f"wait={wait}s query={query}"
-                )
-
-                if attempt < MAX_RETRIES:
-                    time.sleep(wait)
-                    continue
-
-                return []
-
-            r.raise_for_status()
-
-            # XML parser problemi yaşamamak için lxml'e bağlı değiliz.
-            soup = BeautifulSoup(r.text, "html.parser")
-
-            out = []
-
-            for entry in soup.find_all("entry")[:MAX_RESULTS_PER_SOURCE]:
-
-                link = entry.find("link")
-
-                title = entry.find("title")
-                content = entry.find("content")
-                published = entry.find("published")
-                author = entry.find("name")
-
-                out.append({
-                    "source": "Reddit",
-                    "url": link.get("href", "") if link else "",
-                    "title": title.get_text(" ", strip=True)
-                    if title else "",
-                    "text": content.get_text(" ", strip=True)
-                    if content else "",
-                    "published": published.get_text(strip=True)
-                    if published else "",
-                    "author": author.get_text(strip=True)
-                    if author else "",
-                })
-
-            return out
-
-        except requests.exceptions.RequestException as e:
-            print(
-                f"REDDIT_ERROR attempt={attempt + 1} "
-                f"query={query} error={e}"
-            )
-
-            if attempt < MAX_RETRIES:
-                time.sleep(2 + attempt * 2)
-            else:
-                return []
-
-        except Exception as e:
-            print(
-                f"REDDIT_PARSE_ERROR query={query} error={e}"
-            )
-            return []
-
-        finally:
-            time.sleep(REDDIT_DELAY)
-
-
-# ---------------------------------------------------------
-# GOOGLE NEWS
-# ---------------------------------------------------------
-
-def google_news(query):
-    """
-    Google News RSS.
-    when:1d ile son 24 saati hedefler.
-    """
-
-    url = "https://news.google.com/rss/search"
-
-    try:
-        r = get(
-            url,
-            {
-                "q": f"{query} when:1d",
-                "hl": "en-US",
-                "gl": "US",
-                "ceid": "US:en",
-            },
-        )
-
-        r.raise_for_status()
-
-        # lxml gerektirmeden XML benzeri RSS'i parse ediyoruz.
-        soup = BeautifulSoup(r.text, "html.parser")
-
-        out = []
-
-        for item in soup.find_all("item")[:MAX_RESULTS_PER_SOURCE]:
-
-            link = item.find("link")
-            title = item.find("title")
-            description = item.find("description")
-            pub_date = item.find("pubDate")
-
-            out.append({
-                "source": "Google News",
-                "url": link.get_text(strip=True)
-                if link else "",
-                "title": title.get_text(" ", strip=True)
-                if title else "",
-                "text": description.get_text(" ", strip=True)
-                if description else "",
-                "published": pub_date.get_text(strip=True)
-                if pub_date else "",
-                "author": "",
-            })
-
-        return out
-
-    except Exception as e:
-        print(
-            f"GOOGLE_NEWS_ERROR query={query} error={e}"
-        )
-        return []
-
-    finally:
-        time.sleep(NEWS_DELAY)
-
-
-# ---------------------------------------------------------
-# EXA WEB SEARCH
-# ---------------------------------------------------------
-
-FORUM_DOMAINS = {
-    "expat.com",
-    "britishexpats.com",
-    "forum.donanimhaber.com",
-    "technopat.net",
-    "r10.net",
-    "forums.moneysavingexpert.com",
-    "reddit.com",
+MARKETS={
+'North Cyprus':['north cyprus','northern cyprus','kuzey kıbrıs','северный кипр','iskele','girne','kyrenia','famagusta','gazimağusa','long beach','esentepe'],
+'Turkey':['turkey','türkiye','antalya','alanya','istanbul','izmir','ankara','muratpaşa','lara','konyaaltı','bodrum','fethiye','mersin'],
+'Montenegro':['montenegro','черногор','karadağ','budva','kotor','tivat','podgorica'],
+'Spain':['spain','испания','ispanya','alicante','valencia','marbella','malaga','barcelona','madrid'],
+'Portugal':['portugal','португал','portekiz','lisbon','lisboa','porto','algarve'],
+'UAE':['dubai','дубай','uae','abu dhabi','sharjah','emirates'],
+'UK':['united kingdom','england','london','manchester','birmingham','британи','лондон'],
+'Germany':['germany','deutschland','германи','almanya','berlin','munich','frankfurt','hamburg'],
+'Greece':['greece','yunanistan','греци','athens','atina','thessaloniki'],
+'Italy':['italy','italia','italya','итал','milan','rome','roma'],
+'France':['france','fransa','франц','paris','nice','cannes']
 }
 
-EXCLUDED_MARKETS = [
-    "usa", "united states", "united states of america", "america",
-    "canada", "toronto", "vancouver",
-    "australia", "sydney", "melbourne", "brisbane", "perth",
-    "new zealand", "auckland", "wellington",
+def norm(s): return (s or '').casefold()
+def matches(text, pats):
+    t=norm(text); out=[]
+    for p in pats:
+        m=re.search(p,t,re.I)
+        if m: out.append(m.group(0))
+    return out
+
+def market(text, group):
+    blob=norm((group or '')+' '+(text or ''))
+    scores={k:sum(norm(h) in blob for h in v) for k,v in MARKETS.items()}
+    best=max(scores,key=scores.get)
+    return best if scores[best] else 'Unknown'
+
+# ---------------- PRIORITY GROUP RADAR ----------------
+
+HIGH_GROUPS = [
+    "СЕВЕРНЫЙ КИПР | БАРАХОЛКА",
+    "Русские на Северном Кипре",
+    "Цезарь резорт",
+    "Недвижимость Северный Кипр",
+    "Iskele | Long Beach",
+    "СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+    "Северный Кипр Недвижимость",
+    "Гирне | Кирения",
+    "Северный Кипр: объявления, работа, недвижимость",
+    "Северный Кипр. ЧАТ. БАЗА Недвижимости",
+    "Недвижимость Турция и Северный Кипр",
+    "Русские в Анталье",
+    "Все русские в Турции",
+    "Недвижимость Турция",
+    "CourtYard Long Beach",
 ]
 
-LISTING_NOISE = [
-    "for rent", "for sale", "property listing", "listing type",
-    "property id", "get catalogue", "download brochure", "enquire now",
-    "contact us", "leave your details", "one of our property consultants",
-    "our properties", "our projects", "available units", "developer",
-    "real estate agency", "estate agency", "property agency",
-    "realtor", "broker", "we sell", "commission", "property management",
+MEDIUM_GROUPS = [
+    "СЕВЕРНЫЙ КИПР (чат)",
+    "Искеле Гирне Фамагуста Лефкоша Северный Кипр чат",
+    "АНТАЛИЯ ЧАТ ТУРЦИЯ",
+    "АНТАЛИЯ ЧАТ",
+    "СТАМБУЛ ЧАТ",
+    "Кипр | Чат | Объявления | Барахолка",
+    "Кипр Объявления/Барахолка/Недвижимость №1",
+    "Северный Кипр | ФОРУМ",
+    "Кипр | Чат | Объявления | Барахолка",
 ]
 
-PERSONAL_BUYER = [
-    "i am looking", "i'm looking", "i want to buy", "i want to purchase",
-    "i'm looking to buy", "i am looking to buy", "i'm thinking of buying",
-    "i am thinking of buying", "i'm planning to buy", "i am planning to buy",
-    "we are looking", "we're looking", "we want to buy", "my budget",
-    "our budget", "looking for an apartment", "looking for a house",
-    "looking for property", "ev alacağım", "ev almak istiyorum",
-    "ev almayı düşünüyorum", "bütçem", "yatırım için ev",
-    "хочу купить", "ищу квартиру", "мой бюджет",
+LOW_GROUPS = [
+    "КИПР НОВОСТИ",
+    "КИПР FAQ | NEWS",
+    "CAESAR PROJECTS NEWS",
+    "Гранд Сапфир Резорт",
+    "Цезарь резорт",
+    "Недвижимость Северный Кипр- Leverage Investments",
+    "GP CYPRUS | Северный Кипр | Недвижимость",
 ]
 
-NEGATIVE_BUYER_STATUS = [
-    "already bought", "we bought", "i bought", "bought elsewhere",
-    "decided against", "decided not to buy", "not buying",
-    "no longer looking", "not looking anymore", "renting instead",
-    "found a property", "found another property", "purchase completed",
-    "already purchased", "we decided not to", "karar verdik",
-    "almaktan vazgeç", "satın aldım", "aldık", "artık aramıyorum",
-    "artık düşünmüyorum", "купил", "купили", "передумал",
-]
+def group_priority(title):
+    t = norm(title)
+    if any(norm(x) == t for x in HIGH_GROUPS):
+        return "HIGH"
+    if any(norm(x) == t for x in MEDIUM_GROUPS):
+        return "MEDIUM"
+    if any(norm(x) == t for x in LOW_GROUPS):
+        return "LOW"
+    return "NORMAL"
 
-def looks_like_listing(item):
-    t = (
-        item.get("title", "")
-        + " "
-        + item.get("text", "")
-    ).lower()
-    hits = sum(p in t for p in LISTING_NOISE)
-    return hits >= 2
+def buyer_grade(text, group, score, label, buy, budget):
+    """Tighten classification: explicit personal purchase intent wins."""
+    t = norm(text)
+    p = group_priority(group)
 
-def looks_like_personal_buyer(item):
-    t = (
-        item.get("title", "")
-        + " "
-        + item.get("text", "")
-    ).lower()
-    return any(p in t for p in PERSONAL_BUYER)
-
-def looks_like_negative_buyer(item):
-    t = (
-        item.get("title", "")
-        + " "
-        + item.get("text", "")
-    ).lower()
-    return any(
-        phrase in t
-        for phrase in NEGATIVE_BUYER_STATUS
-    )
-
-def is_recent_enough(item, days=90):
-    published = item.get("published", "")
-    if not published:
-        # Some forum results do not expose a publish date.
-        # Keep them for the next semantic/negative filter rather than guessing.
-        return True
-
-    try:
-        from datetime import datetime, timezone, timedelta
-        value = published.replace("Z", "+00:00")
-        dt = datetime.fromisoformat(value)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-        return dt >= cutoff
-    except Exception:
-        return True
-
-def is_excluded_market(item):
-    t = (
-        item.get("title", "")
-        + " "
-        + item.get("text", "")
-    ).lower()
-    return any(term in t for term in EXCLUDED_MARKETS)
-
-def exa_search(query, include_domains=None):
-    api_key = os.environ.get("EXA_API_KEY")
-    if not api_key:
-        raise RuntimeError("EXA_API_KEY missing")
-
-    payload = {
-        "query": query,
-        "type": "auto",
-        "numResults": 5,
-        "contents": {"text": True},
-    }
-
-    if include_domains:
-        payload["includeDomains"] = include_domains
-
-    try:
-        r = requests.post(
-            "https://api.exa.ai/search",
-            json=payload,
-            headers={
-                "x-api-key": api_key.strip(),
-                "Content-Type": "application/json",
-            },
-            timeout=30,
-        )
-
-        if r.status_code != 200:
-            try:
-                detail = r.json()
-            except Exception:
-                detail = r.text[:500]
-            print(f"EXA_HTTP_{r.status_code}: {detail}")
-            return []
-
-        data = r.json()
-        return [
-            {
-                "source": "Exa",
-                "url": x.get("url", ""),
-                "title": x.get("title", ""),
-                "text": x.get("text", ""),
-                "published": x.get("publishedDate", ""),
-                "author": "",
-            }
-            for x in data.get("results", [])[:5]
-        ]
-
-    except Exception as e:
-        print(f"EXA_ERROR query={query} error={e}")
-        return []
-
-
-# ---------------------------------------------------------
-# QUERY BUILDER
-# ---------------------------------------------------------
-
-def build_queries():
-    # Balanced international buyer radar.
-    # Excludes USA, Canada, Australia, New Zealand.
-    return [
-        # NORTH CYPRUS / CYPRUS
-        ("North Cyprus buying property personal buyer budget", ["expat.com", "britishexpats.com", "reddit.com"]),
-        ("North Cyprus looking to buy apartment personal budget", ["expat.com", "britishexpats.com", "reddit.com"]),
-        ("North Cyprus moving buying home personal experience", ["expat.com", "britishexpats.com", "reddit.com"]),
-        ("buying property Northern Cyprus personal budget", ["expat.com", "britishexpats.com", "reddit.com"]),
-        ("buying property Cyprus expat personal buyer", ["expat.com", "britishexpats.com", "reddit.com"]),
-        ("Cyprus holiday home personal buyer budget", ["britishexpats.com", "expat.com", "reddit.com"]),
-
-        # TURKEY / TURKISH
-        ("Türkiye ev alacağım bütçe konut kredisi", ["forum.donanimhaber.com", "technopat.net", "r10.net"]),
-        ("Türkiye ev almayı düşünüyorum yatırım kira", ["forum.donanimhaber.com", "technopat.net", "r10.net"]),
-        ("Türkiye hangi şehirden ev almalıyım yatırım", ["forum.donanimhaber.com", "technopat.net", "r10.net"]),
-        ("Türkiye 1+1 2+1 ev alacağım bütçem", ["forum.donanimhaber.com", "technopat.net", "r10.net"]),
-        ("buying property in Turkey personal buyer budget", ["expat.com", "reddit.com", "britishexpats.com"]),
-
-        # UK
-        ("UK buyer looking to buy property abroad personal budget", ["britishexpats.com", "forums.moneysavingexpert.com", "reddit.com"]),
-        ("British buyer looking to buy Cyprus property personal", ["britishexpats.com", "expat.com", "reddit.com"]),
-        ("UK holiday home abroad buying personal budget", ["forums.moneysavingexpert.com", "britishexpats.com", "reddit.com"]),
-
-        # GERMANY
-        ("German buyer looking to buy property abroad personal budget", ["expat.com", "reddit.com"]),
-        ("Germany moving buying property personal budget", ["expat.com", "reddit.com"]),
-        ("German expat buying Cyprus Turkey property personal", ["expat.com", "reddit.com"]),
-
-        # NETHERLANDS
-        ("Dutch buyer looking to buy property abroad personal budget", ["expat.com", "reddit.com"]),
-        ("Netherlands moving buying property personal budget", ["expat.com", "reddit.com"]),
-        ("Dutch expat buying Cyprus Turkey property personal", ["expat.com", "reddit.com"]),
-
-        # FRANCE
-        ("French buyer looking to buy property abroad personal budget", ["expat.com", "reddit.com"]),
-        ("France moving buying property personal budget", ["expat.com", "reddit.com"]),
-        ("French expat buying Cyprus Turkey property personal", ["expat.com", "reddit.com"]),
-
-        # RUSSIA / KAZAKHSTAN
-        ("Russian buyer looking to buy property abroad personal budget", ["reddit.com", "expat.com"]),
-        ("русский хочет купить недвижимость за рубежом бюджет", ["reddit.com", "expat.com"]),
-        ("Russian buyer Cyprus Turkey property personal", ["reddit.com", "expat.com"]),
-        ("Kazakh buyer looking to buy property abroad personal budget", ["reddit.com", "expat.com"]),
-        ("казахстанец хочет купить недвижимость за рубежом бюджет", ["reddit.com", "expat.com"]),
-        ("Kazakhstan buyer Cyprus Turkey property personal", ["reddit.com", "expat.com"]),
-
-        # SOUTHERN EUROPE / GOLDEN VISA
-        ("Greece property personal buyer budget relocation", ["expat.com", "reddit.com"]),
-        ("Portugal property personal buyer budget relocation", ["expat.com", "reddit.com"]),
-        ("Spain property personal buyer budget relocation", ["expat.com", "reddit.com"]),
-        ("Golden Visa property personal buyer budget Greece Portugal Spain", ["expat.com", "reddit.com"]),
-    ]
-
-
-# ---------------------------------------------------------
-# MARKET
-# ---------------------------------------------------------
-
-def market_for(text):
-
-    t = text.lower()
-
-    for market, places in MARKETS.items():
-
-        for place in places:
-
-            if place.lower() in t:
-                return market
-
-    return "unknown"
-
-
-# ---------------------------------------------------------
-# SCORING
-# ---------------------------------------------------------
-
-def score(item, market):
-
-    t = (
-        item.get("title", "")
-        + " "
-        + item.get("text", "")
-    ).lower()
-
-    intent_hits = sum(
-        p.lower() in t
-        for p in INTENT_PHRASES
-    )
-
-    exclude_hits = sum(
-        p.lower() in t
-        for p in EXCLUDE_PHRASES
-    )
-
-    budget = bool(
-        re.search(
-            r'[$€£₺]\s?[\d,.]+'
-            r'|\b\d{2,3}\s?[kKmM]\b'
-            r'|\b\d{4,}\b',
-            t,
-        )
-    )
-
-    timeframe = any(
+    explicit_buy = any(
         x in t
         for x in [
-            "month",
-            "months",
-            "weeks",
-            "year",
-            "soon",
-            "this year",
-            "2026",
-            "2027",
-            "within",
-            "next month",
-            "next year",
+            "куплю квартиру", "куплю дом", "куплю недвижимость",
+            "хочу купить", "планирую купить", "готов купить",
+            "ищу квартиру для покупки", "купить квартиру",
+            "i want to buy", "i'm looking to buy",
+            "looking to buy", "planning to buy",
+            "ev almak istiyorum", "satın almak istiyorum",
+            "ev alacağım", "daire arıyorum", "konut arıyorum",
         ]
     )
 
-    personal = any(
+    personal_question = any(
         x in t
         for x in [
-            "i ",
-            "we ",
-            "my ",
-            "our ",
-            "i'm ",
-            "we're ",
-            "ben ",
-            "biz ",
-            "я ",
-            "мы ",
+            "мой бюджет", "бюджет", "подскажите", "где лучше",
+            "какой район", "какую квартиру",
+            "my budget", "which area", "where should i buy",
+            "bütçem", "hangi bölge", "önerir misiniz",
         ]
     )
 
-    intent = min(
-        100,
-        35
-        + intent_hits * 7
-        + (12 if budget else 0)
-        + (10 if timeframe else 0)
-        + (8 if personal else 0)
-        - exclude_hits * 20,
-    )
+    rent_only = bool(matches(text, RENT)) and not buy
+    seller_only = bool(matches(text, SELL)) and not buy
 
-    credibility = min(
-        100,
-        55
-        + (12 if budget else 0)
-        + (10 if timeframe else 0)
-        + (10 if len(t) > 450 else 0)
-        + (8 if personal else 0)
-        - exclude_hits * 25,
-    )
+    if rent_only or seller_only:
+        return "REJECT"
 
-    fit = 55 if market != "unknown" else 35
+    if explicit_buy and budget:
+        return "HOT"
 
-    if budget:
-        fit += 12
-
-    if market in (
-        "north_cyprus",
-        "greece",
-        "germany",
-        "netherlands",
-        "france",
-        "switzerland",
-    ):
-        fit += 8
-
-    fit = max(0, min(100, fit))
+    if explicit_buy and p == "HIGH":
+        return "HOT"
 
     if (
-        intent >= 82
-        and credibility >= 75
-        and fit >= 60
+        (explicit_buy or personal_question or buy)
+        and p in {"HIGH", "MEDIUM"}
+        and score >= 45
     ):
-        classification = "HOT"
+        return "WARM"
 
-    elif (
-        intent >= 62
-        and credibility >= 65
-        and fit >= 45
-    ):
-        classification = "WARM"
+    if explicit_buy and score >= 55:
+        return "WARM"
 
-    else:
-        classification = "REVIEW"
+    return label
 
-    return (
-        intent,
-        credibility,
-        fit,
-        classification,
-    )
+def alert_file():
+    return OUT / "telegram_alerted_ids.txt"
 
+def already_alerted(key):
+    f = alert_file()
+    if not f.exists():
+        return False
+    try:
+        return key in {
+            x.strip()
+            for x in f.read_text(encoding="utf-8").splitlines()
+            if x.strip()
+        }
+    except Exception:
+        return False
 
-# ---------------------------------------------------------
-# FINGERPRINT
-# ---------------------------------------------------------
+def mark_alerted(key):
+    f = alert_file()
+    with f.open("a", encoding="utf-8") as fh:
+        fh.write(key + "\n")
 
-def fp(item):
+def send_telegram_alert(row):
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
-    raw = "|".join([
-        item.get("url", ""),
-        item.get("title", ""),
-        item.get("author", ""),
-    ])
-
-    return hashlib.sha256(
-        raw.lower().encode("utf-8")
-    ).hexdigest()
-
-
-# ---------------------------------------------------------
-# FIRESTORE
-# ---------------------------------------------------------
-
-def db():
-
-    raw = os.environ.get(
-        "FIREBASE_SERVICE_ACCOUNT_JSON"
-    )
-
-    if not raw:
-        raise RuntimeError(
-            "FIREBASE_SERVICE_ACCOUNT_JSON missing"
-        )
-
-    creds = (
-        service_account
-        .Credentials
-        .from_service_account_info(
-            json.loads(raw)
-        )
-    )
-
-    return firestore.Client(
-        credentials=creds
-    )
-
-
-# ---------------------------------------------------------
-# TELEGRAM
-# ---------------------------------------------------------
-
-def telegram(text):
-
-    token = os.environ.get(
-        "TELEGRAM_BOT_TOKEN"
-    )
-
-    chat = os.environ.get(
-        "TELEGRAM_CHAT_ID"
-    )
-
-    if not token or not chat:
-        print("TELEGRAM_NOT_CONFIGURED")
-        return
+    if not token or not chat_id:
+        print("ALERT_NOT_CONFIGURED")
+        return False
 
     try:
+        import requests
+
+        emoji = "🔥" if row["label"] == "HOT" else "🟠"
+
+        message = (
+            f"{emoji} BAY-S TELEGRAM BUYER RADAR\n\n"
+            f"{row['label']} | {row['score']}/100\n"
+            f"Grup: {row['group']}\n"
+            f"Pazar: {row['market']}\n"
+            f"Öncelik: {group_priority(row['group'])}\n\n"
+            f"{row['message'][:900]}\n\n"
+            f"👤 {row.get('author') or 'Kullanıcı gizli'}\n"
+            f"🕒 {row['message_time']}\n"
+        )
+
+        if row.get("link"):
+            message += f"\n🔗 {row['link']}"
 
         r = requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
             json={
-                "chat_id": chat,
-                "text": text,
-                "disable_web_page_preview": False,
+                "chat_id": chat_id,
+                "text": message,
+                "disable_web_page_preview": True,
             },
-            timeout=10,
+            timeout=15,
         )
-
         r.raise_for_status()
+        return True
 
     except Exception as e:
+        print("TELEGRAM_ALERT_ERROR:", type(e).__name__, e)
+        return False
 
-        print(
-            f"TELEGRAM_ERROR {e}"
+def calc(text, group):
+    buy=matches(text,BUY); weak=matches(text,WEAK); sell=matches(text,SELL); rent=matches(text,RENT)
+    budget=bool(BUDGET_RE.search(text or ''))
+    s=min(70,30*len(buy))+min(20,8*len(weak))+(12 if budget else 0)-min(70,24*len(sell))-min(70,40*len(rent))
+    s=max(0,min(100,s))
+    if buy and s<35: s=35
+    if rent and not buy: label='REJECT_RENT'
+    elif sell and not buy: label='REJECT_SELLER'
+    elif s>=60: label='HOT'
+    elif s>=35: label='WARM'
+    elif s>=15: label='REVIEW'
+    else: label='LOW'
+    return s,label,buy,weak,sell,rent,budget,market(text,group)
+
+def sender_name(msg):
+    s=getattr(msg,'sender',None)
+    if not s: return ''
+    u=getattr(s,'username',None)
+    if u: return '@'+u
+    return ((getattr(s,'first_name','') or '')+' '+(getattr(s,'last_name','') or '')).strip()
+
+def msg_link(entity,mid):
+    u=getattr(entity,'username',None)
+    return f'https://t.me/{u}/{mid}' if u else ''
+
+def write_csv(path, rows):
+    fields=['message_time','score','label','market','priority','group','group_username','author','message','link','budget_detected','buyer_matches','weak_matches','seller_matches','rent_matches']
+    with path.open('w',newline='',encoding='utf-8-sig') as f:
+        w=csv.DictWriter(f,fieldnames=fields); w.writeheader(); w.writerows(rows)
+
+async def main():
+    if not API_ID or not API_HASH or not PHONE: raise SystemExit('Eksik .env')
+    client=TelegramClient(SESSION,API_ID,API_HASH)
+    await client.start(phone=PHONE)
+    me=await client.get_me()
+    print('Giriş:',getattr(me,'username',None) or getattr(me,'first_name','Telegram user'))
+
+    dialogs=[]
+    async for d in client.iter_dialogs():
+        if getattr(d,'is_group',False):
+            dialogs.append(d)
+
+    # Scan buyer-heavy groups first, without excluding other groups.
+    dialogs.sort(
+        key=lambda d: (
+            {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "NORMAL": 3}.get(
+                group_priority(
+                    d.name or getattr(d.entity, "username", None) or ""
+                ),
+                3,
+            ),
+            norm(d.name or ""),
         )
-
-
-# ---------------------------------------------------------
-# MAIN
-# ---------------------------------------------------------
-
-def main():
-
-    started = datetime.now(
-        timezone.utc
     )
 
-    queries = build_queries()
+    print('Üye olunan grup sayısı:',len(dialogs))
 
-    print(
-        f"BAY-S RADAR V4.5.3-INTERNATIONAL STARTED | "
-        f"queries={len(queries)}"
-    )
+    with (OUT/'joined_groups.csv').open('w',newline='',encoding='utf-8-sig') as f:
+        w=csv.DictWriter(f,fieldnames=['title','username','dialog_id']); w.writeheader()
+        for d in dialogs:
+            w.writerow({'title':d.name or '','username':getattr(d.entity,'username',None) or '','dialog_id':d.id})
 
-    client = db()
-
-    seen = set()
-    candidates = []
-
-    errors = 0
-
-    source_counts = {
-        "Reddit": 0,
-        "Google News": 0,
-    }
-
-    source_errors = {
-        "Reddit": 0,
-        "Google News": 0,
-    }
-
-    # -----------------------------------------------------
-    # SEARCH
-    # -----------------------------------------------------
-
-    source_counts = {
-        "Exa": 0,
-        "Google News": 0,
-    }
-
-    source_errors = {
-        "Exa": 0,
-        "Google News": 0,
-    }
-
-    for index, spec in enumerate(
-        queries,
-        start=1,
-    ):
-        q, domains = spec
-
-        print(
-            f"[EXA {index}/{len(queries)}] "
-            f"{q}"
-        )
-
+    cutoff=datetime.now(timezone.utc)-timedelta(hours=HOURS)
+    rows=[]
+    for i,d in enumerate(dialogs,1):
+        ent=d.entity; title=d.name or getattr(ent,'username',None) or str(d.id); uname=getattr(ent,'username',None) or ''
+        print(f'[{i}/{len(dialogs)}] Taranıyor: {title}')
         try:
-            results = exa_search(q, domains)
-            source_counts["Exa"] += len(results)
+            async for msg in client.iter_messages(ent,limit=LIMIT):
+                text=getattr(msg,'message',None)
+                if not text: continue
+                dt=msg.date
+                if dt.tzinfo is None: dt=dt.replace(tzinfo=timezone.utc)
+                if dt<cutoff: break
+                s,label,buy,weak,sell,rent,budget,mkt=calc(text,title)
 
-            for item in results:
-                if not item.get("url"):
-                    continue
-
-                key = fp(item)
-                if key in seen:
-                    continue
-                seen.add(key)
-
-                market = market_for(
-                    item.get("title", "")
-                    + " "
-                    + item.get("text", "")
+                # Keep buyer-only logic strict.
+                final_label = buyer_grade(
+                    text,
+                    title,
+                    s,
+                    label,
+                    buy,
+                    budget,
                 )
 
-                if looks_like_listing(item):
+                if final_label == "REJECT":
                     continue
 
-                if not looks_like_personal_buyer(item):
+                label = final_label
+
+                if label not in {'HOT','WARM','REVIEW'}:
                     continue
 
-                if is_excluded_market(item):
-                    continue
+                alert_key = f"{ent.id}:{msg.id}"
 
-                if looks_like_negative_buyer(item):
-                    continue
-
-                if not is_recent_enough(item, 90):
-                    continue
-
-                intent, credibility, fit, classification = score(
-                    item,
-                    market,
-                )
-
-                if classification not in ("HOT", "WARM"):
-                    continue
-
-                ref = (
-                    client
-                    .collection(COLLECTION)
-                    .document(key)
-                )
-
-                if ref.get().exists:
-                    continue
-
-                lead = {
-                    **item,
-                    "lead_id": key,
-                    "market": market,
-                    "route_to": ROUTES.get(
-                        market,
-                        "Direct Review",
-                    ),
-                    "intent_score": intent,
-                    "credibility_score": credibility,
-                    "market_fit_score": fit,
-                    "classification": classification,
-                    "found_at": started.isoformat(),
-                }
-
-                ref.set(lead)
-                candidates.append(lead)
-
+                rows.append({
+                    'message_time':dt.isoformat(timespec='seconds'),'score':s,'label':label,'market':mkt,
+                    'priority':group_priority(title),
+                    'group':'%s' % title,
+                    'group_username':uname,'author':sender_name(msg),'message':text.strip(),
+                    'link':msg_link(ent,msg.id),'budget_detected':'yes' if budget else 'no',
+                    'buyer_matches':' | '.join(buy),'weak_matches':' | '.join(weak),
+                    'seller_matches':' | '.join(sell),'rent_matches':' | '.join(rent)
+                })
+        except FloodWaitError as e:
+            print('  FloodWait',e.seconds,'sn')
         except Exception as e:
-            errors += 1
-            source_errors["Exa"] += 1
-            print(f"EXA_LOOP_ERROR {e}")
+            print('  Hata:',type(e).__name__,e)
+        await asyncio.sleep(0.5)
 
-        time.sleep(0.25)
+    await client.disconnect()
+    rows.sort(key=lambda r:int(r['score']),reverse=True)
+    hotwarm=[r for r in rows if r['label'] in {'HOT','WARM'}]
+    write_csv(OUT/'joined_group_leads_v2.csv',hotwarm)
 
-        # Google News remains as an auxiliary source.
-        if index % 10 == 0:
-            print(f"[GOOGLE NEWS BRIDGE] after_exa={index}")
+    # Alert only on new HOT/WARM buyer messages.
+    alerts_sent = 0
+    for r in hotwarm:
+        alert_key = f"{r['group_username'] or r['group']}|{r['message_time']}|{r['message'][:120]}"
+        if already_alerted(alert_key):
+            continue
+        if send_telegram_alert(r):
+            mark_alerted(alert_key)
+            alerts_sent += 1
 
-            for bridge_spec in queries[max(0, index - 4):index]:
-                bridge_query = bridge_spec[0]
-                try:
-                    results = google_news(bridge_query)
-                    source_counts["Google News"] += len(results)
+    print('Yeni Telegram uyarıları:', alerts_sent)
+    write_csv(OUT/'joined_group_candidates_v2.csv',rows)
 
-                    for item in results:
-                        if not item.get("url"):
-                            continue
+    report=OUT/'joined_group_report_v2.html'
+    cards=[]
+    for r in rows[:300]:
+        l=f'<a href="{html.escape(r["link"])}" target="_blank">Mesajı aç</a>' if r['link'] else 'Özel grup'
+        cards.append(f'<article><b>{r["score"]}/100 · {html.escape(r["label"])} · {html.escape(r["market"])}</b><h3>{html.escape(r["group"])}</h3><small>{html.escape(r["message_time"])} · {html.escape(r["author"] or "author hidden")}</small><p>{html.escape(r["message"])}</p>{l}</article>')
+    body=''.join(cards) if cards else '<article>Aday bulunmadı.</article>'
+    report.write_text(f'<!doctype html><meta charset="utf-8"><style>body{{font-family:Arial;background:#07111f;color:#eef5ff;max-width:1100px;margin:30px auto;padding:0 16px}}article{{background:#0d1a2b;border:1px solid #1d3552;border-radius:14px;padding:18px;margin:12px 0}}small{{color:#9ab0c7}}p{{white-space:pre-wrap;line-height:1.5}}a{{color:#66baff}}</style><h1>BAY-S TELEGRAM BUYER RADAR v3</h1><p>Son {HOURS} saat · HOT/WARM/REVIEW</p>{body}',encoding='utf-8')
 
-                        key = fp(item)
-                        if key in seen:
-                            continue
-                        seen.add(key)
+    print()
+    print('Tarama tamam.')
+    print('HOT/WARM:',len(hotwarm))
+    print('REVIEW:',sum(r['label']=='REVIEW' for r in rows))
+    print('Tüm adaylar:',len(rows))
+    print('Lead CSV:',OUT/'joined_group_leads_v2.csv')
+    print('Aday CSV:',OUT/'joined_group_candidates_v2.csv')
+    print('HTML rapor:',report)
 
-                        market = market_for(
-                            item.get("title", "")
-                            + " "
-                            + item.get("text", "")
-                        )
-
-                        intent, credibility, fit, classification = score(
-                            item,
-                            market,
-                        )
-
-                        if classification not in ("HOT", "WARM"):
-                            continue
-
-                        ref = (
-                            client
-                            .collection(COLLECTION)
-                            .document(key)
-                        )
-
-                        if ref.get().exists:
-                            continue
-
-                        lead = {
-                            **item,
-                            "lead_id": key,
-                            "market": market,
-                            "route_to": ROUTES.get(
-                                market,
-                                "Direct Review",
-                            ),
-                            "intent_score": intent,
-                            "credibility_score": credibility,
-                            "market_fit_score": fit,
-                            "classification": classification,
-                            "found_at": started.isoformat(),
-                        }
-
-                        ref.set(lead)
-                        candidates.append(lead)
-
-                except Exception as e:
-                    errors += 1
-                    source_errors["Google News"] += 1
-
-    # -----------------------------------------------------
-    # SCAN LOG
-    # -----------------------------------------------------
-
-    completed = datetime.now(
-        timezone.utc
-    )
-
-    scan = {
-        "started_at": started.isoformat(),
-        "completed_at": completed.isoformat(),
-        "status": "completed",
-        "queries": len(queries),
-        "exa_results_per_query": 5,
-        "quality_gate": "balanced_markets_personal_buyer_excluded_markets_no_listing_negative_status_90d",
-        "unique_results": len(seen),
-        "new_hot_warm": len(candidates),
-        "source_counts": source_counts,
-        "source_errors": source_errors,
-        "errors": errors,
-    }
-
-    scan_id = started.strftime(
-        "%Y%m%dT%H%M%SZ"
-    )
-
-    (
-        client
-        .collection(SCAN_LOG_COLLECTION)
-        .document(scan_id)
-        .set(scan)
-    )
-
-    # -----------------------------------------------------
-    # TELEGRAM
-    # -----------------------------------------------------
-
-    if candidates:
-
-        for x in candidates[:10]:
-
-            emoji = (
-                "🔥"
-                if x["classification"] == "HOT"
-                else "🟡"
-            )
-
-            msg = (
-                f"{emoji} BAY-S RADAR — "
-                f"{x['classification']}\n\n"
-                f"{x.get('source', '')}\n"
-                f"{x.get('market', '')} | "
-                f"{x.get('route_to', '')}\n\n"
-                f"{x.get('title', '')}\n\n"
-                f"Intent: "
-                f"{x['intent_score']}/100\n"
-                f"Credibility: "
-                f"{x['credibility_score']}/100\n"
-                f"Market Fit: "
-                f"{x['market_fit_score']}/100\n\n"
-                f"🔗 {x.get('url', '')}"
-            )
-
-            telegram(msg)
-
-    else:
-
-        telegram(
-            "ℹ️ BAY-S RADAR\n\n"
-            "Tarama tamamlandı.\n"
-            "Son taramadan beri yeni "
-            "HOT/WARM buyer lead bulunamadı.\n\n"
-            f"Tarama: {len(queries)} sorgu\n"
-            f"Exa sonuçları: "
-            f"{source_counts['Exa']}\n"
-            f"Google News sonuçları: "
-            f"{source_counts['Google News']}\n"
-            f"Hata: {errors}"
-        )
-
-    print(
-        json.dumps(
-            {
-                "scan": scan,
-                "new_leads": candidates,
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
-    )
-
-
-if __name__ == "__main__":
-    main()
+if __name__=='__main__':
+    asyncio.run(main())
