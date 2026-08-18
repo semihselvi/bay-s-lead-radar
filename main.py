@@ -1,43 +1,29 @@
 import os, re, json, time, hashlib, warnings
 from datetime import datetime, timezone
-from urllib.parse import urljoin
-
+from urllib.parse import quote_plus
 import requests
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 from google.cloud import firestore
 from google.oauth2 import service_account
-
-from config import (
-    COLLECTION,
-    SCAN_LOG_COLLECTION,
-    MAX_RESULTS_PER_SOURCE,
-    INTENT_PHRASES,
-    ROUTES,
-)
+from config import COLLECTION, SCAN_LOG_COLLECTION, MAX_RESULTS_PER_SOURCE, INTENT_PHRASES, ROUTES
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
-UA = "BAY-S-Lead-Radar/4.4 (+https://github.com/semihselvi)"
-REDDIT_URL = "https://www.reddit.com/search.rss"
-NEWS_URL = "https://news.google.com/rss/search"
+UA = "BAY-S-Lead-Radar/4.5 (+https://github.com/semihselvi)"
 TIMEOUT = 15
-MAX_RESULTS = max(10, min(int(MAX_RESULTS_PER_SOURCE), 25))
-REDDIT_PER_RUN = 8
-NEWS_PER_RUN = 8
+MAX_RESULTS = max(10, min(int(MAX_RESULTS_PER_SOURCE), 20))
 MAX_TELEGRAM_LEADS = 5
-REDDIT_DELAY = 2
 NEWS_DELAY = 0.5
 
 S = requests.Session()
 S.headers.update({
     "User-Agent": UA,
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept": "application/rss+xml, application/xml, text/xml, */*",
+    "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
 })
 
-MARKET_INFO = {
+MARKETS = {
     "north_cyprus": (["north cyprus","northern cyprus","kuzey kıbrıs","iskele","long beach","kyrenia","girne","esentepe","famagusta","gazimağusa"], "Prime Kıbrıs"),
-    "turkey": (["turkey","türkiye","antalya","alanya","mersin","istanbul","izmir","bodrum","fethiye"], "Turkey Partner"),
+    "turkey": (["turkey","türkiye","antalya","alanya","mersin","istanbul","izmir","bodrum","fethiye","ankara","bursa","muğla"], "Turkey Partner"),
     "greece": (["greece","athens","thessaloniki","crete","rhodes","corfu","mykonos"], "Golden Visa Partner"),
     "germany": (["germany","berlin","munich","frankfurt","hamburg","cologne","deutschland"], "Germany Partner"),
     "netherlands": (["netherlands","amsterdam","rotterdam","the hague","utrecht","nederland"], "Netherlands Partner"),
@@ -48,11 +34,11 @@ MARKET_INFO = {
     "russia": (["russia","россия","moscow","москва","st petersburg","санкт-петербург"], "Partner Network"),
     "kazakhstan": (["kazakhstan","казахстан","almaty","алматы","astana","астана"], "Partner Network"),
     "montenegro": (["montenegro","budva","kotor","tivat","podgorica","bar"], "Partner Network"),
-    "uk": (["united kingdom","uk","london","manchester","birmingham","leeds","brighton"], "Partner Network"),
+    "uk": (["united kingdom","uk","britain","london","manchester","birmingham","leeds","brighton"], "Partner Network"),
     "spain": (["spain","madrid","barcelona","valencia","malaga","alicante","marbella"], "Golden Visa Partner"),
     "portugal": (["portugal","lisbon","porto","algarve","cascais"], "Golden Visa Partner"),
     "italy": (["italy","rome","milan","florence","naples","sicily"], "Partner Network"),
-    "poland": (["poland","warsaw","krakow","wroclaw","gdansk"], "Partner Network"),
+    "poland": (["poland","warsaw","krakow","wroclaw","gdańsk"], "Partner Network"),
     "austria": (["austria","vienna","salzburg","graz"], "Partner Network"),
     "ireland": (["ireland","dublin","cork","galway"], "Partner Network"),
     "uae": (["uae","united arab emirates","dubai","abu dhabi"], "Partner Network"),
@@ -60,112 +46,99 @@ MARKET_INFO = {
     "saudi_arabia": (["saudi arabia","riyadh","jeddah"], "Partner Network"),
 }
 
-PROPERTY = ["property","real estate","home","house","apartment","condo","flat","villa","townhouse","residence","residential","land","mortgage","down payment","deposit","rental income","rental yield","golden visa","residency by investment","konut","daire","gayrimenkul","mülk","arsa","квартира","дом","недвижимость","ипотека","аренда"]
-
-BUY_INTENT = ["looking to buy","want to buy","wanting to buy","planning to buy","ready to buy","thinking of buying","buying a home","buying a house","buying property","buy an apartment","buy apartment","buy a villa","looking for a house","looking for an apartment","cash buyer","first time buyer","first-time buyer","first home buyer","property buyer","looking to purchase","purchase","how much can i afford","ev almak","ev arıyorum","ev almak istiyorum","satın almak","gayrimenkul almak","yatırım için ev","хочу купить","ищу квартиру","купить квартиру","купить дом","купить недвижимость","планирую купить","недвижимость за рубежом","ev sahibi olmak","ev almak mantıklı","ev alabilir miyim"]
-
-STRONG_INTENT = ["looking to buy","want to buy","planning to buy","ready to buy","looking to purchase","buying property","buy an apartment","property buyer","cash buyer","ev almak","satın almak","хочу купить","купить квартиру","купить недвижимость","ev sahibi olmak","ev almak mantıklı","ev alabilir miyim"]
-
-CONCRETE = ["budget","$","€","£","aed","eur","gbp","usd","chf","try","kzt","rub","mortgage","down payment","deposit","bedroom","1br","2br","3br","1 bhk","2 bhk","3 bhk","rent","rental income","yield","first home","moving","relocating","next month","next year","this year","2026","2027","bütçe","kredi","kapora","kira","taşınmak","мой бюджет","ипотека","переезд","konut kredisi","peşinat","taksit","milyon","milyon tl","tl"]
-
-PERSONAL = [" i "," i'm"," i am "," we "," we're"," my "," our "," my family"," for myself"," for me","ben ","biz ","ailem","kendim için","я ","мы ","моя семья","для себя"]
-
-AGENCY = ["for my client","for a client","my clients","client looking","buyer client","real estate agent","estate agent","realtor","broker","developer","property developer","property listing","listing page","our properties","our project","contact us","whatsapp us","call us","we sell","available units","new project","commission","lead generation","marketing agency","property management service","агентство недвижимости","риэлтор","застройщик","продам","продается","продаю"]
-
-NOISE_SUBREDDITS = {"memes","funny","askreddit","offmychest","family","askchicago","whatshouldido","whatdoido","arknights"}
-
-# V4.3 Reddit geographic targeting
-TARGET_COUNTRY_TERMS = [
-    "north cyprus","northern cyprus","kuzey kıbrıs","cyprus",
-    "turkey","türkiye","greece","germany","netherlands","belgium","france",
-    "switzerland","lithuania","russia","россия","kazakhstan","казахстан",
-    "montenegro","united kingdom","uk","london","spain","portugal","italy",
-    "poland","austria","ireland","estonia","latvia","finland","sweden","norway",
-    "denmark","uae","united arab emirates","dubai","abu dhabi","qatar","doha",
-    "saudi arabia","riyadh","jeddah",
-]
-EXCLUDED_COUNTRY_TERMS = [
-    "usa","u.s.a.","u.s.","united states","united states of america","america",
+EXCLUDED_GEOGRAPHY = [
+    "usa","u.s.a.","united states","united states of america","america",
     "new york","los angeles","california","texas","florida","miami","chicago",
     "houston","phoenix","seattle","boston","san francisco",
     "canada","toronto","vancouver","montreal",
-    "australia","australian","sydney","melbourne","brisbane","perth",
-    "adelaide","canberra","new zealand","auckland","wellington",
+    "australia","australian","sydney","melbourne","brisbane","perth","adelaide","canberra",
+    "new zealand","auckland","wellington",
 ]
 
-WEB_SOURCES = [
-    ("Technopat Emlak ve Arazi", "https://www.technopat.net/sosyal/bolum/emlak-ve-arazi.170/", "hub"),
-    ("DonanımHaber Konut Kredisi", "https://forum.donanimhaber.com/en-uygun-konut-kredisi--45565523", "thread"),
-    ("R10 Soru & Cevap", "https://www.r10.net/sorum-var/", "hub"),
-    ("Expat.com Cyprus", "https://www.expat.com/en/forum/europe/cyprus/", "hub"),
-    ("British Expats Cyprus", "https://britishexpats.com/forum/cyprus-117/", "hub"),
-]
-WEB_LINK_TERMS = ["ev almak","ev sahibi","konut kredisi","konut","gayrimenkul","arsa","villa","daire","apartman","property","buying property","buy property","property investment","looking for property","purchasing a property","mortgage","rental income","yield","north cyprus","northern cyprus","cyprus"]
+PROPERTY = ["property","real estate","home","house","apartment","condo","flat","villa","townhouse","residence","residential","land","mortgage","down payment","deposit","rental income","rental yield","golden visa","residency by investment","ev","konut","daire","gayrimenkul","mülk","arsa","kira","квартира","дом","недвижимость","ипотека","аренда"]
+BUY_INTENT = ["looking to buy","want to buy","wanting to buy","planning to buy","ready to buy","thinking of buying","buying a home","buying a house","buying property","buy an apartment","buy apartment","looking for an apartment","looking for a house","cash buyer","first time buyer","first-time buyer","first home buyer","property buyer","looking to purchase","purchase","how much can i afford","ev almak","ev arıyorum","ev almak istiyorum","satın almak","gayrimenkul almak","yatırım için ev","хочу купить","ищу квартиру","купить квартиру","купить дом","купить недвижимость","планирую купить","недвижимость за рубежом","ev sahibi olmak","ev almayı düşünüyorum","ev alacağım","ev almayı planlıyorum","konut kredisi"]
+STRONG_INTENT = ["looking to buy","want to buy","planning to buy","ready to buy","looking to purchase","buying property","buy an apartment","property buyer","cash buyer","ev almak","satın almak","хочу купить","купить квартиру","купить недвижимость","ev sahibi olmak","ev almayı düşünüyorum","ev alacağım","ev almayı planlıyorum"]
+CONCRETE = ["budget","$","€","£","aed","eur","gbp","usd","chf","try","kzt","rub","tl","milyon","million","mortgage","down payment","deposit","bedroom","1br","2br","3br","1+1","2+1","3+1","1 bhk","2 bhk","3 bhk","rent","rental income","yield","first home","moving","relocating","next month","next year","this year","2026","2027","bütçe","kredi","kapora","kira","taşınmak","peşinat","taksit","konut kredisi","мой бюджет","ипотека","переезд"]
+PERSONAL = [" i "," i'm"," i am "," we "," we're"," my "," our "," my family"," for myself"," for me","ben ","biz ","ailem","kendim için","я ","мы ","моя семья","для себя"]
+AGENCY = ["for my client","for a client","my clients","client looking","buyer client","real estate agent","estate agent","realtor","broker","developer","property developer","property listing","listing page","our properties","our project","contact us","whatsapp us","call us","we sell","available units","new project","commission","lead generation","marketing agency","property management service","агентство недвижимости","риэлтор","застройщик","продам","продается","продаю"]
 
-QUERIES = [
-    '"looking to buy" ("North Cyprus" OR "Northern Cyprus" OR "Kuzey Kıbrıs" OR Iskele)',
-    '"buy property" ("North Cyprus" OR "Northern Cyprus")',
-    '"property investment" ("North Cyprus" OR Cyprus)',
-    '"moving to Cyprus" property',
-    '"looking to buy" ("Turkey" OR Türkiye) property',
-    '"property investment" ("Turkey" OR Türkiye)',
-    '"Golden Visa" (Greece OR Portugal OR Spain) property',
-    '"residency by investment" property budget',
-    '"looking to buy" property (Germany OR Netherlands OR France OR Belgium)',
-    '"looking to buy" property (UK OR London)',
-    '"looking to buy" property (Switzerland OR Austria)',
-    '"buying property abroad" (Russia OR Kazakhstan OR UAE)',
-    '"looking for an apartment" investment Europe',
-    '"first time buyer" budget property Europe',
-    '"хочу купить" недвижимость (Кипр OR Греция OR Турция)',
-    '"ищу квартиру" недвижимость (Кипр OR Германия OR Греция)',
-    '"недвижимость за рубежом" купить',
-    '"ev almak istiyorum" (Kıbrıs OR Türkiye)',
-    '"Kıbrıs" ev almak',
+SEARCH_QUERIES = [
+    'site:forum.donanimhaber.com "ev alacağım" konut',
+    'site:forum.donanimhaber.com "konut kredisi" "ev al"',
+    'site:forum.donanimhaber.com "ev almayı düşünüyorum"',
+    'site:forum.donanimhaber.com "kira getirisi" ev yatırım',
+    'site:technopat.net/sosyal "ev almak" emlak',
+    'site:technopat.net/sosyal "konut kredisi" ev',
+    'site:technopat.net/sosyal "yatırım için" daire',
+    'site:r10.net "ev satın almak" gayrimenkul',
+    'site:r10.net "ev almak istiyorum"',
+    'site:r10.net "yatırım için ev"',
+    'site:expat.com/en/forum "property in Northern Cyprus"',
+    'site:expat.com/en/forum "buying property in Cyprus"',
+    'site:expat.com/en/forum "buying property in Turkey"',
+    'site:britishexpats.com/forum "property" Cyprus',
+    'site:britishexpats.com/forum "buying" "North Cyprus"',
+    'site:britishexpats.com/forum "holiday home" Cyprus',
+    'site:forums.moneysavingexpert.com "property abroad" buying',
+    'site:forums.moneysavingexpert.com "buying property abroad" budget',
+    'site:forums.moneysavingexpert.com "mortgage" "property abroad"',
+    'site:forums.moneysavingexpert.com "buying property" overseas',
+    '"Kıbrıs" "ev almak" bütçe',
+    '"Kuzey Kıbrıs" "ev almak"',
+    '"Türkiye" "ev almak istiyorum" bütçe',
+    '"gayrimenkul yatırımı" "bütçe"',
 ]
+
+NEWS_QUERIES = [
+    '"Kuzey Kıbrıs" "ev almak"',
+    '"Kuzey Kıbrıs" gayrimenkul yatırım',
+    '"Kıbrıs" property buyer',
+    '"Türkiye" "ev almak" bütçe',
+    '"konut kredisi" "ev alacağım"',
+    '"gayrimenkul yatırımı" Türkiye',
+    '"Golden Visa" property Greece',
+    '"buying property abroad" budget',
+]
+
 def db_client():
     raw = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
     if not raw:
         raise RuntimeError("FIREBASE_SERVICE_ACCOUNT_JSON missing")
-    info = json.loads(raw)
-    creds = service_account.Credentials.from_service_account_info(info)
+    creds = service_account.Credentials.from_service_account_info(json.loads(raw))
     return firestore.Client(credentials=creds)
+
+def has(value, terms):
+    v = value.lower()
+    return any(t.lower() in v for t in terms)
 
 def text(item):
     return f"{item.get('title','')} {item.get('text','')}".strip()
 
-def has(value, terms):
-    value = value.lower()
-    return any(term.lower() in value for term in terms)
-
-def subreddit(url):
-    m = re.search(r"/r/([^/]+)", url or "")
-    return m.group(1).lower() if m else ""
-
 def market_for(value):
     v = value.lower()
-    for market, (terms, _) in MARKET_INFO.items():
+    for market, (terms, _) in MARKETS.items():
         for term in terms:
             if term.lower() in v:
                 return market
     return "unknown"
 
-def extract_budget(value):
+def budget(value):
     for pattern in [
         r"[$€£₺]\s?[\d,.]+(?:\s?[kKmM])?",
-        r"(?:USD|EUR|GBP|AED|CHF|TRY|KZT|RUB)\s?[\d,.]+(?:\s?[kKmM])?",
-        r"\d{2,3}\s?[kKmM]",
+        r"\b(?:USD|EUR|GBP|AED|CHF|TRY|KZT|RUB|TL)\s?[\d,.]+(?:\s?[kKmM])?\b",
+        r"\b\d{1,3}(?:[.,]\d{3})+(?:\s?(?:TL|tl))?\b",
+        r"\b\d+(?:[.,]\d+)?\s?(?:milyon|million|M|K|bin)\b",
     ]:
         m = re.search(pattern, value, re.I)
         if m:
             return m.group(0)
     return "Not stated"
 
-def extract_timeframe(value):
+def timeframe(value):
     for pattern in [
-        r"(?:within|in|next)\s+\d+\s+(?:days?|weeks?|months?|years?)",
-        r"this year", r"next year", r"soon",
-        r"immediately", r"2026", r"2027",
+        r"\b(?:within|in|next)\s+\d+\s+(?:days?|weeks?|months?|years?)\b",
+        r"\b(?:\d+)\s+(?:ay|months?)\b",
+        r"\bthis year\b", r"\bnext year\b", r"\bsoon\b", r"\bimmediately\b", r"\b2026\b", r"\b2027\b",
     ]:
         m = re.search(pattern, value, re.I)
         if m:
@@ -175,7 +148,7 @@ def extract_timeframe(value):
 def language(value):
     if re.search(r"[а-яё]", value.lower()):
         return "Russian"
-    if has(value, ["ev almak","ev arıyorum","gayrimenkul","kıbrıs","satın almak"]):
+    if has(value, ["ev almak","ev arıyorum","gayrimenkul","kıbrıs","satın almak","konut kredisi"]):
         return "Turkish"
     return "English"
 
@@ -184,22 +157,22 @@ def city(value, market):
         return "Not stated"
     v = value.lower()
     country_terms = {"turkey","türkiye","greece","germany","netherlands","belgium","france","lithuania","switzerland","russia","kazakhstan","montenegro","uk","united kingdom","north cyprus","northern cyprus"}
-    for term in MARKET_INFO[market][0]:
+    for term in MARKETS[market][0]:
         if term.lower() in v and term.lower() not in country_terms:
             return term
     return "Not stated"
 
-def excluded_geography(value):
-    v = value.lower()
-    return any(term in v for term in EXCLUDED_COUNTRY_TERMS)
+def fingerprint(item):
+    raw = "|".join([item.get("url",""), item.get("title",""), item.get("author","")]).lower()
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
-def has_target_geography(value):
+def excluded_geo(value):
     v = value.lower()
-    return any(term in v for term in TARGET_COUNTRY_TERMS)
+    return any(t in v for t in EXCLUDED_GEOGRAPHY)
 
-def valid(item):
+def valid(item, source):
     value = text(item)
-    if len(value) < 90:
+    if len(value) < 100:
         return False, "too_short"
     if not has(value, PROPERTY):
         return False, "no_property"
@@ -207,28 +180,16 @@ def valid(item):
         return False, "no_buyer"
     if has(value, AGENCY):
         return False, "agency_or_listing"
-    if subreddit(item.get("url","")) in NOISE_SUBREDDITS:
-        return False, "noisy_subreddit"
+    if excluded_geo(value):
+        return False, "excluded_geography"
     if not has(value, CONCRETE) and not has(value, PERSONAL):
         return False, "no_concrete_or_personal"
-
-    if excluded_geography(value):
-        return False, "excluded_geography"
-
-    strong = has(value, STRONG_INTENT)
-    personal = has(value, PERSONAL)
-    concrete = has(value, CONCRETE)
     market = market_for(value)
     overseas = has(value, ["abroad","overseas","relocat","moving to","cyprus","north cyprus","northern cyprus","greece","portugal","spain","turkey","golden visa","residency by investment","недвижимость за рубежом"])
-
-    forum_signal=has(value,["konut kredisi","ev sahibi","ev almak","ev alabilir miyim","property purchase","purchasing a property","looking for property","buying a property"])
-    if not strong and not forum_signal:
+    strong = has(value, STRONG_INTENT)
+    if not strong and source != "Google Search":
         return False, "weak_intent"
-    if not personal and not concrete:
-        return False, "weak_buyer_context"
-    if market == "unknown" and not has_target_geography(value) and not overseas:
-        return False, "no_target_market"
-    if market == "unknown" and not overseas and not has(value, ["property investment","investment property","rental income","rental yield","golden visa","residency by investment","buying property abroad"]):
+    if market == "unknown" and not overseas and not has(value, ["property investment","investment property","rental income","rental yield","golden visa","residency by investment","buying property abroad","konut kredisi","ev almak","ev almayı düşünüyorum"]):
         return False, "no_target_market"
     return True, "ok"
 
@@ -236,83 +197,67 @@ def score(item, market):
     value = text(item).lower()
     strong_hits = sum(1 for p in STRONG_INTENT if p.lower() in value)
     intent_hits = sum(1 for p in INTENT_PHRASES if p.lower() in value)
-    has_budget = extract_budget(value) != "Not stated"
-    has_timeframe = extract_timeframe(value) != "Not stated"
+    has_budget = budget(value) != "Not stated"
+    has_time = timeframe(value) != "Not stated"
     concrete = has(value, CONCRETE)
     personal = has(value, PERSONAL)
     target = market != "unknown"
-    overseas = has(value, ["abroad","overseas","relocat","moving to","golden visa","residency by investment","north cyprus","northern cyprus"])
+    abroad = has(value, ["abroad","overseas","relocat","moving to","golden visa","residency by investment","north cyprus","northern cyprus","cyprus"])
 
-    intent = min(100, 42 + strong_hits*8 + min(intent_hits*3,12) + (12 if has_budget else 0) + (10 if has_timeframe else 0) + (8 if personal else 0) + (8 if overseas else 0))
-    credibility = min(100, 52 + (18 if personal else 0) + (14 if has_budget else 0) + (8 if has_timeframe else 0) + (8 if concrete else 0) + (5 if len(value) >= 400 else 0))
-
-    fit = 35
-    if target:
-        fit += 30
-    if market == "north_cyprus":
-        fit += 25
-    elif market in {"turkey","greece","portugal","spain"}:
-        fit += 15
-    elif overseas:
-        fit += 10
-    if has_budget:
-        fit += 10
+    intent = min(100, 40 + strong_hits*8 + min(intent_hits*3,12) + (12 if has_budget else 0) + (10 if has_time else 0) + (8 if personal else 0) + (10 if abroad else 0))
+    credibility = min(100, 50 + (18 if personal else 0) + (14 if has_budget else 0) + (8 if has_time else 0) + (8 if concrete else 0) + (7 if len(value) >= 400 else 0))
+    fit = 35 + (30 if target else 0) + (25 if market == "north_cyprus" else 0) + (15 if market in {"turkey","greece","portugal","spain"} else 0) + (10 if abroad else 0) + (10 if has_budget else 0)
     fit = min(100, fit)
-
-    if market == "north_cyprus" and intent >= 82 and credibility >= 78:
-        classification = "HOT"
-    elif intent >= 76 and credibility >= 72 and fit >= 55:
-        classification = "WARM"
+    if market == "north_cyprus" and intent >= 80 and credibility >= 75:
+        cls = "HOT"
+    elif intent >= 72 and credibility >= 68 and fit >= 50:
+        cls = "WARM"
     else:
-        classification = "REVIEW"
-    return intent, credibility, fit, classification
+        cls = "REVIEW"
+    return intent, credibility, fit, cls
 
-def fingerprint(item):
-    raw = "|".join([item.get("url",""),item.get("title",""),item.get("author","")]).lower()
-    return hashlib.sha256(raw.encode()).hexdigest()
-
-def parse_reddit(xml_text):
-    soup = BeautifulSoup(xml_text, "html.parser")
-    rows = []
-    for e in soup.find_all("entry")[:MAX_RESULTS]:
-        link = e.find("link")
-        title = e.find("title")
-        content = e.find("content")
-        published = e.find("published")
-        author = e.find("name")
-        rows.append({
-            "source":"Reddit",
-            "url":link.get("href","").strip() if link else "",
-            "title":title.get_text(" ",strip=True) if title else "",
-            "text":content.get_text(" ",strip=True) if content else "",
-            "published":published.get_text(strip=True) if published else "",
-            "author":author.get_text(strip=True) if author else "",
-        })
-    return rows
-
-def reddit_search(query):
+def search_web(query):
+    url = "https://www.google.com/search?q=" + quote_plus(query) + "&num=10&hl=en"
     try:
-        r = S.get(REDDIT_URL, params={"q":query,"sort":"new","t":"day","limit":MAX_RESULTS}, timeout=TIMEOUT)
-        if r.status_code == 429:
-            print(f"REDDIT_429 query={query}")
-            return [], True
+        r = S.get(url, timeout=TIMEOUT)
         r.raise_for_status()
-        return parse_reddit(r.text), False
+        soup = BeautifulSoup(r.text, "html.parser")
+        rows = []
+        seen_urls = set()
+        for result in soup.select("div.MjjYud, div.g"):
+            a = result.find("a", href=True)
+            h = result.find(["h3"])
+            if not a or not h:
+                continue
+            href = a["href"]
+            if not href.startswith("http"):
+                continue
+            if href in seen_urls:
+                continue
+            seen_urls.add(href)
+            title = h.get_text(" ", strip=True)
+            container = result.get_text(" ", strip=True)
+            rows.append({
+                "source": "Google Search",
+                "url": href,
+                "title": title[:300],
+                "text": container[:5000],
+                "published": "",
+                "author": "",
+            })
+        return rows, 0
     except requests.RequestException as exc:
-        print(f"REDDIT_ERROR {exc}")
-        return [], False
+        print(f"GOOGLE_SEARCH_ERROR: {exc}")
+        return [], 1
 
 def google_news_search(query):
     try:
-        r = S.get(NEWS_URL, params={"q":query+" when:1d","hl":"en-US","gl":"US","ceid":"US:en"}, timeout=TIMEOUT)
+        r = S.get("https://news.google.com/rss/search", params={"q":query+" when:1d","hl":"en-US","gl":"US","ceid":"US:en"}, timeout=TIMEOUT)
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
         rows = []
         for e in soup.find_all("item")[:MAX_RESULTS]:
-            link = e.find("link")
-            title = e.find("title")
-            desc = e.find("description")
-            pub = e.find("pubDate")
+            link=e.find("link"); title=e.find("title"); desc=e.find("description"); pub=e.find("pubDate")
             rows.append({
                 "source":"Google News",
                 "url":link.get_text(strip=True) if link else "",
@@ -321,196 +266,147 @@ def google_news_search(query):
                 "published":pub.get_text(strip=True) if pub else "",
                 "author":"",
             })
-        return rows
+        return rows, 0
     except requests.RequestException as exc:
-        print(f"GOOGLE_NEWS_ERROR {exc}")
-        return []
+        print(f"GOOGLE_NEWS_ERROR: {exc}")
+        return [], 1
 
-def send_telegram(message):
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat = os.getenv("TELEGRAM_CHAT_ID")
+def telegram(message):
+    token=os.getenv("TELEGRAM_BOT_TOKEN")
+    chat=os.getenv("TELEGRAM_CHAT_ID")
     if not token or not chat:
         print("TELEGRAM_NOT_CONFIGURED")
         return
     try:
-        r = S.post(f"https://api.telegram.org/bot{token}/sendMessage", json={"chat_id":chat,"text":message,"disable_web_page_preview":False}, timeout=10)
+        r=S.post(f"https://api.telegram.org/bot{token}/sendMessage",json={"chat_id":chat,"text":message,"disable_web_page_preview":False},timeout=10)
         r.raise_for_status()
     except requests.RequestException as exc:
-        print(f"TELEGRAM_ERROR {exc}")
+        print(f"TELEGRAM_ERROR: {exc}")
 
-def format_lead(lead):
-    emoji = "🔥" if lead["classification"] == "HOT" else "🟠"
+def format_lead(x):
+    emoji = "🔥" if x["classification"]=="HOT" else "🟠"
     return (
-        f"{emoji} BAY-S RADAR — {lead['classification']}\n\n"
-        f"Source: {lead['source']}\n"
-        f"Author: {lead.get('author') or 'Not stated'}\n"
-        f"Language: {lead['language']}\n"
-        f"Market: {lead['market']}\n"
-        f"City/Region: {lead['city_region']}\n\n"
-        f"What they want:\n{lead['title']}\n\n"
-        f"Budget: {lead['budget']}\n"
-        f"Timeframe: {lead['timeframe']}\n"
-        f"Intent: {lead['intent_score']}/100\n"
-        f"Credibility: {lead['credibility_score']}/100\n"
-        f"Market Fit: {lead['market_fit_score']}/100\n"
-        f"Route To: {lead['route_to']}\n\n"
-        f"🔗 {lead['url']}"
+        f"{emoji} BAY-S RADAR — {x['classification']}\n\n"
+        f"Source: {x['source']}\n"
+        f"Market: {x['market']}\n"
+        f"City/Region: {x['city_region']}\n"
+        f"Budget: {x['budget']}\n"
+        f"Timeframe: {x['timeframe']}\n"
+        f"Intent: {x['intent_score']}/100\n"
+        f"Credibility: {x['credibility_score']}/100\n"
+        f"Market Fit: {x['market_fit_score']}/100\n\n"
+        f"{x['title']}\n\n"
+        f"🔗 {x['url']}"
     )
+
 def process_rows(rows, db, seen, leads, rejected, errors, started):
     for item in rows:
         if not item.get("url"):
             continue
-        key = fingerprint(item)
+        key=fingerprint(item)
         if key in seen:
             continue
         seen.add(key)
-
-        ok, reason = valid(item)
+        ok, reason = valid(item, item.get("source",""))
         if not ok:
-            rejected[reason] = rejected.get(reason, 0) + 1
+            rejected[reason]=rejected.get(reason,0)+1
             continue
-
-        value = text(item)
-        market = market_for(value)
-        intent, credibility, fit, classification = score(item, market)
-
+        value=text(item)
+        market=market_for(value)
+        intent,cred,fit,classification=score(item, market)
         if classification not in {"HOT","WARM"}:
-            rejected["low_score"] = rejected.get("low_score", 0) + 1
+            rejected["low_score"]=rejected.get("low_score",0)+1
             continue
-
-        ref = db.collection(COLLECTION).document(key)
+        ref=db.collection(COLLECTION).document(key)
         try:
             if ref.get().exists:
                 print(f"EXISTING_LEAD: {key}")
                 continue
-            lead = {
+            lead={
                 **item,
-                "lead_id": key,
-                "language": language(value),
-                "market": market,
-                "city_region": city(value, market),
-                "budget": extract_budget(value),
-                "timeframe": extract_timeframe(value),
-                "intent_score": intent,
-                "credibility_score": credibility,
-                "market_fit_score": fit,
-                "classification": classification,
-                "route_to": MARKET_INFO.get(market, ("", ROUTES.get(market, "Direct Review")))[1],
-                "found_at": started.isoformat(),
+                "lead_id":key,
+                "language":language(value),
+                "market":market,
+                "city_region":city(value,market),
+                "budget":budget(value),
+                "timeframe":timeframe(value),
+                "intent_score":intent,
+                "credibility_score":cred,
+                "market_fit_score":fit,
+                "classification":classification,
+                "route_to":MARKETS.get(market,("",ROUTES.get(market,"Direct Review")))[1],
+                "found_at":started.isoformat(),
             }
             ref.set(lead)
             leads.append(lead)
-            print(f"NEW_LEAD: {classification} | {market} | {item['url']}")
+            print(f"NEW_LEAD: {classification} | {item.get('source')} | {market} | {item['url']}")
         except Exception as exc:
-            errors["Firestore"] += 1
+            errors["Firestore"]+=1
             print(f"FIRESTORE_ERROR: {exc}")
-
-def crawl_web_source(name, url, mode):
-    try:
-        r=S.get(url,timeout=TIMEOUT)
-        r.raise_for_status()
-        soup=BeautifulSoup(r.text,"html.parser")
-        rows=[]
-        if mode=="thread":
-            title=soup.title.get_text(" ",strip=True) if soup.title else name
-            body=soup.get_text(" ",strip=True)
-            rows.append({"source":name,"url":url,"title":title[:300],"text":body[:12000],"published":"","author":""})
-            return rows,0
-        links=[]
-        for a in soup.find_all("a",href=True):
-            title=a.get_text(" ",strip=True)
-            if len(title)<10 or not has(title,WEB_LINK_TERMS):
-                continue
-            href=urljoin(url,a["href"])
-            if not href.startswith(("http://","https://")):
-                continue
-            if href not in links:
-                links.append(href)
-        for href in links[:10]:
-            try:
-                rr=S.get(href,timeout=TIMEOUT)
-                if rr.status_code!=200:
-                    continue
-                ss=BeautifulSoup(rr.text,"html.parser")
-                title=ss.title.get_text(" ",strip=True) if ss.title else href
-                body=ss.get_text(" ",strip=True)
-                rows.append({"source":name,"url":href,"title":title[:300],"text":body[:9000],"published":"","author":""})
-            except requests.RequestException:
-                continue
-        return rows,0
-    except requests.RequestException as exc:
-        print(f"WEB_ERROR {name}: {exc}")
-        return [],1
-
-def google_news_target_queries():
-    return [
-        '"looking to buy" property "North Cyprus"',
-        '"buy property" "North Cyprus"',
-        '"property investment" Cyprus',
-        '"moving to Cyprus" property',
-        '"looking to buy" property Turkey',
-        '"property investment" Turkey',
-        '"Golden Visa" Greece property',
-        '"buying property abroad" budget',
-    ]
 
 def main():
     started=datetime.now(timezone.utc)
-    print("BAY-S LEAD RADAR V4.4 STARTED")
+    print("BAY-S LEAD RADAR V4.5 STARTED")
     db=db_client()
-    seen=[]
-    seen_set=set()
+
+    seen=set()
     leads=[]
     rejected={}
-    errors={"Reddit":0,"Google News":0,"Web":0,"Firestore":0}
-    source_counts={"Reddit":0,"Google News":0,"Web":0}
+    errors={"Google Search":0,"Google News":0,"Firestore":0}
+    counts={"Google Search":0,"Google News":0}
 
-    # Primary: open forums and public web pages.
-    for name,url,mode in WEB_SOURCES:
-        print(f"[WEB] {name}")
-        rows,err=crawl_web_source(name,url,mode)
-        errors["Web"]+=err
-        source_counts["Web"]+=len(rows)
-        process_rows(rows,db,seen_set,leads,rejected,errors,started)
+    for i, query in enumerate(SEARCH_QUERIES, 1):
+        print(f"[SEARCH {i}/{len(SEARCH_QUERIES)}] {query}")
+        rows, err = search_web(query)
+        counts["Google Search"] += len(rows)
+        errors["Google Search"] += err
+        process_rows(rows, db, seen, leads, rejected, errors, started)
+        time.sleep(0.4)
 
-    # Secondary: Google News.
-    for i,q in enumerate(google_news_target_queries()[:NEWS_PER_RUN],1):
-        print(f"[NEWS {i}/{NEWS_PER_RUN}] {q}")
-        rows=google_news_search(q)
-        source_counts["Google News"]+=len(rows)
-        process_rows(rows,db,seen_set,leads,rejected,errors,started)
+    for i, query in enumerate(NEWS_QUERIES, 1):
+        print(f"[NEWS {i}/{len(NEWS_QUERIES)}] {query}")
+        rows, err = google_news_search(query)
+        counts["Google News"] += len(rows)
+        errors["Google News"] += err
+        process_rows(rows, db, seen, leads, rejected, errors, started)
         time.sleep(NEWS_DELAY)
 
-    # Auxiliary: Reddit. 403/429 only stops Reddit.
-    reddit_429=0
-    reddit_blocked=0
-    for i,q in enumerate(QUERIES[:REDDIT_PER_RUN],1):
-        print(f"[REDDIT {i}/{REDDIT_PER_RUN}] {q}")
-        rows,limited=reddit_search(q)
-        source_counts["Reddit"]+=len(rows)
-        if limited:
-            reddit_429+=1
-            reddit_blocked+=1
-            print("REDDIT_STOPPED_EARLY")
-            break
-        process_rows(rows,db,seen_set,leads,rejected,errors,started)
-        time.sleep(REDDIT_DELAY)
-
     finished=datetime.now(timezone.utc)
-    scan={"started_at":started.isoformat(),"completed_at":finished.isoformat(),"status":"completed","source_results":source_counts,"unique_results":len(seen_set),"new_hot_warm":len(leads),"source_errors":errors,"rejected":rejected,"reddit_429_count":reddit_429,"reddit_blocked_count":reddit_blocked,"web_sources":len(WEB_SOURCES)}
+    scan={
+        "started_at":started.isoformat(),
+        "completed_at":finished.isoformat(),
+        "status":"completed",
+        "source_results":counts,
+        "unique_results":len(seen),
+        "new_hot_warm":len(leads),
+        "source_errors":errors,
+        "rejected":rejected,
+        "search_queries":len(SEARCH_QUERIES),
+        "news_queries":len(NEWS_QUERIES),
+        "mode":"web_search_first",
+    }
+
     try:
         db.collection(SCAN_LOG_COLLECTION).document(started.strftime("%Y%m%dT%H%M%SZ")).set(scan)
     except Exception as exc:
         print(f"SCAN_LOG_ERROR: {exc}")
+
     print(json.dumps(scan,ensure_ascii=False,indent=2))
 
     leads.sort(key=lambda x:(0 if x["classification"]=="HOT" else 1,-x["intent_score"],-x["credibility_score"],-x["market_fit_score"]))
     if leads:
         for lead in leads[:MAX_TELEGRAM_LEADS]:
-            send_telegram(format_lead(lead))
+            telegram(format_lead(lead))
     else:
-        send_telegram("ℹ️ BAY-S RADAR V4.4\n\nTarama tamamlandı.\nYeni HOT/WARM buyer lead bulunamadı.\n\n" + f"Web/forum sonuçları: {source_counts['Web']}\n" + f"Google News sonuçları: {source_counts['Google News']}\n" + f"Reddit sonuçları: {source_counts['Reddit']}\n" + f"Yeni lead: 0\n" + f"Reddit 403/429: {reddit_blocked}")
-    print("BAY-S LEAD RADAR V4.4 FINISHED")
+        telegram(
+            "ℹ️ BAY-S RADAR V4.5\n\n"
+            "Tarama tamamlandı.\n"
+            "Yeni HOT/WARM buyer lead bulunamadı.\n\n"
+            f"Google Search sonuçları: {counts['Google Search']}\n"
+            f"Google News sonuçları: {counts['Google News']}\n"
+            "Yeni lead: 0"
+        )
+    print("BAY-S LEAD RADAR V4.5 FINISHED")
 
-if __name__ == "__main__":
+if __name__=="__main__":
     main()
