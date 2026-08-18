@@ -29,8 +29,6 @@ REQUEST_TIMEOUT = 12
 REDDIT_DELAY = 1.5
 NEWS_DELAY = 0.4
 MAX_RETRIES = 2
-GOOGLE_BATCH_SIZE = 10
-GOOGLE_BATCH_PAUSE = 12
 
 
 def get(url, params=None, timeout=REQUEST_TIMEOUT):
@@ -201,83 +199,56 @@ def google_news(query):
 
 
 # ---------------------------------------------------------
-# GOOGLE WEB SEARCH
+# EXA WEB SEARCH
 # ---------------------------------------------------------
 
-def google_web_search(query):
-    url = "https://www.google.com/search"
+def exa_search(query):
+    api_key = os.environ.get("EXA_API_KEY")
+    if not api_key:
+        raise RuntimeError("EXA_API_KEY missing")
+
     try:
-        r = get(
-            url,
-            {
-                "q": query,
-                "num": 10,
-                "hl": "en",
+        r = requests.post(
+            "https://api.exa.ai/search",
+            json={
+                "query": query,
+                "type": "auto",
+                "numResults": MAX_RESULTS_PER_SOURCE,
+                "contents": {"text": True},
             },
-        )
-        if r.status_code == 429:
-            print(
-                f"GOOGLE_429 query={query}"
-            )
-            return [], True
-
-        r.raise_for_status()
-        soup = BeautifulSoup(
-            r.text,
-            "html.parser",
+            headers={
+                "x-api-key": api_key.strip(),
+                "Content-Type": "application/json",
+            },
+            timeout=30,
         )
 
+        if r.status_code != 200:
+            try:
+                detail = r.json()
+            except Exception:
+                detail = r.text[:500]
+            print(f"EXA_HTTP_{r.status_code}: {detail}")
+            return []
+
+        data = r.json()
         out = []
-        seen_urls = set()
 
-        for container in soup.select("div.g, div.MjjYud"):
-            a = container.find(
-                "a",
-                href=True,
-            )
-            h = container.find("h3")
+        for item in data.get("results", [])[:MAX_RESULTS_PER_SOURCE]:
+            out.append({
+                "source": "Exa",
+                "url": item.get("url", ""),
+                "title": item.get("title", ""),
+                "text": item.get("text", ""),
+                "published": item.get("publishedDate", ""),
+                "author": "",
+            })
 
-            if not a or not h:
-                continue
-
-            href = a.get("href", "")
-            title = h.get_text(
-                " ",
-                strip=True,
-            )
-
-            if not href.startswith("http"):
-                continue
-
-            if href in seen_urls:
-                continue
-
-            seen_urls.add(href)
-
-            text = container.get_text(
-                " ",
-                strip=True,
-            )
-
-            out.append(
-                {
-                    "source": "Google Search",
-                    "url": href,
-                    "title": title,
-                    "text": text,
-                    "published": "",
-                    "author": "",
-                }
-            )
-
-        return out, False
+        return out
 
     except Exception as e:
-        print(
-            f"GOOGLE_SEARCH_ERROR "
-            f"query={query} error={e}"
-        )
-        return [], False
+        print(f"EXA_ERROR query={query} error={e}")
+        return []
 
 # ---------------------------------------------------------
 # QUERY BUILDER
@@ -594,7 +565,7 @@ def main():
     queries = build_queries()
 
     print(
-        f"BAY-S RADAR V4.5-BATCH STARTED | "
+        f"BAY-S RADAR V4.5-EXA STARTED | "
         f"queries={len(queries)}"
     )
 
@@ -608,246 +579,156 @@ def main():
     source_counts = {
         "Reddit": 0,
         "Google News": 0,
-        "Google Search": 0,
-        "Google Search": 0,
     }
 
     source_errors = {
         "Reddit": 0,
         "Google News": 0,
-        "Google Search": 0,
     }
 
     # -----------------------------------------------------
     # SEARCH
     # -----------------------------------------------------
 
-    google_queries = list(queries)
-    google_stopped = False
-    google_429_count = 0
-    google_results = 0
+    source_counts = {
+        "Exa": 0,
+        "Google News": 0,
+    }
 
-    # Google is tested in batches. After each batch we run
-    # Google News and pause before the next Google batch.
-    for batch_start in range(
-        0,
-        len(google_queries),
-        GOOGLE_BATCH_SIZE,
+    source_errors = {
+        "Exa": 0,
+        "Google News": 0,
+    }
+
+    for index, q in enumerate(
+        queries,
+        start=1,
     ):
-        batch = google_queries[
-            batch_start:
-            batch_start + GOOGLE_BATCH_SIZE
-        ]
+        print(f"[EXA {index}/{len(queries)}] {q}")
 
-        batch_no = (
-            batch_start // GOOGLE_BATCH_SIZE
-        ) + 1
+        try:
+            results = exa_search(q)
+            source_counts["Exa"] += len(results)
 
-        total_batches = (
-            (len(google_queries)
-             + GOOGLE_BATCH_SIZE - 1)
-            // GOOGLE_BATCH_SIZE
-        )
+            for item in results:
+                if not item.get("url"):
+                    continue
 
-        print(
-            f"GOOGLE_BATCH "
-            f"{batch_no}/{total_batches} "
-            f"size={len(batch)}"
-        )
+                key = fp(item)
+                if key in seen:
+                    continue
+                seen.add(key)
 
-        for index, q in enumerate(
-            batch,
-            start=batch_start + 1,
-        ):
-            print(
-                f"[GOOGLE "
-                f"{index}/{len(google_queries)}] "
-                f"{q}"
-            )
-
-            try:
-                results, limited = (
-                    google_web_search(q)
+                market = market_for(
+                    item.get("title", "")
+                    + " "
+                    + item.get("text", "")
                 )
 
-                google_results += len(
-                    results
+                intent, credibility, fit, classification = score(
+                    item,
+                    market,
                 )
 
-                if limited:
-                    google_429_count += 1
-                    google_stopped = True
-                    print(
-                        "GOOGLE_STOPPED_AFTER_429"
-                    )
-                    break
+                if classification not in ("HOT", "WARM"):
+                    continue
 
-                source_counts[
-                    "Google Search"
-                ] = google_results
+                ref = (
+                    client
+                    .collection(COLLECTION)
+                    .document(key)
+                )
 
-                for item in results:
-                    if not item.get("url"):
-                        continue
+                if ref.get().exists:
+                    continue
 
-                    key = fp(item)
-
-                    if key in seen:
-                        continue
-
-                    seen.add(key)
-
-                    market = market_for(
-                        item.get("title", "")
-                        + " "
-                        + item.get("text", "")
-                    )
-
-                    intent, credibility, fit, classification = score(
-                        item,
+                lead = {
+                    **item,
+                    "lead_id": key,
+                    "market": market,
+                    "route_to": ROUTES.get(
                         market,
-                    )
+                        "Direct Review",
+                    ),
+                    "intent_score": intent,
+                    "credibility_score": credibility,
+                    "market_fit_score": fit,
+                    "classification": classification,
+                    "found_at": started.isoformat(),
+                }
 
-                    if classification not in (
-                        "HOT",
-                        "WARM",
-                    ):
-                        continue
+                ref.set(lead)
+                candidates.append(lead)
 
-                    ref = (
-                        client
-                        .collection(COLLECTION)
-                        .document(key)
-                    )
+        except Exception as e:
+            errors += 1
+            source_errors["Exa"] += 1
+            print(f"EXA_LOOP_ERROR {e}")
 
-                    if ref.get().exists:
-                        continue
+        time.sleep(0.25)
 
-                    lead = {
-                        **item,
-                        "lead_id": key,
-                        "market": market,
-                        "route_to": ROUTES.get(
+        # Google News remains as an auxiliary source.
+        if index % 10 == 0:
+            print(f"[GOOGLE NEWS BRIDGE] after_exa={index}")
+
+            for bridge_query in queries[max(0, index - 4):index]:
+                try:
+                    results = google_news(bridge_query)
+                    source_counts["Google News"] += len(results)
+
+                    for item in results:
+                        if not item.get("url"):
+                            continue
+
+                        key = fp(item)
+                        if key in seen:
+                            continue
+                        seen.add(key)
+
+                        market = market_for(
+                            item.get("title", "")
+                            + " "
+                            + item.get("text", "")
+                        )
+
+                        intent, credibility, fit, classification = score(
+                            item,
                             market,
-                            "Direct Review",
-                        ),
-                        "intent_score": intent,
-                        "credibility_score": credibility,
-                        "market_fit_score": fit,
-                        "classification": classification,
-                        "found_at": started.isoformat(),
-                    }
+                        )
 
-                    ref.set(lead)
-                    candidates.append(lead)
+                        if classification not in ("HOT", "WARM"):
+                            continue
 
-            except Exception as e:
-                errors += 1
-                source_errors[
-                    "Google Search"
-                ] += 1
-                print(
-                    f"GOOGLE_LOOP_ERROR "
-                    f"{e}"
-                )
+                        ref = (
+                            client
+                            .collection(COLLECTION)
+                            .document(key)
+                        )
 
-        # Google News between Google batches.
-        if google_stopped:
-            break
+                        if ref.get().exists:
+                            continue
 
-        print(
-            f"[GOOGLE NEWS BRIDGE] "
-            f"batch={batch_no}"
-        )
+                        lead = {
+                            **item,
+                            "lead_id": key,
+                            "market": market,
+                            "route_to": ROUTES.get(
+                                market,
+                                "Direct Review",
+                            ),
+                            "intent_score": intent,
+                            "credibility_score": credibility,
+                            "market_fit_score": fit,
+                            "classification": classification,
+                            "found_at": started.isoformat(),
+                        }
 
-        bridge_queries = (
-            queries[
-                batch_start:
-                batch_start + 4
-            ]
-        )
+                        ref.set(lead)
+                        candidates.append(lead)
 
-        for q in bridge_queries:
-            try:
-                results = google_news(q)
-
-                source_counts[
-                    "Google News"
-                ] += len(results)
-
-                for item in results:
-                    if not item.get("url"):
-                        continue
-
-                    key = fp(item)
-
-                    if key in seen:
-                        continue
-
-                    seen.add(key)
-
-                    market = market_for(
-                        item.get("title", "")
-                        + " "
-                        + item.get("text", "")
-                    )
-
-                    intent, credibility, fit, classification = score(
-                        item,
-                        market,
-                    )
-
-                    if classification not in (
-                        "HOT",
-                        "WARM",
-                    ):
-                        continue
-
-                    ref = (
-                        client
-                        .collection(COLLECTION)
-                        .document(key)
-                    )
-
-                    if ref.get().exists:
-                        continue
-
-                    lead = {
-                        **item,
-                        "lead_id": key,
-                        "market": market,
-                        "route_to": ROUTES.get(
-                            market,
-                            "Direct Review",
-                        ),
-                        "intent_score": intent,
-                        "credibility_score": credibility,
-                        "market_fit_score": fit,
-                        "classification": classification,
-                        "found_at": started.isoformat(),
-                    }
-
-                    ref.set(lead)
-                    candidates.append(lead)
-
-            except Exception as e:
-                errors += 1
-                source_errors[
-                    "Google News"
-                ] += 1
-
-        if (
-            batch_start
-            + GOOGLE_BATCH_SIZE
-            < len(google_queries)
-        ):
-            print(
-                f"GOOGLE_BATCH_PAUSE "
-                f"{GOOGLE_BATCH_PAUSE}s"
-            )
-            time.sleep(
-                GOOGLE_BATCH_PAUSE
-            )
+                except Exception as e:
+                    errors += 1
+                    source_errors["Google News"] += 1
 
     # -----------------------------------------------------
     # SCAN LOG
@@ -864,11 +745,6 @@ def main():
         "queries": len(queries),
         "unique_results": len(seen),
         "new_hot_warm": len(candidates),
-        "google_results": google_results,
-        "google_429_count": google_429_count,
-        "google_stopped": google_stopped,
-        "google_batch_size": GOOGLE_BATCH_SIZE,
-        "google_batch_pause": GOOGLE_BATCH_PAUSE,
         "source_counts": source_counts,
         "source_errors": source_errors,
         "errors": errors,
@@ -925,8 +801,8 @@ def main():
             "Son taramadan beri yeni "
             "HOT/WARM buyer lead bulunamadı.\n\n"
             f"Tarama: {len(queries)} sorgu\n"
-            f"Reddit sonuçları: "
-            f"{source_counts['Reddit']}\n"
+            f"Exa sonuçları: "
+            f"{source_counts['Exa']}\n"
             f"Google News sonuçları: "
             f"{source_counts['Google News']}\n"
             f"Hata: {errors}"
