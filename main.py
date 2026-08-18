@@ -1,5 +1,6 @@
 import os, re, json, time, hashlib, warnings
 from datetime import datetime, timezone
+from urllib.parse import quote_plus
 import requests
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 from google.cloud import firestore
@@ -8,11 +9,11 @@ from config import COLLECTION, SCAN_LOG_COLLECTION, MAX_RESULTS_PER_SOURCE, INTE
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
-UA = "BAY-S-Lead-Radar/4.6 (+https://github.com/semihselvi)"
-TIMEOUT = 20
+UA = "BAY-S-Lead-Radar/4.5 (+https://github.com/semihselvi)"
+TIMEOUT = 15
 MAX_RESULTS = max(10, min(int(MAX_RESULTS_PER_SOURCE), 20))
 MAX_TELEGRAM_LEADS = 5
-SERPER_URL = "https://google.serper.dev/search"
+NEWS_DELAY = 0.5
 
 S = requests.Session()
 S.headers.update({
@@ -54,82 +55,40 @@ EXCLUDED_GEOGRAPHY = [
     "new zealand","auckland","wellington",
 ]
 
-PROPERTY = [
-    "property","real estate","home","house","apartment","condo","flat","villa",
-    "townhouse","residence","residential","land","mortgage","down payment","deposit",
-    "rental income","rental yield","golden visa","residency by investment","ev",
-    "konut","daire","gayrimenkul","mülk","arsa","kira","квартира","дом",
-    "недвижимость","ипотека","аренда"
-]
-
-BUY_INTENT = [
-    "looking to buy","want to buy","wanting to buy","planning to buy","ready to buy",
-    "thinking of buying","buying a home","buying a house","buying property",
-    "buy an apartment","buy apartment","looking for an apartment","looking for a house",
-    "cash buyer","first time buyer","first-time buyer","first home buyer","property buyer",
-    "looking to purchase","purchase","how much can i afford","ev almak","ev arıyorum",
-    "ev almak istiyorum","satın almak","gayrimenkul almak","yatırım için ev","хочу купить",
-    "ищу квартиру","купить квартиру","купить дом","купить недвижимость","планирую купить",
-    "недвижимость за рубежом","ev sahibi olmak","ev almayı düşünüyorum","ev alacağım",
-    "ev almayı planlıyorum","konut kredisi"
-]
-
-STRONG_INTENT = [
-    "looking to buy","want to buy","planning to buy","ready to buy","looking to purchase",
-    "buying property","buy an apartment","property buyer","cash buyer","ev almak",
-    "satın almak","хочу купить","купить квартиру","купить недвижимость","ev sahibi olmak",
-    "ev almayı düşünüyorum","ev alacağım","ev almayı planlıyorum"
-]
-
-CONCRETE = [
-    "budget","$","€","£","aed","eur","gbp","usd","chf","try","kzt","rub","tl","milyon",
-    "million","mortgage","down payment","deposit","bedroom","1br","2br","3br","1+1",
-    "2+1","3+1","1 bhk","2 bhk","3 bhk","rent","rental income","yield","first home",
-    "moving","relocating","next month","next year","this year","2026","2027","bütçe",
-    "kredi","kapora","kira","taşınmak","peşinat","taksit","konut kredisi","мой бюджет",
-    "ипотека","переезд"
-]
-
-PERSONAL = [
-    " i "," i'm"," i am "," we "," we're"," my "," our "," my family"," for myself",
-    " for me","ben ","biz ","ailem","kendim için","я ","мы ","моя семья","для себя"
-]
-
-AGENCY = [
-    "for my client","for a client","my clients","client looking","buyer client",
-    "real estate agent","estate agent","realtor","broker","developer","property developer",
-    "property listing","listing page","our properties","our project","contact us",
-    "whatsapp us","call us","we sell","available units","new project","commission",
-    "lead generation","marketing agency","property management service",
-    "агентство недвижимости","риэлтор","застройщик","продам","продается","продаю"
-]
+PROPERTY = ["property","real estate","home","house","apartment","condo","flat","villa","townhouse","residence","residential","land","mortgage","down payment","deposit","rental income","rental yield","golden visa","residency by investment","ev","konut","daire","gayrimenkul","mülk","arsa","kira","квартира","дом","недвижимость","ипотека","аренда"]
+BUY_INTENT = ["looking to buy","want to buy","wanting to buy","planning to buy","ready to buy","thinking of buying","buying a home","buying a house","buying property","buy an apartment","buy apartment","looking for an apartment","looking for a house","cash buyer","first time buyer","first-time buyer","first home buyer","property buyer","looking to purchase","purchase","how much can i afford","ev almak","ev arıyorum","ev almak istiyorum","satın almak","gayrimenkul almak","yatırım için ev","хочу купить","ищу квартиру","купить квартиру","купить дом","купить недвижимость","планирую купить","недвижимость за рубежом","ev sahibi olmak","ev almayı düşünüyorum","ev alacağım","ev almayı planlıyorum","konut kredisi"]
+STRONG_INTENT = ["looking to buy","want to buy","planning to buy","ready to buy","looking to purchase","buying property","buy an apartment","property buyer","cash buyer","ev almak","satın almak","хочу купить","купить квартиру","купить недвижимость","ev sahibi olmak","ev almayı düşünüyorum","ev alacağım","ev almayı planlıyorum"]
+CONCRETE = ["budget","$","€","£","aed","eur","gbp","usd","chf","try","kzt","rub","tl","milyon","million","mortgage","down payment","deposit","bedroom","1br","2br","3br","1+1","2+1","3+1","1 bhk","2 bhk","3 bhk","rent","rental income","yield","first home","moving","relocating","next month","next year","this year","2026","2027","bütçe","kredi","kapora","kira","taşınmak","peşinat","taksit","konut kredisi","мой бюджет","ипотека","переезд"]
+PERSONAL = [" i "," i'm"," i am "," we "," we're"," my "," our "," my family"," for myself"," for me","ben ","biz ","ailem","kendim için","я ","мы ","моя семья","для себя"]
+AGENCY = ["for my client","for a client","my clients","client looking","buyer client","real estate agent","estate agent","realtor","broker","developer","property developer","property listing","listing page","our properties","our project","contact us","whatsapp us","call us","we sell","available units","new project","commission","lead generation","marketing agency","property management service","агентство недвижимости","риэлтор","застройщик","продам","продается","продаю"]
 
 SEARCH_QUERIES = [
-    '"ev alacağım" konut bütçe',
-    '"konut kredisi" "ev al"',
-    '"ev almayı düşünüyorum" emlak',
-    '"kira getirisi" ev yatırım',
-    '"ev almak" emlak Türkiye',
-    '"konut kredisi" ev Türkiye',
-    '"yatırım için" daire bütçe',
-    '"ev satın almak" gayrimenkul',
-    '"ev almak istiyorum" bütçe',
-    '"yatırım için ev" kira',
-    '"property in Northern Cyprus"',
-    '"buying property in Cyprus"',
-    '"buying property in Turkey"',
-    '"property" Cyprus holiday home',
-    '"buying" "North Cyprus"',
-    '"holiday home" Cyprus property',
-    '"property abroad" buying',
-    '"buying property abroad" budget',
-    '"mortgage" "property abroad"',
-    '"buying property" overseas',
+    'site:forum.donanimhaber.com "ev alacağım" konut',
+    'site:forum.donanimhaber.com "konut kredisi" "ev al"',
+    'site:forum.donanimhaber.com "ev almayı düşünüyorum"',
+    'site:forum.donanimhaber.com "kira getirisi" ev yatırım',
+    'site:technopat.net/sosyal "ev almak" emlak',
+    'site:technopat.net/sosyal "konut kredisi" ev',
+    'site:technopat.net/sosyal "yatırım için" daire',
+    'site:r10.net "ev satın almak" gayrimenkul',
+    'site:r10.net "ev almak istiyorum"',
+    'site:r10.net "yatırım için ev"',
+    'site:expat.com/en/forum "property in Northern Cyprus"',
+    'site:expat.com/en/forum "buying property in Cyprus"',
+    'site:expat.com/en/forum "buying property in Turkey"',
+    'site:britishexpats.com/forum "property" Cyprus',
+    'site:britishexpats.com/forum "buying" "North Cyprus"',
+    'site:britishexpats.com/forum "holiday home" Cyprus',
+    'site:forums.moneysavingexpert.com "property abroad" buying',
+    'site:forums.moneysavingexpert.com "buying property abroad" budget',
+    'site:forums.moneysavingexpert.com "mortgage" "property abroad"',
+    'site:forums.moneysavingexpert.com "buying property" overseas',
     '"Kıbrıs" "ev almak" bütçe',
     '"Kuzey Kıbrıs" "ev almak"',
     '"Türkiye" "ev almak istiyorum" bütçe',
     '"gayrimenkul yatırımı" "bütçe"',
 ]
+
 NEWS_QUERIES = [
     '"Kuzey Kıbrıs" "ev almak"',
     '"Kuzey Kıbrıs" gayrimenkul yatırım',
@@ -211,25 +170,9 @@ def excluded_geo(value):
     v = value.lower()
     return any(t in v for t in EXCLUDED_GEOGRAPHY)
 
-ALLOWED_DOMAINS = {
-    "forum.donanimhaber.com",
-    "technopat.net",
-    "r10.net",
-    "expat.com",
-    "britishexpats.com",
-    "forums.moneysavingexpert.com",
-}
-
-def domain_allowed(url):
-    u = (url or "").lower()
-    return any(
-        d in u
-        for d in ALLOWED_DOMAINS
-    )
-
-def valid(item):
+def valid(item, source):
     value = text(item)
-    if len(value) < 90:
+    if len(value) < 100:
         return False, "too_short"
     if not has(value, PROPERTY):
         return False, "no_property"
@@ -242,19 +185,11 @@ def valid(item):
     if not has(value, CONCRETE) and not has(value, PERSONAL):
         return False, "no_concrete_or_personal"
     market = market_for(value)
-    overseas = has(value, [
-        "abroad","overseas","relocat","moving to","cyprus","north cyprus",
-        "northern cyprus","greece","portugal","spain","turkey","golden visa",
-        "residency by investment","недвижимость за рубежом"
-    ])
+    overseas = has(value, ["abroad","overseas","relocat","moving to","cyprus","north cyprus","northern cyprus","greece","portugal","spain","turkey","golden visa","residency by investment","недвижимость за рубежом"])
     strong = has(value, STRONG_INTENT)
-    if not strong:
+    if not strong and source != "Google Search":
         return False, "weak_intent"
-    if market == "unknown" and not overseas and not has(value, [
-        "property investment","investment property","rental income","rental yield",
-        "golden visa","residency by investment","buying property abroad",
-        "konut kredisi","ev almak","ev almayı düşünüyorum"
-    ]):
+    if market == "unknown" and not overseas and not has(value, ["property investment","investment property","rental income","rental yield","golden visa","residency by investment","buying property abroad","konut kredisi","ev almak","ev almayı düşünüyorum"]):
         return False, "no_target_market"
     return True, "ok"
 
@@ -267,92 +202,57 @@ def score(item, market):
     concrete = has(value, CONCRETE)
     personal = has(value, PERSONAL)
     target = market != "unknown"
-    abroad = has(value, [
-        "abroad","overseas","relocat","moving to","golden visa",
-        "residency by investment","north cyprus","northern cyprus","cyprus"
-    ])
+    abroad = has(value, ["abroad","overseas","relocat","moving to","golden visa","residency by investment","north cyprus","northern cyprus","cyprus"])
 
-    intent = min(100, 40 + strong_hits*8 + min(intent_hits*3,12) +
-                 (12 if has_budget else 0) + (10 if has_time else 0) +
-                 (8 if personal else 0) + (10 if abroad else 0))
-
-    credibility = min(100, 50 + (18 if personal else 0) +
-                      (14 if has_budget else 0) + (8 if has_time else 0) +
-                      (8 if concrete else 0) + (7 if len(value) >= 400 else 0))
-
-    forum_bonus = 8 if domain_allowed(item.get("url","")) else 0
-    fit = 35 + (30 if target else 0) + (25 if market == "north_cyprus" else 0) + \
-          (15 if market in {"turkey","greece","portugal","spain"} else 0) + \
-          (10 if abroad else 0) + (10 if has_budget else 0) + forum_bonus
+    intent = min(100, 40 + strong_hits*8 + min(intent_hits*3,12) + (12 if has_budget else 0) + (10 if has_time else 0) + (8 if personal else 0) + (10 if abroad else 0))
+    credibility = min(100, 50 + (18 if personal else 0) + (14 if has_budget else 0) + (8 if has_time else 0) + (8 if concrete else 0) + (7 if len(value) >= 400 else 0))
+    fit = 35 + (30 if target else 0) + (25 if market == "north_cyprus" else 0) + (15 if market in {"turkey","greece","portugal","spain"} else 0) + (10 if abroad else 0) + (10 if has_budget else 0)
     fit = min(100, fit)
-
     if market == "north_cyprus" and intent >= 80 and credibility >= 75:
         cls = "HOT"
     elif intent >= 72 and credibility >= 68 and fit >= 50:
         cls = "WARM"
     else:
         cls = "REVIEW"
-
     return intent, credibility, fit, cls
 
-def serper_search(query):
-    api_key = os.getenv("SERPER_API_KEY")
-    if not api_key:
-        raise RuntimeError("SERPER_API_KEY missing")
-
+def search_web(query):
+    url = "https://www.google.com/search?q=" + quote_plus(query) + "&num=10&hl=en"
     try:
-        r = S.post(
-            SERPER_URL,
-            headers={
-                "X-API-KEY": api_key.strip(),
-                "Content-Type": "application/json",
-            },
-            json={
-                "q": query,
-                "num": MAX_RESULTS,
-            },
-            timeout=TIMEOUT,
-        )
-
-        if r.status_code != 200:
-            # Serper returns the exact reason in the response body.
-            # Print only the API error message, never the API key.
-            try:
-                detail = r.json()
-            except ValueError:
-                detail = {"raw": r.text[:500]}
-            print(
-                f"SERPER_HTTP_{r.status_code}: "
-                f"{detail}"
-            )
-            return [], 1
-
-        data = r.json()
+        r = S.get(url, timeout=TIMEOUT)
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, "html.parser")
         rows = []
-
-        for result in data.get("organic", [])[:MAX_RESULTS]:
+        seen_urls = set()
+        for result in soup.select("div.MjjYud, div.g"):
+            a = result.find("a", href=True)
+            h = result.find(["h3"])
+            if not a or not h:
+                continue
+            href = a["href"]
+            if not href.startswith("http"):
+                continue
+            if href in seen_urls:
+                continue
+            seen_urls.add(href)
+            title = h.get_text(" ", strip=True)
+            container = result.get_text(" ", strip=True)
             rows.append({
-                "source": "Serper",
-                "url": result.get("link",""),
-                "title": result.get("title",""),
-                "text": result.get("snippet",""),
-                "published": result.get("date",""),
+                "source": "Google Search",
+                "url": href,
+                "title": title[:300],
+                "text": container[:5000],
+                "published": "",
                 "author": "",
             })
-
         return rows, 0
-
     except requests.RequestException as exc:
-        print(f"SERPER_ERROR: {exc}")
+        print(f"GOOGLE_SEARCH_ERROR: {exc}")
         return [], 1
 
 def google_news_search(query):
     try:
-        r = S.get(
-            "https://news.google.com/rss/search",
-            params={"q":query+" when:1d","hl":"en-US","gl":"US","ceid":"US:en"},
-            timeout=TIMEOUT,
-        )
+        r = S.get("https://news.google.com/rss/search", params={"q":query+" when:1d","hl":"en-US","gl":"US","ceid":"US:en"}, timeout=TIMEOUT)
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
         rows = []
@@ -378,11 +278,7 @@ def telegram(message):
         print("TELEGRAM_NOT_CONFIGURED")
         return
     try:
-        r=S.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            json={"chat_id":chat,"text":message,"disable_web_page_preview":False},
-            timeout=10,
-        )
+        r=S.post(f"https://api.telegram.org/bot{token}/sendMessage",json={"chat_id":chat,"text":message,"disable_web_page_preview":False},timeout=10)
         r.raise_for_status()
     except requests.RequestException as exc:
         print(f"TELEGRAM_ERROR: {exc}")
@@ -411,27 +307,21 @@ def process_rows(rows, db, seen, leads, rejected, errors, started):
         if key in seen:
             continue
         seen.add(key)
-
-        ok, reason = valid(item)
+        ok, reason = valid(item, item.get("source",""))
         if not ok:
             rejected[reason]=rejected.get(reason,0)+1
             continue
-
         value=text(item)
         market=market_for(value)
         intent,cred,fit,classification=score(item, market)
-
         if classification not in {"HOT","WARM"}:
             rejected["low_score"]=rejected.get("low_score",0)+1
             continue
-
         ref=db.collection(COLLECTION).document(key)
-
         try:
             if ref.get().exists:
                 print(f"EXISTING_LEAD: {key}")
                 continue
-
             lead={
                 **item,
                 "lead_id":key,
@@ -444,92 +334,44 @@ def process_rows(rows, db, seen, leads, rejected, errors, started):
                 "credibility_score":cred,
                 "market_fit_score":fit,
                 "classification":classification,
-                "route_to":MARKETS.get(
-                    market,
-                    ("", ROUTES.get(market,"Direct Review"))
-                )[1],
+                "route_to":MARKETS.get(market,("",ROUTES.get(market,"Direct Review")))[1],
                 "found_at":started.isoformat(),
             }
-
             ref.set(lead)
             leads.append(lead)
-
-            print(
-                f"NEW_LEAD: {classification} | "
-                f"{item.get('source')} | "
-                f"{market} | {item['url']}"
-            )
-
+            print(f"NEW_LEAD: {classification} | {item.get('source')} | {market} | {item['url']}")
         except Exception as exc:
             errors["Firestore"]+=1
             print(f"FIRESTORE_ERROR: {exc}")
 
 def main():
     started=datetime.now(timezone.utc)
-    print("BAY-S LEAD RADAR V4.6.2 STARTED")
-
+    print("BAY-S LEAD RADAR V4.5 STARTED")
     db=db_client()
+
     seen=set()
     leads=[]
     rejected={}
-
-    errors={
-        "Serper":0,
-        "Google News":0,
-        "Firestore":0,
-    }
-
-    counts={
-        "Serper":0,
-        "Google News":0,
-    }
-
-    print(f"SERPER_QUERY_COUNT: {len(SEARCH_QUERIES)}")
+    errors={"Google Search":0,"Google News":0,"Firestore":0}
+    counts={"Google Search":0,"Google News":0}
 
     for i, query in enumerate(SEARCH_QUERIES, 1):
-        print(f"[SERPER {i}/{len(SEARCH_QUERIES)}] {query}")
-
-        rows, err = serper_search(query)
-
-        counts["Serper"] += len(rows)
-        errors["Serper"] += err
-
-        process_rows(
-            rows,
-            db,
-            seen,
-            leads,
-            rejected,
-            errors,
-            started,
-        )
-
-        time.sleep(0.25)
-
-    print(f"NEWS_QUERY_COUNT: {len(NEWS_QUERIES)}")
+        print(f"[SEARCH {i}/{len(SEARCH_QUERIES)}] {query}")
+        rows, err = search_web(query)
+        counts["Google Search"] += len(rows)
+        errors["Google Search"] += err
+        process_rows(rows, db, seen, leads, rejected, errors, started)
+        time.sleep(0.4)
 
     for i, query in enumerate(NEWS_QUERIES, 1):
         print(f"[NEWS {i}/{len(NEWS_QUERIES)}] {query}")
-
         rows, err = google_news_search(query)
-
         counts["Google News"] += len(rows)
         errors["Google News"] += err
-
-        process_rows(
-            rows,
-            db,
-            seen,
-            leads,
-            rejected,
-            errors,
-            started,
-        )
-
-        time.sleep(0.5)
+        process_rows(rows, db, seen, leads, rejected, errors, started)
+        time.sleep(NEWS_DELAY)
 
     finished=datetime.now(timezone.utc)
-
     scan={
         "started_at":started.isoformat(),
         "completed_at":finished.isoformat(),
@@ -541,49 +383,30 @@ def main():
         "rejected":rejected,
         "search_queries":len(SEARCH_QUERIES),
         "news_queries":len(NEWS_QUERIES),
-        "mode":"serper_web_search",
+        "mode":"web_search_first",
     }
 
     try:
-        db.collection(
-            SCAN_LOG_COLLECTION
-        ).document(
-            started.strftime("%Y%m%dT%H%M%SZ")
-        ).set(scan)
+        db.collection(SCAN_LOG_COLLECTION).document(started.strftime("%Y%m%dT%H%M%SZ")).set(scan)
     except Exception as exc:
         print(f"SCAN_LOG_ERROR: {exc}")
 
-    print(
-        json.dumps(
-            scan,
-            ensure_ascii=False,
-            indent=2,
-        )
-    )
+    print(json.dumps(scan,ensure_ascii=False,indent=2))
 
-    leads.sort(
-        key=lambda x: (
-            0 if x["classification"]=="HOT" else 1,
-            -x["intent_score"],
-            -x["credibility_score"],
-            -x["market_fit_score"],
-        )
-    )
-
+    leads.sort(key=lambda x:(0 if x["classification"]=="HOT" else 1,-x["intent_score"],-x["credibility_score"],-x["market_fit_score"]))
     if leads:
         for lead in leads[:MAX_TELEGRAM_LEADS]:
             telegram(format_lead(lead))
     else:
         telegram(
-            "ℹ️ BAY-S RADAR V4.6.1\n\n"
+            "ℹ️ BAY-S RADAR V4.5\n\n"
             "Tarama tamamlandı.\n"
             "Yeni HOT/WARM buyer lead bulunamadı.\n\n"
-            f"Serper sonuçları: {counts['Serper']}\n"
+            f"Google Search sonuçları: {counts['Google Search']}\n"
             f"Google News sonuçları: {counts['Google News']}\n"
             "Yeni lead: 0"
         )
-
-    print("BAY-S LEAD RADAR V4.6.2 FINISHED")
+    print("BAY-S LEAD RADAR V4.5 FINISHED")
 
 if __name__=="__main__":
     main()
