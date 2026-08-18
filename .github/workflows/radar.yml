@@ -1,38 +1,57 @@
-name: BAY-S Lead Radar
-
-"on":
-  workflow_dispatch:
-  schedule:
-    - cron: "25 0 * * *"
-    - cron: "25 6 * * *"
-    - cron: "25 12 * * *"
-    - cron: "25 18 * * *"
-
-jobs:
-  radar:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Run BAY-S Radar
+      - name: Restore Telegram session
         env:
-          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
-          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
-        run: python main.py
+          TELEGRAM_SESSION_01: ${{ secrets.TELEGRAM_SESSION_01 }}
+          TELEGRAM_SESSION_02: ${{ secrets.TELEGRAM_SESSION_02 }}
+          TELEGRAM_SESSION_03: ${{ secrets.TELEGRAM_SESSION_03 }}
+          TELEGRAM_SESSION_04: ${{ secrets.TELEGRAM_SESSION_04 }}
+          TELEGRAM_SESSION_05: ${{ secrets.TELEGRAM_SESSION_05 }}
+          TELEGRAM_SESSION_06: ${{ secrets.TELEGRAM_SESSION_06 }}
+          TELEGRAM_SESSION_07: ${{ secrets.TELEGRAM_SESSION_07 }}
+          TELEGRAM_SESSION_08: ${{ secrets.TELEGRAM_SESSION_08 }}
+        run: |
+          python - <<'PY'
+          import os
+          import base64
+          import gzip
+          from pathlib import Path
+
+          parts = []
+
+          for i in range(1, 9):
+              value = os.environ.get(
+                  f"TELEGRAM_SESSION_{i:02d}",
+                  ""
+              ).strip()
+
+              if value:
+                  parts.append(value)
+
+          if not parts:
+              raise SystemExit(
+                  "TELEGRAM_SESSION parçaları bulunamadı."
+              )
+
+          encoded = "".join(parts)
+          compressed = base64.b64decode(encoded)
+          session_data = gzip.decompress(compressed)
+
+          session_dir = Path("telegram_radar_session")
+          session_dir.mkdir(
+              parents=True,
+              exist_ok=True
+          )
+
+          session_file = (
+              session_dir /
+              "radar_session.session"
+          )
+
+          session_file.write_bytes(session_data)
+
+          print(
+              "Telegram session restored:",
+              session_file,
+              "bytes=",
+              len(session_data)
+          )
+          PY
