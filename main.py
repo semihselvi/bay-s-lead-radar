@@ -299,40 +299,21 @@ def send_telegram(message):
 def format_lead(lead):
     emoji = "🔥" if lead["classification"] == "HOT" else "🟠"
     return (
-        f"{emoji} BAY-S RADAR — {lead['classification']}
-
-"
-        f"Source: {lead['source']}
-"
-        f"Author: {lead.get('author') or 'Not stated'}
-"
-        f"Language: {lead['language']}
-"
-        f"Market: {lead['market']}
-"
-        f"City/Region: {lead['city_region']}
-
-"
-        f"What they want:
-{lead['title']}
-
-"
-        f"Budget: {lead['budget']}
-"
-        f"Timeframe: {lead['timeframe']}
-"
-        f"Intent: {lead['intent_score']}/100
-"
-        f"Credibility: {lead['credibility_score']}/100
-"
-        f"Market Fit: {lead['market_fit_score']}/100
-"
-        f"Route To: {lead['route_to']}
-
-"
+        f"{emoji} BAY-S RADAR — {lead['classification']}\n\n"
+        f"Source: {lead['source']}\n"
+        f"Author: {lead.get('author') or 'Not stated'}\n"
+        f"Language: {lead['language']}\n"
+        f"Market: {lead['market']}\n"
+        f"City/Region: {lead['city_region']}\n\n"
+        f"What they want:\n{lead['title']}\n\n"
+        f"Budget: {lead['budget']}\n"
+        f"Timeframe: {lead['timeframe']}\n"
+        f"Intent: {lead['intent_score']}/100\n"
+        f"Credibility: {lead['credibility_score']}/100\n"
+        f"Market Fit: {lead['market_fit_score']}/100\n"
+        f"Route To: {lead['route_to']}\n\n"
         f"🔗 {lead['url']}"
     )
-
 def process_rows(rows, db, seen, leads, rejected, errors, started):
     for item in rows:
         if not item.get("url"):
@@ -466,23 +447,14 @@ def main():
             send_telegram(format_lead(lead))
     else:
         send_telegram(
-            "ℹ️ BAY-S RADAR
-
-"
-            "Tarama tamamlandı.
-"
-            "Yeni HOT/WARM buyer lead bulunamadı.
-
-"
-            f"Reddit sonuçları: {source['Reddit']}
-"
-            f"Google News sonuçları: {source['Google News']}
-"
-            f"Yeni lead: 0
-"
+            "ℹ️ BAY-S RADAR\n\n"
+            "Tarama tamamlandı.\n"
+            "Yeni HOT/WARM buyer lead bulunamadı.\n\n"
+            f"Reddit sonuçları: {source['Reddit']}\n"
+            f"Google News sonuçları: {source['Google News']}\n"
+            "Yeni lead: 0\n"
             f"Reddit 429: {reddit_429}"
         )
-
     print("BAY-S LEAD RADAR V4.2 FINISHED")
 
 if __name__ == "__main__":
