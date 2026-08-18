@@ -1126,7 +1126,7 @@ def main():
     queries = build_queries()
 
     print(
-        f"BAY-S RADAR V4.5.4-UNIFIED STARTED | "
+        f"BAY-S RADAR V4.5.4.1-UNIFIED STARTED | "
         f"queries={len(queries)}"
     )
 
@@ -1316,17 +1316,36 @@ def main():
     # TELEGRAM BUYER RADAR
     # -----------------------------------------------------
 
-    telegram_scan = asyncio.run(
-        telegram_buyer_scan(
-            client,
-            started,
-        )
-    )
+    telegram_scan = {
+        "status": "not_started",
+        "groups": 0,
+        "messages": 0,
+        "hot_warm": 0,
+        "errors": 0,
+        "new_leads": [],
+    }
 
-    telegram_new = telegram_scan.get(
-        "new_leads",
-        [],
-    )
+    telegram_new = []
+
+    try:
+        telegram_scan = asyncio.run(
+            telegram_buyer_scan(
+                client,
+                started,
+            )
+        )
+
+        telegram_new = telegram_scan.get(
+            "new_leads",
+            [],
+        )
+
+    except Exception as exc:
+        errors += 1
+        print(
+            f"TELEGRAM_RADAR_ERROR "
+            f"{type(exc).__name__}: {exc}"
+        )
 
     # -----------------------------------------------------
     # SCAN LOG
