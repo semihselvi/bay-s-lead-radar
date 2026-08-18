@@ -212,6 +212,13 @@ FORUM_DOMAINS = {
     "reddit.com",
 }
 
+EXCLUDED_MARKETS = [
+    "usa", "united states", "united states of america", "america",
+    "canada", "toronto", "vancouver",
+    "australia", "sydney", "melbourne", "brisbane", "perth",
+    "new zealand", "auckland", "wellington",
+]
+
 LISTING_NOISE = [
     "for rent", "for sale", "property listing", "listing type",
     "property id", "get catalogue", "download brochure", "enquire now",
@@ -232,6 +239,16 @@ PERSONAL_BUYER = [
     "хочу купить", "ищу квартиру", "мой бюджет",
 ]
 
+NEGATIVE_BUYER_STATUS = [
+    "already bought", "we bought", "i bought", "bought elsewhere",
+    "decided against", "decided not to buy", "not buying",
+    "no longer looking", "not looking anymore", "renting instead",
+    "found a property", "found another property", "purchase completed",
+    "already purchased", "we decided not to", "karar verdik",
+    "almaktan vazgeç", "satın aldım", "aldık", "artık aramıyorum",
+    "artık düşünmüyorum", "купил", "купили", "передумал",
+]
+
 def looks_like_listing(item):
     t = (
         item.get("title", "")
@@ -248,6 +265,43 @@ def looks_like_personal_buyer(item):
         + item.get("text", "")
     ).lower()
     return any(p in t for p in PERSONAL_BUYER)
+
+def looks_like_negative_buyer(item):
+    t = (
+        item.get("title", "")
+        + " "
+        + item.get("text", "")
+    ).lower()
+    return any(
+        phrase in t
+        for phrase in NEGATIVE_BUYER_STATUS
+    )
+
+def is_recent_enough(item, days=90):
+    published = item.get("published", "")
+    if not published:
+        # Some forum results do not expose a publish date.
+        # Keep them for the next semantic/negative filter rather than guessing.
+        return True
+
+    try:
+        from datetime import datetime, timezone, timedelta
+        value = published.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        return dt >= cutoff
+    except Exception:
+        return True
+
+def is_excluded_market(item):
+    t = (
+        item.get("title", "")
+        + " "
+        + item.get("text", "")
+    ).lower()
+    return any(term in t for term in EXCLUDED_MARKETS)
 
 def exa_search(query, include_domains=None):
     api_key = os.environ.get("EXA_API_KEY")
@@ -306,30 +360,57 @@ def exa_search(query, include_domains=None):
 # ---------------------------------------------------------
 
 def build_queries():
+    # Balanced international buyer radar.
+    # Excludes USA, Canada, Australia, New Zealand.
     return [
-        ("North Cyprus buying property personal buyer", ["expat.com", "britishexpats.com", "reddit.com"]),
+        # NORTH CYPRUS / CYPRUS
+        ("North Cyprus buying property personal buyer budget", ["expat.com", "britishexpats.com", "reddit.com"]),
         ("North Cyprus looking to buy apartment personal budget", ["expat.com", "britishexpats.com", "reddit.com"]),
         ("North Cyprus moving buying home personal experience", ["expat.com", "britishexpats.com", "reddit.com"]),
-        ("Kuzey Kıbrıs ev almak istiyorum bütçe", ["forum.donanimhaber.com", "technopat.net", "r10.net"]),
-        ("Kuzey Kıbrıs gayrimenkul yatırım düşünüyorum", ["expat.com", "reddit.com"]),
-        ("North Cyprus property buyer question lawyer title", ["expat.com", "britishexpats.com", "reddit.com"]),
+        ("buying property Northern Cyprus personal budget", ["expat.com", "britishexpats.com", "reddit.com"]),
+        ("buying property Cyprus expat personal buyer", ["expat.com", "britishexpats.com", "reddit.com"]),
+        ("Cyprus holiday home personal buyer budget", ["britishexpats.com", "expat.com", "reddit.com"]),
+
+        # TURKEY / TURKISH
         ("Türkiye ev alacağım bütçe konut kredisi", ["forum.donanimhaber.com", "technopat.net", "r10.net"]),
         ("Türkiye ev almayı düşünüyorum yatırım kira", ["forum.donanimhaber.com", "technopat.net", "r10.net"]),
         ("Türkiye hangi şehirden ev almalıyım yatırım", ["forum.donanimhaber.com", "technopat.net", "r10.net"]),
         ("Türkiye 1+1 2+1 ev alacağım bütçem", ["forum.donanimhaber.com", "technopat.net", "r10.net"]),
-        ("Türkiye taşınacağım ev satın almak istiyorum", ["forum.donanimhaber.com", "technopat.net", "r10.net"]),
-        ("Türkiye yurtdışından ev alma expat personal", ["expat.com", "reddit.com"]),
-        ("buying property in Cyprus personal budget question", ["expat.com", "britishexpats.com", "reddit.com"]),
-        ("buying property in Turkey personal budget question", ["expat.com", "reddit.com"]),
-        ("buying property abroad personal budget mortgage", ["forums.moneysavingexpert.com", "expat.com", "reddit.com"]),
-        ("holiday home Cyprus personal buyer question", ["britishexpats.com", "expat.com", "reddit.com"]),
-        ("moving to Cyprus buying a home personal experience", ["expat.com", "britishexpats.com", "reddit.com"]),
+        ("buying property in Turkey personal buyer budget", ["expat.com", "reddit.com", "britishexpats.com"]),
+
+        # UK
+        ("UK buyer looking to buy property abroad personal budget", ["britishexpats.com", "forums.moneysavingexpert.com", "reddit.com"]),
+        ("British buyer looking to buy Cyprus property personal", ["britishexpats.com", "expat.com", "reddit.com"]),
+        ("UK holiday home abroad buying personal budget", ["forums.moneysavingexpert.com", "britishexpats.com", "reddit.com"]),
+
+        # GERMANY
+        ("German buyer looking to buy property abroad personal budget", ["expat.com", "reddit.com"]),
+        ("Germany moving buying property personal budget", ["expat.com", "reddit.com"]),
+        ("German expat buying Cyprus Turkey property personal", ["expat.com", "reddit.com"]),
+
+        # NETHERLANDS
+        ("Dutch buyer looking to buy property abroad personal budget", ["expat.com", "reddit.com"]),
+        ("Netherlands moving buying property personal budget", ["expat.com", "reddit.com"]),
+        ("Dutch expat buying Cyprus Turkey property personal", ["expat.com", "reddit.com"]),
+
+        # FRANCE
+        ("French buyer looking to buy property abroad personal budget", ["expat.com", "reddit.com"]),
+        ("France moving buying property personal budget", ["expat.com", "reddit.com"]),
+        ("French expat buying Cyprus Turkey property personal", ["expat.com", "reddit.com"]),
+
+        # RUSSIA / KAZAKHSTAN
+        ("Russian buyer looking to buy property abroad personal budget", ["reddit.com", "expat.com"]),
+        ("русский хочет купить недвижимость за рубежом бюджет", ["reddit.com", "expat.com"]),
+        ("Russian buyer Cyprus Turkey property personal", ["reddit.com", "expat.com"]),
+        ("Kazakh buyer looking to buy property abroad personal budget", ["reddit.com", "expat.com"]),
+        ("казахстанец хочет купить недвижимость за рубежом бюджет", ["reddit.com", "expat.com"]),
+        ("Kazakhstan buyer Cyprus Turkey property personal", ["reddit.com", "expat.com"]),
+
+        # SOUTHERN EUROPE / GOLDEN VISA
         ("Greece property personal buyer budget relocation", ["expat.com", "reddit.com"]),
         ("Portugal property personal buyer budget relocation", ["expat.com", "reddit.com"]),
-        ("Golden Visa property personal buyer budget Greece Portugal", ["expat.com", "reddit.com"]),
-        ("Germany property personal buyer moving budget", ["expat.com", "reddit.com"]),
-        ("Netherlands property personal buyer moving budget", ["expat.com", "reddit.com"]),
-        ("France property personal buyer moving budget", ["expat.com", "reddit.com"]),
+        ("Spain property personal buyer budget relocation", ["expat.com", "reddit.com"]),
+        ("Golden Visa property personal buyer budget Greece Portugal Spain", ["expat.com", "reddit.com"]),
     ]
 
 
@@ -574,7 +655,7 @@ def main():
     queries = build_queries()
 
     print(
-        f"BAY-S RADAR V4.5.1-QUALITY STARTED | "
+        f"BAY-S RADAR V4.5.3-INTERNATIONAL STARTED | "
         f"queries={len(queries)}"
     )
 
@@ -643,6 +724,15 @@ def main():
                     continue
 
                 if not looks_like_personal_buyer(item):
+                    continue
+
+                if is_excluded_market(item):
+                    continue
+
+                if looks_like_negative_buyer(item):
+                    continue
+
+                if not is_recent_enough(item, 90):
                     continue
 
                 intent, credibility, fit, classification = score(
@@ -765,7 +855,7 @@ def main():
         "status": "completed",
         "queries": len(queries),
         "exa_results_per_query": 5,
-        "quality_gate": "personal_buyer_and_no_listing_noise",
+        "quality_gate": "balanced_markets_personal_buyer_excluded_markets_no_listing_negative_status_90d",
         "unique_results": len(seen),
         "new_hot_warm": len(candidates),
         "source_counts": source_counts,
