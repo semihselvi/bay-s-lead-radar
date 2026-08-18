@@ -1118,7 +1118,6 @@ async def telegram_buyer_scan(db_client, started):
                         "budget_detected": bool(budget),
                         "buyer_matches": buy,
                         "context_matches": context_matches,
-                        "context_matches": context,
                         "weak_matches": weak,
                         "seller_matches": sell,
                         "rent_matches": rent,
@@ -1189,7 +1188,7 @@ def main():
     queries = build_queries()
 
     print(
-        f"BAY-S RADAR V4.5.5.1-UNIFIED STARTED | "
+        f"BAY-S RADAR V4.5.5.2-UNIFIED STARTED | "
         f"queries={len(queries)}"
     )
 
