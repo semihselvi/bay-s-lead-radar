@@ -1089,7 +1089,7 @@ async def telegram_buyer_scan(db_client, started):
         "telegram_groups": telegram_scan.get("groups", 0),
         "telegram_messages_scanned": telegram_scan.get("messages", 0),
         "telegram_new_hot_warm": telegram_scan.get("hot_warm", 0),
-        "telegram_status": telegram_scan.get("status", ""),
+        "telegram_status": telegram_scan.get("status", "error"),
             "new_leads": results,
         }
 
@@ -1126,7 +1126,7 @@ def main():
     queries = build_queries()
 
     print(
-        f"BAY-S RADAR V4.5.4.1-UNIFIED STARTED | "
+        f"BAY-S RADAR V4.5.4.2-UNIFIED STARTED | "
         f"queries={len(queries)}"
     )
 
@@ -1325,8 +1325,6 @@ def main():
         "new_leads": [],
     }
 
-    telegram_new = []
-
     try:
         telegram_scan = asyncio.run(
             telegram_buyer_scan(
@@ -1334,18 +1332,25 @@ def main():
                 started,
             )
         )
-
-        telegram_new = telegram_scan.get(
-            "new_leads",
-            [],
-        )
-
     except Exception as exc:
         errors += 1
         print(
             f"TELEGRAM_RADAR_ERROR "
             f"{type(exc).__name__}: {exc}"
         )
+        telegram_scan = {
+            "status": "error",
+            "groups": 0,
+            "messages": 0,
+            "hot_warm": 0,
+            "errors": 1,
+            "new_leads": [],
+        }
+
+    telegram_new = telegram_scan.get(
+        "new_leads",
+        [],
+    )
 
     # -----------------------------------------------------
     # SCAN LOG
@@ -1364,7 +1369,10 @@ def main():
         "quality_gate": "balanced_markets_personal_buyer_excluded_markets_no_listing_negative_status_90d",
         "unique_results": len(seen),
         "new_hot_warm": len(candidates),
-        "source_counts": source_counts,
+        "source_counts": {
+            **source_counts,
+            "Telegram": telegram_scan.get("hot_warm", 0),
+        },
         "source_errors": source_errors,
         "errors": errors,
     }
