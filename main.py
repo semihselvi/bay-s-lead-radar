@@ -202,20 +202,72 @@ def google_news(query):
 # EXA WEB SEARCH
 # ---------------------------------------------------------
 
-def exa_search(query):
+FORUM_DOMAINS = {
+    "expat.com",
+    "britishexpats.com",
+    "forum.donanimhaber.com",
+    "technopat.net",
+    "r10.net",
+    "forums.moneysavingexpert.com",
+    "reddit.com",
+}
+
+LISTING_NOISE = [
+    "for rent", "for sale", "property listing", "listing type",
+    "property id", "get catalogue", "download brochure", "enquire now",
+    "contact us", "leave your details", "one of our property consultants",
+    "our properties", "our projects", "available units", "developer",
+    "real estate agency", "estate agency", "property agency",
+    "realtor", "broker", "we sell", "commission", "property management",
+]
+
+PERSONAL_BUYER = [
+    "i am looking", "i'm looking", "i want to buy", "i want to purchase",
+    "i'm looking to buy", "i am looking to buy", "i'm thinking of buying",
+    "i am thinking of buying", "i'm planning to buy", "i am planning to buy",
+    "we are looking", "we're looking", "we want to buy", "my budget",
+    "our budget", "looking for an apartment", "looking for a house",
+    "looking for property", "ev alacağım", "ev almak istiyorum",
+    "ev almayı düşünüyorum", "bütçem", "yatırım için ev",
+    "хочу купить", "ищу квартиру", "мой бюджет",
+]
+
+def looks_like_listing(item):
+    t = (
+        item.get("title", "")
+        + " "
+        + item.get("text", "")
+    ).lower()
+    hits = sum(p in t for p in LISTING_NOISE)
+    return hits >= 2
+
+def looks_like_personal_buyer(item):
+    t = (
+        item.get("title", "")
+        + " "
+        + item.get("text", "")
+    ).lower()
+    return any(p in t for p in PERSONAL_BUYER)
+
+def exa_search(query, include_domains=None):
     api_key = os.environ.get("EXA_API_KEY")
     if not api_key:
         raise RuntimeError("EXA_API_KEY missing")
 
+    payload = {
+        "query": query,
+        "type": "auto",
+        "numResults": 5,
+        "contents": {"text": True},
+    }
+
+    if include_domains:
+        payload["includeDomains"] = include_domains
+
     try:
         r = requests.post(
             "https://api.exa.ai/search",
-            json={
-                "query": query,
-                "type": "auto",
-                "numResults": MAX_RESULTS_PER_SOURCE,
-                "contents": {"text": True},
-            },
+            json=payload,
             headers={
                 "x-api-key": api_key.strip(),
                 "Content-Type": "application/json",
@@ -232,96 +284,53 @@ def exa_search(query):
             return []
 
         data = r.json()
-        out = []
-
-        for item in data.get("results", [])[:MAX_RESULTS_PER_SOURCE]:
-            out.append({
+        return [
+            {
                 "source": "Exa",
-                "url": item.get("url", ""),
-                "title": item.get("title", ""),
-                "text": item.get("text", ""),
-                "published": item.get("publishedDate", ""),
+                "url": x.get("url", ""),
+                "title": x.get("title", ""),
+                "text": x.get("text", ""),
+                "published": x.get("publishedDate", ""),
                 "author": "",
-            })
-
-        return out
+            }
+            for x in data.get("results", [])[:5]
+        ]
 
     except Exception as e:
         print(f"EXA_ERROR query={query} error={e}")
         return []
+
 
 # ---------------------------------------------------------
 # QUERY BUILDER
 # ---------------------------------------------------------
 
 def build_queries():
-
-    queries = []
-
-    # Ana buyer intent kümeleri.
-    intent_groups = [
-        '"looking to buy" property',
-        '"looking for" apartment house',
-        '"want to buy" property',
-        '"buying a home" budget',
-        '"property investment" budget',
-        '"moving" "buying a home"',
-        '"relocating" "buying property"',
-        '"Golden Visa" property',
-        '"residency by investment" property',
+    return [
+        ("North Cyprus buying property personal buyer", ["expat.com", "britishexpats.com", "reddit.com"]),
+        ("North Cyprus looking to buy apartment personal budget", ["expat.com", "britishexpats.com", "reddit.com"]),
+        ("North Cyprus moving buying home personal experience", ["expat.com", "britishexpats.com", "reddit.com"]),
+        ("Kuzey Kıbrıs ev almak istiyorum bütçe", ["forum.donanimhaber.com", "technopat.net", "r10.net"]),
+        ("Kuzey Kıbrıs gayrimenkul yatırım düşünüyorum", ["expat.com", "reddit.com"]),
+        ("North Cyprus property buyer question lawyer title", ["expat.com", "britishexpats.com", "reddit.com"]),
+        ("Türkiye ev alacağım bütçe konut kredisi", ["forum.donanimhaber.com", "technopat.net", "r10.net"]),
+        ("Türkiye ev almayı düşünüyorum yatırım kira", ["forum.donanimhaber.com", "technopat.net", "r10.net"]),
+        ("Türkiye hangi şehirden ev almalıyım yatırım", ["forum.donanimhaber.com", "technopat.net", "r10.net"]),
+        ("Türkiye 1+1 2+1 ev alacağım bütçem", ["forum.donanimhaber.com", "technopat.net", "r10.net"]),
+        ("Türkiye taşınacağım ev satın almak istiyorum", ["forum.donanimhaber.com", "technopat.net", "r10.net"]),
+        ("Türkiye yurtdışından ev alma expat personal", ["expat.com", "reddit.com"]),
+        ("buying property in Cyprus personal budget question", ["expat.com", "britishexpats.com", "reddit.com"]),
+        ("buying property in Turkey personal budget question", ["expat.com", "reddit.com"]),
+        ("buying property abroad personal budget mortgage", ["forums.moneysavingexpert.com", "expat.com", "reddit.com"]),
+        ("holiday home Cyprus personal buyer question", ["britishexpats.com", "expat.com", "reddit.com"]),
+        ("moving to Cyprus buying a home personal experience", ["expat.com", "britishexpats.com", "reddit.com"]),
+        ("Greece property personal buyer budget relocation", ["expat.com", "reddit.com"]),
+        ("Portugal property personal buyer budget relocation", ["expat.com", "reddit.com"]),
+        ("Golden Visa property personal buyer budget Greece Portugal", ["expat.com", "reddit.com"]),
+        ("Germany property personal buyer moving budget", ["expat.com", "reddit.com"]),
+        ("Netherlands property personal buyer moving budget", ["expat.com", "reddit.com"]),
+        ("France property personal buyer moving budget", ["expat.com", "reddit.com"]),
     ]
-
-    # Her market için geniş ama tek tek patlamayan sorgular.
-    for market, places in MARKETS.items():
-
-        if not places:
-            continue
-
-        selected_places = places[:6]
-
-        place_query = " OR ".join(
-            f'"{p}"'
-            for p in selected_places
-        )
-
-        for intent in intent_groups:
-            queries.append(
-                f"({place_query}) {intent}"
-            )
-
-        # Rusça pazar
-        if market in ("russia", "kazakhstan"):
-
-            queries.extend([
-                f"({place_query}) "
-                f'"хочу купить" недвижимость',
-
-                f"({place_query}) "
-                f'"ищу квартиру"',
-
-                f"({place_query}) "
-                f'"купить недвижимость за рубежом"',
-            ])
-
-    # Global buyer / Golden Visa taraması.
-    queries.extend([
-        '"EU Golden Visa" property buyer',
-        '"Golden Visa" Greece property buyer',
-        '"Greece" "looking to buy" property',
-        '"Germany" "looking to buy" property',
-        '"Netherlands" "looking to buy" property',
-        '"Belgium" "looking to buy" property',
-        '"France" "looking to buy" property',
-        '"Lithuania" "looking to buy" property',
-        '"Switzerland" "looking to buy" property',
-        '"Russia" "buy property abroad"',
-        '"Kazakhstan" "buy property abroad"',
-        '"Turkey" "buy property" budget',
-        '"North Cyprus" "buy property"',
-    ])
-
-    # Aynı sorgular varsa temizle.
-    return list(dict.fromkeys(queries))
 
 
 # ---------------------------------------------------------
@@ -565,7 +574,7 @@ def main():
     queries = build_queries()
 
     print(
-        f"BAY-S RADAR V4.5-EXA STARTED | "
+        f"BAY-S RADAR V4.5.1-QUALITY STARTED | "
         f"queries={len(queries)}"
     )
 
@@ -600,14 +609,19 @@ def main():
         "Google News": 0,
     }
 
-    for index, q in enumerate(
+    for index, spec in enumerate(
         queries,
         start=1,
     ):
-        print(f"[EXA {index}/{len(queries)}] {q}")
+        q, domains = spec
+
+        print(
+            f"[EXA {index}/{len(queries)}] "
+            f"{q}"
+        )
 
         try:
-            results = exa_search(q)
+            results = exa_search(q, domains)
             source_counts["Exa"] += len(results)
 
             for item in results:
@@ -624,6 +638,12 @@ def main():
                     + " "
                     + item.get("text", "")
                 )
+
+                if looks_like_listing(item):
+                    continue
+
+                if not looks_like_personal_buyer(item):
+                    continue
 
                 intent, credibility, fit, classification = score(
                     item,
@@ -671,7 +691,8 @@ def main():
         if index % 10 == 0:
             print(f"[GOOGLE NEWS BRIDGE] after_exa={index}")
 
-            for bridge_query in queries[max(0, index - 4):index]:
+            for bridge_spec in queries[max(0, index - 4):index]:
+                bridge_query = bridge_spec[0]
                 try:
                     results = google_news(bridge_query)
                     source_counts["Google News"] += len(results)
@@ -743,6 +764,8 @@ def main():
         "completed_at": completed.isoformat(),
         "status": "completed",
         "queries": len(queries),
+        "exa_results_per_query": 5,
+        "quality_gate": "personal_buyer_and_no_listing_noise",
         "unique_results": len(seen),
         "new_hot_warm": len(candidates),
         "source_counts": source_counts,
