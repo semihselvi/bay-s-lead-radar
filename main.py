@@ -1,5 +1,6 @@
 import os, re, json, time, hashlib, warnings
 from datetime import datetime, timezone
+from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
@@ -16,7 +17,7 @@ from config import (
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
-UA = "BAY-S-Lead-Radar/4.2 (+https://github.com/semihselvi)"
+UA = "BAY-S-Lead-Radar/4.4 (+https://github.com/semihselvi)"
 REDDIT_URL = "https://www.reddit.com/search.rss"
 NEWS_URL = "https://news.google.com/rss/search"
 TIMEOUT = 15
@@ -61,11 +62,11 @@ MARKET_INFO = {
 
 PROPERTY = ["property","real estate","home","house","apartment","condo","flat","villa","townhouse","residence","residential","land","mortgage","down payment","deposit","rental income","rental yield","golden visa","residency by investment","konut","daire","gayrimenkul","mülk","arsa","квартира","дом","недвижимость","ипотека","аренда"]
 
-BUY_INTENT = ["looking to buy","want to buy","wanting to buy","planning to buy","ready to buy","thinking of buying","buying a home","buying a house","buying property","buy an apartment","buy apartment","buy a villa","looking for a house","looking for an apartment","cash buyer","first time buyer","first-time buyer","first home buyer","property buyer","looking to purchase","purchase","how much can i afford","ev almak","ev arıyorum","ev almak istiyorum","satın almak","gayrimenkul almak","yatırım için ev","хочу купить","ищу квартиру","купить квартиру","купить дом","купить недвижимость","планирую купить","недвижимость за рубежом"]
+BUY_INTENT = ["looking to buy","want to buy","wanting to buy","planning to buy","ready to buy","thinking of buying","buying a home","buying a house","buying property","buy an apartment","buy apartment","buy a villa","looking for a house","looking for an apartment","cash buyer","first time buyer","first-time buyer","first home buyer","property buyer","looking to purchase","purchase","how much can i afford","ev almak","ev arıyorum","ev almak istiyorum","satın almak","gayrimenkul almak","yatırım için ev","хочу купить","ищу квартиру","купить квартиру","купить дом","купить недвижимость","планирую купить","недвижимость за рубежом","ev sahibi olmak","ev almak mantıklı","ev alabilir miyim"]
 
-STRONG_INTENT = ["looking to buy","want to buy","planning to buy","ready to buy","looking to purchase","buying property","buy an apartment","property buyer","cash buyer","ev almak","satın almak","хочу купить","купить квартиру","купить недвижимость"]
+STRONG_INTENT = ["looking to buy","want to buy","planning to buy","ready to buy","looking to purchase","buying property","buy an apartment","property buyer","cash buyer","ev almak","satın almak","хочу купить","купить квартиру","купить недвижимость","ev sahibi olmak","ev almak mantıklı","ev alabilir miyim"]
 
-CONCRETE = ["budget","$","€","£","aed","eur","gbp","usd","chf","try","kzt","rub","mortgage","down payment","deposit","bedroom","1br","2br","3br","1 bhk","2 bhk","3 bhk","rent","rental income","yield","first home","moving","relocating","next month","next year","this year","2026","2027","bütçe","kredi","kapora","kira","taşınmak","мой бюджет","ипотека","переезд"]
+CONCRETE = ["budget","$","€","£","aed","eur","gbp","usd","chf","try","kzt","rub","mortgage","down payment","deposit","bedroom","1br","2br","3br","1 bhk","2 bhk","3 bhk","rent","rental income","yield","first home","moving","relocating","next month","next year","this year","2026","2027","bütçe","kredi","kapora","kira","taşınmak","мой бюджет","ипотека","переезд","konut kredisi","peşinat","taksit","milyon","milyon tl","tl"]
 
 PERSONAL = [" i "," i'm"," i am "," we "," we're"," my "," our "," my family"," for myself"," for me","ben ","biz ","ailem","kendim için","я ","мы ","моя семья","для себя"]
 
@@ -91,6 +92,15 @@ EXCLUDED_COUNTRY_TERMS = [
     "australia","australian","sydney","melbourne","brisbane","perth",
     "adelaide","canberra","new zealand","auckland","wellington",
 ]
+
+WEB_SOURCES = [
+    ("Technopat Emlak ve Arazi", "https://www.technopat.net/sosyal/bolum/emlak-ve-arazi.170/", "hub"),
+    ("DonanımHaber Konut Kredisi", "https://forum.donanimhaber.com/en-uygun-konut-kredisi--45565523", "thread"),
+    ("R10 Soru & Cevap", "https://www.r10.net/sorum-var/", "hub"),
+    ("Expat.com Cyprus", "https://www.expat.com/en/forum/europe/cyprus/", "hub"),
+    ("British Expats Cyprus", "https://britishexpats.com/forum/cyprus-117/", "hub"),
+]
+WEB_LINK_TERMS = ["ev almak","ev sahibi","konut kredisi","konut","gayrimenkul","arsa","villa","daire","apartman","property","buying property","buy property","property investment","looking for property","purchasing a property","mortgage","rental income","yield","north cyprus","northern cyprus","cyprus"]
 
 QUERIES = [
     '"looking to buy" ("North Cyprus" OR "Northern Cyprus" OR "Kuzey Kıbrıs" OR Iskele)',
@@ -211,7 +221,8 @@ def valid(item):
     market = market_for(value)
     overseas = has(value, ["abroad","overseas","relocat","moving to","cyprus","north cyprus","northern cyprus","greece","portugal","spain","turkey","golden visa","residency by investment","недвижимость за рубежом"])
 
-    if not strong:
+    forum_signal=has(value,["konut kredisi","ev sahibi","ev almak","ev alabilir miyim","property purchase","purchasing a property","looking for property","buying a property"])
+    if not strong and not forum_signal:
         return False, "weak_intent"
     if not personal and not concrete:
         return False, "weak_buyer_context"
@@ -394,99 +405,112 @@ def process_rows(rows, db, seen, leads, rejected, errors, started):
             errors["Firestore"] += 1
             print(f"FIRESTORE_ERROR: {exc}")
 
+def crawl_web_source(name, url, mode):
+    try:
+        r=S.get(url,timeout=TIMEOUT)
+        r.raise_for_status()
+        soup=BeautifulSoup(r.text,"html.parser")
+        rows=[]
+        if mode=="thread":
+            title=soup.title.get_text(" ",strip=True) if soup.title else name
+            body=soup.get_text(" ",strip=True)
+            rows.append({"source":name,"url":url,"title":title[:300],"text":body[:12000],"published":"","author":""})
+            return rows,0
+        links=[]
+        for a in soup.find_all("a",href=True):
+            title=a.get_text(" ",strip=True)
+            if len(title)<10 or not has(title,WEB_LINK_TERMS):
+                continue
+            href=urljoin(url,a["href"])
+            if not href.startswith(("http://","https://")):
+                continue
+            if href not in links:
+                links.append(href)
+        for href in links[:10]:
+            try:
+                rr=S.get(href,timeout=TIMEOUT)
+                if rr.status_code!=200:
+                    continue
+                ss=BeautifulSoup(rr.text,"html.parser")
+                title=ss.title.get_text(" ",strip=True) if ss.title else href
+                body=ss.get_text(" ",strip=True)
+                rows.append({"source":name,"url":href,"title":title[:300],"text":body[:9000],"published":"","author":""})
+            except requests.RequestException:
+                continue
+        return rows,0
+    except requests.RequestException as exc:
+        print(f"WEB_ERROR {name}: {exc}")
+        return [],1
+
+def google_news_target_queries():
+    return [
+        '"looking to buy" property "North Cyprus"',
+        '"buy property" "North Cyprus"',
+        '"property investment" Cyprus',
+        '"moving to Cyprus" property',
+        '"looking to buy" property Turkey',
+        '"property investment" Turkey',
+        '"Golden Visa" Greece property',
+        '"buying property abroad" budget',
+    ]
+
 def main():
-    started = datetime.now(timezone.utc)
-    print("BAY-S LEAD RADAR V4.3 STARTED")
+    started=datetime.now(timezone.utc)
+    print("BAY-S LEAD RADAR V4.4 STARTED")
+    db=db_client()
+    seen=[]
+    seen_set=set()
+    leads=[]
+    rejected={}
+    errors={"Reddit":0,"Google News":0,"Web":0,"Firestore":0}
+    source_counts={"Reddit":0,"Google News":0,"Web":0}
 
-    db = db_client()
-    pool = QUERIES
+    # Primary: open forums and public web pages.
+    for name,url,mode in WEB_SOURCES:
+        print(f"[WEB] {name}")
+        rows,err=crawl_web_source(name,url,mode)
+        errors["Web"]+=err
+        source_counts["Web"]+=len(rows)
+        process_rows(rows,db,seen_set,leads,rejected,errors,started)
 
-    state_ref = db.collection(SCAN_LOG_COLLECTION).document("_v42_state")
-    snap = state_ref.get()
-    offset = int((snap.to_dict() or {}).get("offset", 0)) if snap.exists else 0
+    # Secondary: Google News.
+    for i,q in enumerate(google_news_target_queries()[:NEWS_PER_RUN],1):
+        print(f"[NEWS {i}/{NEWS_PER_RUN}] {q}")
+        rows=google_news_search(q)
+        source_counts["Google News"]+=len(rows)
+        process_rows(rows,db,seen_set,leads,rejected,errors,started)
+        time.sleep(NEWS_DELAY)
 
-    selected = [pool[(offset+i) % len(pool)] for i in range(min(REDDIT_PER_RUN, len(pool)))]
-    state_ref.set({
-        "offset": (offset + len(selected)) % max(1, len(pool)),
-        "pool_size": len(pool),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    })
-
-    print(f"TARGET_QUERY_POOL: {len(pool)}")
-    print(f"QUERY_COUNT_THIS_SCAN: {len(selected)}")
-
-    seen, leads = set(), []
-    source = {"Reddit":0,"Google News":0}
-    errors = {"Reddit":0,"Google News":0,"Firestore":0}
-    rejected = {}
-    reddit_429 = 0
-    reddit_stopped = False
-
-    for idx, query in enumerate(selected, 1):
-        print(f"[REDDIT {idx}/{len(selected)}] {query}")
-        rows, limited = reddit_search(query)
-
+    # Auxiliary: Reddit. 403/429 only stops Reddit.
+    reddit_429=0
+    reddit_blocked=0
+    for i,q in enumerate(QUERIES[:REDDIT_PER_RUN],1):
+        print(f"[REDDIT {i}/{REDDIT_PER_RUN}] {q}")
+        rows,limited=reddit_search(q)
+        source_counts["Reddit"]+=len(rows)
         if limited:
-            reddit_429 += 1
-            reddit_stopped = True
-            print("REDDIT_STOPPED_EARLY_AFTER_429")
+            reddit_429+=1
+            reddit_blocked+=1
+            print("REDDIT_STOPPED_EARLY")
             break
+        process_rows(rows,db,seen_set,leads,rejected,errors,started)
+        time.sleep(REDDIT_DELAY)
 
-        source["Reddit"] += len(rows)
-        process_rows(rows, db, seen, leads, rejected, errors, started)
-
-        if idx < len(selected):
-            time.sleep(REDDIT_DELAY)
-
-    news_queries = QUERIES[:NEWS_PER_RUN]
-    for idx, query in enumerate(news_queries, 1):
-        print(f"[NEWS {idx}/{len(news_queries)}] {query}")
-        rows = google_news_search(query)
-        source["Google News"] += len(rows)
-        process_rows(rows, db, seen, leads, rejected, errors, started)
-        if idx < len(news_queries):
-            time.sleep(NEWS_DELAY)
-
-    finished = datetime.now(timezone.utc)
-    scan = {
-        "started_at": started.isoformat(),
-        "completed_at": finished.isoformat(),
-        "status":"completed",
-        "source_results":source,
-        "unique_results":len(seen),
-        "new_hot_warm":len(leads),
-        "source_errors":errors,
-        "rejected":rejected,
-        "total_query_pool":len(pool),
-        "queries_this_scan":len(selected),
-        "news_queries_this_scan":len(news_queries),
-        "reddit_429_count":reddit_429,
-        "reddit_stopped_early":reddit_stopped,
-    }
-
+    finished=datetime.now(timezone.utc)
+    scan={"started_at":started.isoformat(),"completed_at":finished.isoformat(),"status":"completed","source_results":source_counts,"unique_results":len(seen_set),"new_hot_warm":len(leads),"source_errors":errors,"rejected":rejected,"reddit_429_count":reddit_429,"reddit_blocked_count":reddit_blocked,"web_sources":len(WEB_SOURCES)}
     try:
         db.collection(SCAN_LOG_COLLECTION).document(started.strftime("%Y%m%dT%H%M%SZ")).set(scan)
     except Exception as exc:
         print(f"SCAN_LOG_ERROR: {exc}")
+    print(json.dumps(scan,ensure_ascii=False,indent=2))
 
-    print(json.dumps(scan, ensure_ascii=False, indent=2))
-
-    leads.sort(key=lambda x: (0 if x["classification"] == "HOT" else 1, -x["intent_score"], -x["credibility_score"], -x["market_fit_score"]))
-
+    leads.sort(key=lambda x:(0 if x["classification"]=="HOT" else 1,-x["intent_score"],-x["credibility_score"],-x["market_fit_score"]))
     if leads:
         for lead in leads[:MAX_TELEGRAM_LEADS]:
             send_telegram(format_lead(lead))
     else:
-        send_telegram(
-            "ℹ️ BAY-S RADAR\n\n"
-            "Tarama tamamlandı.\n"
-            "Yeni HOT/WARM buyer lead bulunamadı.\n\n"
-            f"Reddit sonuçları: {source['Reddit']}\n"
-            f"Google News sonuçları: {source['Google News']}\n"
-            "Yeni lead: 0\n"
-            f"Reddit 429: {reddit_429}"
-        )
-    print("BAY-S LEAD RADAR V4.3 FINISHED")
+        send_telegram("ℹ️ BAY-S RADAR V4.4\n\nTarama tamamlandı.\nYeni HOT/WARM buyer lead bulunamadı.\n\n" + f"Web/forum sonuçları: {source_counts['Web']}\n" + f"Google News sonuçları: {source_counts['Google News']}\n" + f"Reddit sonuçları: {source_counts['Reddit']}\n" + f"Yeni lead: 0\n" + f"Reddit 403/429: {reddit_blocked}")
+    print("BAY-S LEAD RADAR V4.4 FINISHED")
 
 if __name__ == "__main__":
     main()
