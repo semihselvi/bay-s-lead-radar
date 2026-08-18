@@ -73,6 +73,25 @@ AGENCY = ["for my client","for a client","my clients","client looking","buyer cl
 
 NOISE_SUBREDDITS = {"memes","funny","askreddit","offmychest","family","askchicago","whatshouldido","whatdoido","arknights"}
 
+# V4.3 Reddit geographic targeting
+TARGET_COUNTRY_TERMS = [
+    "north cyprus","northern cyprus","kuzey kıbrıs","cyprus",
+    "turkey","türkiye","greece","germany","netherlands","belgium","france",
+    "switzerland","lithuania","russia","россия","kazakhstan","казахстан",
+    "montenegro","united kingdom","uk","london","spain","portugal","italy",
+    "poland","austria","ireland","estonia","latvia","finland","sweden","norway",
+    "denmark","uae","united arab emirates","dubai","abu dhabi","qatar","doha",
+    "saudi arabia","riyadh","jeddah",
+]
+EXCLUDED_COUNTRY_TERMS = [
+    "usa","u.s.a.","u.s.","united states","united states of america","america",
+    "new york","los angeles","california","texas","florida","miami","chicago",
+    "houston","phoenix","seattle","boston","san francisco",
+    "canada","toronto","vancouver","montreal",
+    "australia","australian","sydney","melbourne","brisbane","perth",
+    "adelaide","canberra","new zealand","auckland","wellington",
+]
+
 QUERIES = [
     '"looking to buy" ("North Cyprus" OR "Northern Cyprus" OR "Kuzey Kıbrıs" OR Iskele)',
     '"buy property" ("North Cyprus" OR "Northern Cyprus")',
@@ -82,19 +101,18 @@ QUERIES = [
     '"property investment" ("Turkey" OR Türkiye)',
     '"Golden Visa" (Greece OR Portugal OR Spain) property',
     '"residency by investment" property budget',
-    '"looking to buy" property budget',
-    '"cash buyer" property investment',
-    '"relocating" "buy property"',
-    '"buying property abroad" budget',
-    '"looking for an apartment" investment',
-    '"first time buyer" budget property',
-    '"хочу купить" недвижимость',
-    '"ищу квартиру" недвижимость',
+    '"looking to buy" property (Germany OR Netherlands OR France OR Belgium)',
+    '"looking to buy" property (UK OR London)',
+    '"looking to buy" property (Switzerland OR Austria)',
+    '"buying property abroad" (Russia OR Kazakhstan OR UAE)',
+    '"looking for an apartment" investment Europe',
+    '"first time buyer" budget property Europe',
+    '"хочу купить" недвижимость (Кипр OR Греция OR Турция)',
+    '"ищу квартиру" недвижимость (Кипр OR Германия OR Греция)',
     '"недвижимость за рубежом" купить',
-    '"ev almak istiyorum" gayrimenkul',
+    '"ev almak istiyorum" (Kıbrıs OR Türkiye)',
     '"Kıbrıs" ev almak',
 ]
-
 def db_client():
     raw = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
     if not raw:
@@ -161,6 +179,14 @@ def city(value, market):
             return term
     return "Not stated"
 
+def excluded_geography(value):
+    v = value.lower()
+    return any(term in v for term in EXCLUDED_COUNTRY_TERMS)
+
+def has_target_geography(value):
+    v = value.lower()
+    return any(term in v for term in TARGET_COUNTRY_TERMS)
+
 def valid(item):
     value = text(item)
     if len(value) < 90:
@@ -176,6 +202,9 @@ def valid(item):
     if not has(value, CONCRETE) and not has(value, PERSONAL):
         return False, "no_concrete_or_personal"
 
+    if excluded_geography(value):
+        return False, "excluded_geography"
+
     strong = has(value, STRONG_INTENT)
     personal = has(value, PERSONAL)
     concrete = has(value, CONCRETE)
@@ -186,6 +215,8 @@ def valid(item):
         return False, "weak_intent"
     if not personal and not concrete:
         return False, "weak_buyer_context"
+    if market == "unknown" and not has_target_geography(value) and not overseas:
+        return False, "no_target_market"
     if market == "unknown" and not overseas and not has(value, ["property investment","investment property","rental income","rental yield","golden visa","residency by investment","buying property abroad"]):
         return False, "no_target_market"
     return True, "ok"
@@ -365,7 +396,7 @@ def process_rows(rows, db, seen, leads, rejected, errors, started):
 
 def main():
     started = datetime.now(timezone.utc)
-    print("BAY-S LEAD RADAR V4.2 STARTED")
+    print("BAY-S LEAD RADAR V4.3 STARTED")
 
     db = db_client()
     pool = QUERIES
@@ -455,7 +486,7 @@ def main():
             "Yeni lead: 0\n"
             f"Reddit 429: {reddit_429}"
         )
-    print("BAY-S LEAD RADAR V4.2 FINISHED")
+    print("BAY-S LEAD RADAR V4.3 FINISHED")
 
 if __name__ == "__main__":
     main()
