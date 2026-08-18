@@ -1086,10 +1086,6 @@ async def telegram_buyer_scan(db_client, started):
             "messages": total_messages,
             "hot_warm": len(results),
             "errors": errors,
-        "telegram_groups": telegram_scan.get("groups", 0),
-        "telegram_messages_scanned": telegram_scan.get("messages", 0),
-        "telegram_new_hot_warm": telegram_scan.get("hot_warm", 0),
-        "telegram_status": telegram_scan.get("status", "error"),
             "new_leads": results,
         }
 
@@ -1126,7 +1122,7 @@ def main():
     queries = build_queries()
 
     print(
-        f"BAY-S RADAR V4.5.4.2-UNIFIED STARTED | "
+        f"BAY-S RADAR V4.5.4.3-UNIFIED STARTED | "
         f"queries={len(queries)}"
     )
 
@@ -1375,6 +1371,10 @@ def main():
         },
         "source_errors": source_errors,
         "errors": errors,
+        "telegram_groups": telegram_scan.get("groups", 0),
+        "telegram_messages_scanned": telegram_scan.get("messages", 0),
+        "telegram_new_hot_warm": telegram_scan.get("hot_warm", 0),
+        "telegram_status": telegram_scan.get("status", "error"),
     }
 
     scan_id = started.strftime(
