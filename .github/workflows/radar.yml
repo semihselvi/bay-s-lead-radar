@@ -131,7 +131,7 @@ jobs:
           # Telegram kullanıcı hesabı / Telethon
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
-          TELEGRAM_SESSION_PATH: telegram_radar_session/radar_session
+          TELEGRAM_SESSION_PATH: telegram_radar_session/radar_session.session
 
         run: |
           python main.py
