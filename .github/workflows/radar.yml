@@ -111,9 +111,9 @@ jobs:
           PY
 
       # -------------------------------------------------
-      # 5. RADAR
+      # 5. RADAR V5
       # -------------------------------------------------
-      - name: Run BAY-S Radar
+      - name: Run BAY-S Radar V5
         env:
           # Firebase
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
@@ -133,8 +133,15 @@ jobs:
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           TELEGRAM_SESSION_PATH: telegram_radar_session/radar_session.session
 
+          # V5 buyer-expansion ayarları
+          RADAR_V5_TELEGRAM_HOURS: "48"
+          RADAR_V5_TELEGRAM_BACKFILL_DAYS: "7"
+          RADAR_V5_TELEGRAM_BACKFILL_LIMIT: "12"
+          RADAR_V5_WEB_MAX_AGE_DAYS: "90"
+
         run: |
-          python main.py
+          python -m py_compile main.py main_v5.py
+          python main_v5.py
 
       # -------------------------------------------------
       # 6. SESSION'I VE GEÇİCİ DOSYALARI TEMİZLE
