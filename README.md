@@ -1,6 +1,8 @@
-# BAY-S Lead Radar V2
+# BAY-S Lead Radar V5 test branch
 
-Reddit-first buyer-intent radar with Firestore deduplication and Telegram alerts.
+North Cyprus foreign property-buyer radar with Firestore deduplication and Telegram alerts.
+
+V5.1.1 requires real-estate context plus explicit self-buyer or purchase-consideration language before Telegram alerts. Seller/listing copy, rentals, vehicles and household-item purchases are rejected by regression-tested gates.
 
 Secrets:
 - FIREBASE_SERVICE_ACCOUNT_JSON
