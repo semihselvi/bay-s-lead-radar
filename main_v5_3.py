@@ -86,7 +86,7 @@ def _serper_search(query: str, include_domains: list[str] | None = None) -> list
                 "url": row.get("link", ""),
                 "title": row.get("title", ""),
                 "text": row.get("snippet", ""),
-                "published": "",  # direct buyer language may pass without date
+                "published": "",
                 "author": "",
             })
         print(f"SERPER_OK query={query} results={len(out)}")
@@ -154,10 +154,6 @@ core.exa_search = resilient_web_search
 # TELEGRAM: terse buyer-demand recovery
 # ---------------------------------------------------------------------------
 
-# Real buyers often write short posts such as "ищу 1+1 в Искеле до £90,000"
-# without the word "купить". Treat this as purchase demand only when there is a
-# purchase-scale budget and no rent signal. This keeps rent/vehicle/flea-market
-# noise out while recovering high-value terse buyer posts.
 TG_TERSE_DEMAND_RE = re.compile(
     r"(?:"
     r"\b(?:looking\s+for|seeking)\b.{0,120}\b(?:property|apartment|flat|house|villa|studio|land)\b|"
@@ -181,7 +177,6 @@ def _purchase_scale_budget(text: str) -> bool:
         if not (m.group("sym1") or m.group("sym2") or m.group("k")):
             continue
         raw = m.group("num").replace(" ", "")
-        # thousands separators are far more likely than decimals for property budgets
         if raw.count(",") + raw.count(".") > 0:
             chunks = re.split(r"[.,]", raw)
             if len(chunks[-1]) == 3:
@@ -233,12 +228,10 @@ def refine_with_budgeted_demand(lead: dict[str, Any]):
 
 gate.refine_telegram_property_buyer = refine_with_budgeted_demand
 
-# V5.2's candidate-first prefilter reads TG_SELF_BUY_RE before refine(). Extend it
-# with the terse-demand pattern so those messages reach the strict final gate.
-gate.TG_SELF_BUY_RE = re.compile(
-    f"(?:{gate.TG_SELF_BUY_RE.pattern})|(?:{TG_TERSE_DEMAND_RE.pattern})",
-    re.I | re.S,
-)
+# Let V5.2's candidate-first traversal recognize terse demand as a candidate,
+# but do not mutate the strict self-buyer regex. The strict/fallback gate decides
+# whether it is purchase demand, rental noise, a listing, or something else.
+v52.CANDIDATE_BUYER_VOICE_EXTRA = TG_TERSE_DEMAND_RE
 
 
 def main() -> None:
