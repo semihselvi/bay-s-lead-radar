@@ -7,7 +7,7 @@ import main as core
 import main_v5 as v5
 
 
-VERSION = "5.1-property-buyer-gate"
+VERSION = "5.1.1-self-buyer-gate"
 v5.VERSION = VERSION
 
 # GitHub Actions is consistently blocked/rate-limited by Reddit RSS. Keep Reddit
@@ -29,29 +29,41 @@ TG_PROPERTY_RE = re.compile(
     re.I,
 )
 
-TG_DIRECT_BUY_RE = re.compile(
-    r"(?:\blooking\s+to\s+buy\b|\bwant\s+to\s+buy\b|\bplanning\s+to\s+buy\b|"
-    r"\bready\s+to\s+buy\b|\bcash\s+buyer\b|\bseeking\s+to\s+buy\b|"
-    r"\binterested\s+in\s+buying\b|\bwant\s+to\s+purchase\b|"
-    r"\bхочу\s+купить\b|\bхотим\s+купить\b|\bготов\w*\s+купить\b|"
-    r"\bпланир\w*\s+купить\b|\bприобрест\w*\b|\bпокупк\w*\b|"
-    r"\bкуплю\b|"
-    r"\b(?:ich|wir)\b.{0,50}\b(?:kaufen|erwerben)\b|\bzum\s+kauf\b|\bzu\s+kaufen\b|"
-    r"\b(?:chcę|chcemy|szukam|szukamy|planuję|planujemy)\b.{0,80}\b(?:kupić|kupic|zakupić|zakupic)\b|"
-    r"\bdo\s+kupienia\b|"
-    r"\bsatın\s+al(?:mak|acağım|acagim|mak\s+istiyorum|mak\s+istiyoruz)?\b|"
-    r"\balmak\s+istiyorum\b|\balmak\s+istiyoruz\b|\balıcıyım\b)",
+# A direct buyer must speak as the buyer. Generic transaction words inside a
+# seller advert (e.g. "you can purchase remotely") are intentionally excluded.
+TG_SELF_BUY_RE = re.compile(
+    r"(?:"
+    r"\b(?:i|we)\b.{0,45}\b(?:want|looking|planning|plan|considering|ready|hoping|would\s+like|need)\b"
+    r".{0,90}\b(?:buy|purchase|buying|purchasing)\b|"
+    r"\b(?:looking\s+to\s+buy|want\s+to\s+buy|planning\s+to\s+buy|ready\s+to\s+buy|seeking\s+to\s+buy)\b|"
+    r"\bcash\s+buyer\b|"
+    r"\b(?:я|мы)\b.{0,45}\b(?:хочу|хотим|планирую|планируем|ищу|ищем|готов\w*)\b"
+    r".{0,110}\b(?:купить|приобрести|покупк\w*)\b|"
+    r"\bкуплю\b.{0,120}\b(?:недвижимост\w*|квартир\w*|апартамент\w*|вилл\w*|дом\w*|участ\w*|земл\w*)\b|"
+    r"\bищу\b.{0,120}\b(?:недвижимост\w*|квартир\w*|апартамент\w*|вилл\w*|дом\w*)\b"
+    r".{0,100}\b(?:купить|для\s+покупк\w*)\b|"
+    r"\b(?:ich|wir)\b.{0,45}\b(?:suche|suchen|möchte|moechte|möchten|moechten|will|wollen|plane|planen)\b"
+    r".{0,140}\b(?:kaufen|erwerben|zum\s+kauf)\b|"
+    r"\bsuche\b.{0,120}\b(?:immobilie|wohnung|haus|villa|apartment)\w*\b.{0,100}\b(?:zum\s+kauf|zu\s+kaufen)\b|"
+    r"\b(?:ja|my)\b.{0,45}\b(?:chcę|chcemy|szukam|szukamy|planuję|planujemy)\b"
+    r".{0,140}\b(?:kupić|kupic|zakupić|zakupic)\b|"
+    r"\bszukam\b.{0,120}\b(?:nieruchomość|nieruchomosci|mieszkanie|apartament|willa|dom)\w*\b"
+    r".{0,100}\b(?:do\s+kupienia|kupić|kupic)\b|"
+    r"\b(?:ben|biz)\b.{0,45}\b(?:istiyorum|istiyoruz|düşünüyorum|dusunuyorum|arıyorum|ariyorum)\b"
+    r".{0,120}\b(?:satın\s+al|almak)\b|"
+    r"\b(?:satın\s+almak\s+istiyorum|satın\s+almak\s+istiyoruz|ev\s+almak\s+istiyorum|daire\s+almak\s+istiyorum|alıcıyım)\b"
+    r")",
     re.I | re.S,
 )
 
 TG_CONSIDERATION_RE = re.compile(
-    r"(?:\bwhere\s+should\s+(?:i|we)\s+buy\b|\bwhich\s+(?:area|region).{0,80}\bbuy\b|"
-    r"\bcan\s+foreigners?\s+buy\b|\bmortgage\b|"
+    r"(?:\bwhere\s+should\s+(?:i|we)\s+buy\b|\bwhich\s+(?:area|region).{0,80}\b(?:should\s+)?(?:i|we).{0,50}\bbuy\b|"
+    r"\bcan\s+foreigners?\s+buy\b|\bis\s+it\s+safe\s+to\s+buy\b|"
     r"\bгде\s+(?:лучше\s+)?купить\b|\bстоит\s+ли\s+покупать\b|\bкак\s+купить\b|"
-    r"\bипотек\w*\b|\bрассрочк\w*\b|\bпервоначальн\w*\s+взнос\w*\b|"
-    r"\bwelche\s+region.{0,80}\bkaufen\b|\bwo\s+sollte\s+ich\s+kaufen\b|"
-    r"\bgdzie\s+kupi(?:ć|c)\b|\bczy\s+cudzoziemiec.{0,60}\bkupi(?:ć|c)\b|"
-    r"\bhangi\s+bölge.{0,80}\b(?:satın\s+al|almak)\b|\bkonut\s+kredisi\b)",
+    r"\bможно\s+ли\s+иностранц\w*.{0,60}\bкупить\b|"
+    r"\bwelche\s+region.{0,80}\b(?:sollte|kann)\s+ich.{0,60}\bkaufen\b|\bwo\s+sollte\s+ich\s+kaufen\b|"
+    r"\bgdzie\s+(?:najlepiej\s+)?kupi(?:ć|c)\b|\bczy\s+cudzoziemiec.{0,60}\bkupi(?:ć|c)\b|"
+    r"\bhangi\s+bölge.{0,80}\b(?:satın\s+al|almak)\b|\byabancılar?.{0,60}\b(?:ev|daire|gayrimenkul).{0,60}\balabilir\b)",
     re.I | re.S,
 )
 
@@ -62,10 +74,25 @@ TG_RENT_RE = re.compile(
     re.I,
 )
 
+# Strong seller/listing structure. One of these signals is enough to reject a
+# message unless there is explicit first-person buyer intent.
+TG_SUPPLY_RE = re.compile(
+    r"(?:\bfor\s+sale\b|\bavailable\s+(?:now|unit|units|apartment|apartments|villa|villas)\b|"
+    r"\bproperty\s+(?:code|id|ref(?:erence)?)\b|\blisting\s+(?:id|ref(?:erence)?)\b|"
+    r"\bprice\s+from\b|\bbook\s+(?:a\s+)?viewing\b|\bremote\s+purchase\b|"
+    r"\bпрода[её]тся\b|\bпродам\b|\bкод\s+объекта\b|\bid\s+объекта\b|\bномер\s+объекта\b|"
+    r"\bготов[а-яё]*\s+к\s+проживанию\b|\bприобрест\w*\s+удал[её]нно\b|"
+    r"\bонлайн.{0,80}\b(?:просмотр|посетить|квартир|апартамент)\b|"
+    r"\bzu\s+verkaufen\b|\bobjekt(?:nummer|nr\.?|code)\b|\bmakler\b|"
+    r"\bna\s+sprzedaż\b|\bnumer\s+oferty\b|\bbiuro\s+nieruchomości\b|"
+    r"\bsatılık\b|\bportföy\s+no\b|\bilan\s+no\b|\bproje\s+kodu\b)",
+    re.I | re.S,
+)
 
-# Replace the permissive core buyer triggers for this V5 test only. In particular,
-# generic words such as "budget" or bare "куплю" no longer create a real-estate
-# lead unless the message also contains real-estate context and passes the V5 gate.
+
+# The core scanner is still used for safe Telegram traversal/dedupe. Keep its
+# candidate net broad enough to catch buyers, but remove generic seller-language
+# triggers such as bare "приобрести".
 core.TG_BUY = [
     r"\blooking to buy\b",
     r"\bwant to buy\b",
@@ -78,8 +105,8 @@ core.TG_BUY = [
     r"\bхотим купить\b",
     r"\bготов\w* купить\b",
     r"\bпланир\w* купить\b",
-    r"\bприобрест\w*\b",
     r"\bкуплю\b",
+    r"\bищу\b.{0,120}\b(?:купить|для покупк\w*)\b",
     r"\bsuche\b.{0,100}\b(?:zum kauf|zu kaufen)\b",
     r"\b(?:ich|wir)\b.{0,80}\b(?:kaufen|erwerben)\b",
     r"\b(?:chcę|chcemy|szukam|szukamy|planuję|planujemy)\b.{0,100}\b(?:kupić|kupic|zakupić|zakupic)\b",
@@ -91,15 +118,12 @@ core.TG_BUY = [
 core.TG_WEAK = [
     r"\bwhere should i buy\b",
     r"\bwhich area\b",
-    r"\bmortgage\b",
-    r"\bгде купить\b",
+    r"\bгде (?:лучше )?купить\b",
     r"\bстоит ли покупать\b",
-    r"\bипотек\w*\b",
-    r"\bрассрочк\w*\b",
+    r"\bкак купить\b",
     r"\bwelche region\b",
     r"\bgdzie kupi(?:ć|c)\b",
     r"\bhangi bölge\b",
-    r"\bkonut kredisi\b",
 ]
 
 core.TG_CONTEXT = [
@@ -109,14 +133,11 @@ core.TG_CONTEXT = [
     r"\bгде (?:лучше )?купить\b",
     r"\bстоит ли покупать\b",
     r"\bкак купить\b",
-    r"\bипотек\w*\b",
-    r"\bрассрочк\w*\b",
-    r"\bпервоначальн\w* взнос\w*\b",
+    r"\bможно ли иностранц\w*.{0,60}\bкупить\b",
     r"\bwelche region\b",
     r"\bwo sollte ich kaufen\b",
     r"\bgdzie kupi(?:ć|c)\b",
     r"\bhangi bölge\b",
-    r"\bkonut kredisi\b",
 ]
 
 
@@ -128,33 +149,38 @@ def refine_telegram_property_buyer(lead: dict[str, Any]) -> dict[str, Any] | Non
     if not TG_PROPERTY_RE.search(text):
         return None
 
-    direct = bool(TG_DIRECT_BUY_RE.search(text))
+    self_buy = bool(TG_SELF_BUY_RE.search(text))
     consideration = bool(TG_CONSIDERATION_RE.search(text))
-    if not direct and not consideration:
+    if not self_buy and not consideration:
         return None
 
-    # Rental-only demand is not a purchase lead. A message that explicitly says it
-    # intends to buy can still pass even if it mentions renting as background.
-    if TG_RENT_RE.search(text) and not direct:
+    # Seller/listing copy cannot become a buyer lead merely because it contains
+    # words such as purchase/buy. Explicit first-person demand can override this.
+    if TG_SUPPLY_RE.search(text) and not self_buy:
+        return None
+
+    # Rental-only demand is not a purchase lead. A genuine buyer may mention that
+    # they currently rent, so explicit self-buy intent wins over background rent.
+    if TG_RENT_RE.search(text) and not self_buy:
         return None
 
     seller_matches = lead.get("seller_matches") or []
-    if seller_matches and not direct:
+    if seller_matches and not self_buy:
         return None
 
     out = dict(lead)
-    out["buyer_signal"] = "direct_purchase" if direct else "purchase_consideration"
+    out["buyer_signal"] = "self_purchase" if self_buy else "purchase_consideration"
     out["radar_version"] = VERSION
 
     score = int(out.get("telegram_score") or 0)
     has_budget = bool(v5.BUDGET_RE.search(text))
     has_timing = bool(v5.TIME_RE.search(text))
-    if direct and (has_budget or has_timing):
+    if self_buy and (has_budget or has_timing):
         out["classification"] = "HOT"
-        out["telegram_score"] = max(score, 72)
+        out["telegram_score"] = max(score, 76)
     else:
         out["classification"] = "WARM"
-        out["telegram_score"] = max(score, 52 if direct else 45)
+        out["telegram_score"] = max(score, 58 if self_buy else 48)
     return out
 
 
@@ -175,7 +201,7 @@ async def strict_telegram_buyer_scan(db_client, started):
     result["new_leads"] = filtered
     result["hot_warm"] = len(filtered)
     result["v5_property_rejected"] = rejected
-    print(f"V5.1 TELEGRAM PROPERTY GATE: raw={len(raw)} | accepted={len(filtered)} | rejected={rejected}")
+    print(f"V5.1.1 TELEGRAM SELF-BUYER GATE: raw={len(raw)} | accepted={len(filtered)} | rejected={rejected}")
     return result
 
 
@@ -191,7 +217,7 @@ def strict_backfill(db_client, started):
         refined = refine_telegram_property_buyer(lead)
         if refined is not None:
             filtered.append(refined)
-    print(f"V5.1 BACKFILL PROPERTY GATE: raw={len(raw)} | accepted={len(filtered)}")
+    print(f"V5.1.1 BACKFILL SELF-BUYER GATE: raw={len(raw)} | accepted={len(filtered)}")
     return filtered
 
 
