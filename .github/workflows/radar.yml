@@ -14,32 +14,20 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      # -------------------------------------------------
-      # 1. KODU AL
-      # -------------------------------------------------
       - name: Checkout
         uses: actions/checkout@v6
 
-      # -------------------------------------------------
-      # 2. PYTHON
-      # -------------------------------------------------
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
 
-      # -------------------------------------------------
-      # 3. GEREKLİ PAKETLER
-      # -------------------------------------------------
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # -------------------------------------------------
-      # 4. TELEGRAM SESSION'I GERİ OLUŞTUR
-      # -------------------------------------------------
       - name: Restore Telegram session
         env:
           TELEGRAM_SESSION_01: ${{ secrets.TELEGRAM_SESSION_01 }}
@@ -50,7 +38,6 @@ jobs:
           TELEGRAM_SESSION_06: ${{ secrets.TELEGRAM_SESSION_06 }}
           TELEGRAM_SESSION_07: ${{ secrets.TELEGRAM_SESSION_07 }}
           TELEGRAM_SESSION_08: ${{ secrets.TELEGRAM_SESSION_08 }}
-
         run: |
           python - <<'PY'
           import os
@@ -59,94 +46,44 @@ jobs:
           from pathlib import Path
 
           parts = []
-
           for i in range(1, 9):
-              value = os.environ.get(
-                  f"TELEGRAM_SESSION_{i:02d}",
-                  ""
-              ).strip()
-
+              value = os.environ.get(f"TELEGRAM_SESSION_{i:02d}", "").strip()
               if value:
                   parts.append(value)
 
           if not parts:
-              raise SystemExit(
-                  "ERROR: TELEGRAM_SESSION parçaları bulunamadı."
-              )
-
-          encoded = "".join(parts)
+              raise SystemExit("ERROR: TELEGRAM_SESSION parçaları bulunamadı.")
 
           try:
-              compressed = base64.b64decode(encoded)
-              session_data = gzip.decompress(compressed)
+              session_data = gzip.decompress(base64.b64decode("".join(parts)))
           except Exception as exc:
-              raise SystemExit(
-                  f"ERROR: Telegram session çözülemedi: {exc}"
-              )
+              raise SystemExit(f"ERROR: Telegram session çözülemedi: {exc}")
 
           session_dir = Path("telegram_radar_session")
-          session_dir.mkdir(
-              parents=True,
-              exist_ok=True
-          )
-
-          session_file = (
-              session_dir /
-              "radar_session.session"
-          )
-
-          session_file.write_bytes(
-              session_data
-          )
-
-          print(
-              "Telegram session restored."
-          )
-          print(
-              f"Session bytes: {len(session_data)}"
-          )
-          print(
-              f"Session path: {session_file}"
-          )
+          session_dir.mkdir(parents=True, exist_ok=True)
+          session_file = session_dir / "radar_session.session"
+          session_file.write_bytes(session_data)
+          print(f"Telegram session restored: {len(session_data)} bytes")
           PY
 
-      # -------------------------------------------------
-      # 5. RADAR V5
-      # -------------------------------------------------
-      - name: Run BAY-S Radar V5
+      - name: Run BAY-S Radar V5.1
         env:
-          # Firebase
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
-
-          # Telegram Bot - bildirim göndermek için
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-
-          # Exa Web Search
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
-
-          # Eski Serper - şimdilik mevcut kalsın
           SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
-
-          # Telegram kullanıcı hesabı / Telethon
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           TELEGRAM_SESSION_PATH: telegram_radar_session/radar_session.session
-
-          # V5 buyer-expansion ayarları
           RADAR_V5_TELEGRAM_HOURS: "48"
           RADAR_V5_TELEGRAM_BACKFILL_DAYS: "7"
           RADAR_V5_TELEGRAM_BACKFILL_LIMIT: "12"
           RADAR_V5_WEB_MAX_AGE_DAYS: "90"
-
         run: |
-          python -m py_compile main.py main_v5.py
-          python main_v5.py
+          python -m py_compile main.py main_v5.py main_v5_1.py
+          python main_v5_1.py
 
-      # -------------------------------------------------
-      # 6. SESSION'I VE GEÇİCİ DOSYALARI TEMİZLE
-      # -------------------------------------------------
       - name: Cleanup Telegram session
         if: always()
-        run: |
-          rm -rf telegram_radar_session
+        run: rm -rf telegram_radar_session
