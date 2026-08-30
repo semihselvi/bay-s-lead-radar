@@ -1,12 +1,7 @@
-# BAY-S Lead Radar V5 test branch
+# BAY-S Lead Radar V5.2
 
-North Cyprus foreign property-buyer radar with Firestore deduplication and Telegram alerts.
+North Cyprus foreign-property-buyer radar.
 
-V5.1.1 requires real-estate context plus explicit self-buyer or purchase-consideration language before Telegram alerts. Seller/listing copy, rentals, vehicles and household-item purchases are rejected by regression-tested gates.
+V5.2 focuses on real purchase intent, uses Exa for public web discovery, scans relevant Telegram groups candidate-first instead of relying on the legacy scorer, filters seller/listing copy, rentals and non-property purchases, and sends accepted HOT/WARM leads to Telegram.
 
-Secrets:
-- FIREBASE_SERVICE_ACCOUNT_JSON
-- FIRESTORE_COLLECTION (optional)
-- FIRESTORE_SCAN_COLLECTION (optional)
-- TELEGRAM_BOT_TOKEN (optional)
-- TELEGRAM_CHAT_ID (optional)
+The feature branch is test-first. Production remains unchanged until the draft PR is reviewed and merged.
