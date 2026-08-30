@@ -36,6 +36,11 @@ SOUTH_ONLY_RE = re.compile(
     re.I,
 )
 
+# Optional extra candidate voice pattern for later versions. It is used only to
+# let a message reach the strict final gate; it must not mutate the strict buyer
+# regex itself, otherwise rental/listing messages can accidentally become buyers.
+CANDIDATE_BUYER_VOICE_EXTRA: re.Pattern[str] | None = None
+
 # Broaden public-web discovery while keeping the final buyer gate strict.
 gate.v5.EXA_QUERIES = list(gate.v5.EXA_QUERIES) + [
     ("North Cyprus forum I want to buy apartment villa budget", None),
@@ -50,6 +55,13 @@ def _group_scope(group: str) -> tuple[bool, bool]:
     direct_north = bool(NORTH_GROUP_RE.search(group or ""))
     generic_cyprus = bool(CYPRUS_GROUP_RE.search(group or ""))
     return direct_north, generic_cyprus
+
+
+def has_candidate_buyer_voice(text: str) -> bool:
+    if gate.TG_SELF_BUY_RE.search(text) or gate.TG_CONSIDERATION_RE.search(text):
+        return True
+    extra = CANDIDATE_BUYER_VOICE_EXTRA
+    return bool(extra and extra.search(text))
 
 
 def _base_candidate(group: str, entity: Any, msg: Any, started: datetime) -> dict[str, Any]:
@@ -190,10 +202,7 @@ async def candidate_first_telegram_scan(db_client, started):
                         continue
 
                     has_property = bool(gate.TG_PROPERTY_RE.search(text))
-                    has_buyer_voice = bool(
-                        gate.TG_SELF_BUY_RE.search(text)
-                        or gate.TG_CONSIDERATION_RE.search(text)
-                    )
+                    has_buyer_voice = has_candidate_buyer_voice(text)
                     if not has_property or not has_buyer_voice:
                         continue
 
