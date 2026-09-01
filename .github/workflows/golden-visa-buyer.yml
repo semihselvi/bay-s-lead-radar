@@ -1,0 +1,32 @@
+name: GOLDEN VISA - Buyer Intent Radar
+
+"on":
+  workflow_dispatch:
+  schedule:
+    - cron: "55 6,12,18 * * *"
+
+jobs:
+  golden-visa-buyer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Test abroad buyer radar
+        run: |
+          python -m py_compile europe_abroad_buyer_radar.py test_europe_abroad_buyer_radar.py
+          python -m unittest -q test_europe_abroad_buyer_radar.py
+      - name: Run Golden Visa buyer intent radar
+        env:
+          ABROAD_RADAR_PROFILE: golden_visa
+          ABROAD_RADAR_LOOKBACK_DAYS: "7"
+          ABROAD_RADAR_QUERY_LIMIT: "10"
+          SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python europe_abroad_buyer_radar.py
