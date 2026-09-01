@@ -1,4 +1,4 @@
-name: BAY-S Germany Home Buyer Radar
+name: LOCAL - Germany Home Buyer Radar
 
 "on":
   workflow_dispatch:
