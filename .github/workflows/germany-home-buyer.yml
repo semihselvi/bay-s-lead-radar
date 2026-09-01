@@ -1,0 +1,32 @@
+name: BAY-S Germany Home Buyer Radar
+
+"on":
+  workflow_dispatch:
+  schedule:
+    - cron: "35 6,12,18 * * *"
+
+jobs:
+  germany-home-buyer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Test Europe home buyer radar
+        run: |
+          python -m py_compile europe_home_buyer_radar.py test_europe_home_buyer_radar.py
+          python -m unittest -q test_europe_home_buyer_radar.py
+      - name: Run Germany home buyer radar
+        env:
+          HOME_RADAR_PROFILE: germany_home
+          HOME_RADAR_LOOKBACK_DAYS: "7"
+          HOME_RADAR_QUERY_LIMIT: "10"
+          SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python europe_home_buyer_radar.py
