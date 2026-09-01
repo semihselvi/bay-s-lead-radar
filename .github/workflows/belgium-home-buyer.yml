@@ -1,4 +1,4 @@
-name: BAY-S Belgium Home Buyer Radar
+name: LOCAL - Belgium Home Buyer Radar
 
 "on":
   workflow_dispatch:
