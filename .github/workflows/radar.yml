@@ -1,4 +1,4 @@
-name: BAY-S Lead Radar
+name: NC - North Cyprus Buyer Radar
 
 "on":
   workflow_dispatch:
