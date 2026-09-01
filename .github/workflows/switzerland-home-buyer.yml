@@ -1,4 +1,4 @@
-name: BAY-S Switzerland Home Buyer Radar
+name: LOCAL - Switzerland Home Buyer Radar
 
 "on":
   workflow_dispatch:
