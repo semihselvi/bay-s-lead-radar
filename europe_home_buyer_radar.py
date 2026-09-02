@@ -12,12 +12,19 @@ import requests
 
 import main
 
-VERSION = "1.0-serper-production"
+VERSION = "1.1-source-verified"
 PROFILE = os.getenv("HOME_RADAR_PROFILE", "germany_home").strip().lower()
 LOOKBACK_DAYS = int(os.getenv("HOME_RADAR_LOOKBACK_DAYS", "7"))
 QUERY_LIMIT = int(os.getenv("HOME_RADAR_QUERY_LIMIT", "10"))
 NOTIFIED_COLLECTION = "bay_s_europe_home_notified"
 SCAN_COLLECTION = "bay_s_europe_home_scans"
+
+SESSION = requests.Session()
+SESSION.headers.update({
+    "User-Agent": "Mozilla/5.0 (compatible; BAY-S-Home-Buyer-Radar/1.1; +https://github.com/semihselvi/bay-s-lead-radar)",
+    "Accept": "application/json,text/plain,*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+})
 
 USER_DOMAINS = {
     "reddit.com", "old.reddit.com", "expat.com", "expatforum.com",
@@ -125,6 +132,8 @@ CITY_PATTERNS = {
     "switzerland_home": ["Zürich", "Zurich", "Geneva", "Genève", "Geneve", "Lausanne", "Basel", "Bern", "Luzern", "Lucerne", "Zug"],
 }
 
+_REDDIT_POST_RE = re.compile(r"/comments/([a-z0-9]+)/", re.I)
+
 
 def now_utc():
     return datetime.now(timezone.utc)
@@ -151,6 +160,109 @@ def query_targets_profile(profile: str, query: str) -> bool:
     return bool(spec["target_re"].search(query))
 
 
+def reddit_post_id(url: str) -> str:
+    match = _REDDIT_POST_RE.search(str(url or ""))
+    return match.group(1).lower() if match else ""
+
+
+def is_reddit_post(url: str) -> bool:
+    try:
+        domain = urlparse(str(url or "")).netloc.lower().removeprefix("www.")
+    except Exception:
+        return False
+    return (domain == "reddit.com" or domain.endswith(".reddit.com")) and bool(reddit_post_id(url))
+
+
+def parse_reddit_payload(original: dict, payload) -> dict | None:
+    try:
+        post = payload[0]["data"]["children"][0]["data"]
+    except (KeyError, IndexError, TypeError):
+        return None
+
+    expected_id = reddit_post_id(str(original.get("url") or ""))
+    actual_id = str(post.get("id") or "").lower()
+    if not expected_id or actual_id != expected_id:
+        return None
+
+    title = clean(post.get("title", ""))
+    body = clean(post.get("selftext", ""))
+    if body.lower() in {"[deleted]", "[removed]"}:
+        body = ""
+    if not title and not body:
+        return None
+
+    published = ""
+    try:
+        published = datetime.fromtimestamp(float(post.get("created_utc")), timezone.utc).isoformat()
+    except (TypeError, ValueError, OSError):
+        pass
+
+    permalink = str(post.get("permalink") or "").strip()
+    canonical = f"https://www.reddit.com{permalink}" if permalink.startswith("/") else str(original.get("url") or "")
+
+    return {
+        **original,
+        "source": "Reddit direct",
+        "url": canonical,
+        "title": title,
+        "text": body,
+        "published": published,
+        "author": str(post.get("author") or ""),
+        "source_verified": True,
+        "search_title": clean(original.get("title", "")),
+        "search_snippet": clean(original.get("text", "")),
+    }
+
+
+def _reddit_json_urls(url: str) -> list[str]:
+    post_id = reddit_post_id(url)
+    clean_url = str(url or "").split("?", 1)[0].rstrip("/")
+    return [
+        f"{clean_url}.json?raw_json=1",
+        f"https://www.reddit.com/comments/{post_id}.json?raw_json=1&limit=1",
+    ]
+
+
+def fetch_reddit_post(original: dict) -> tuple[dict | None, str]:
+    url = str(original.get("url") or "")
+    if not is_reddit_post(url):
+        return original, "not_reddit"
+
+    last_reason = "fetch_failed"
+    for endpoint in _reddit_json_urls(url):
+        try:
+            response = SESSION.get(endpoint, timeout=6, allow_redirects=True)
+        except Exception as exc:
+            last_reason = f"exception:{type(exc).__name__}"
+            continue
+        if response.status_code != 200:
+            last_reason = f"http_{response.status_code}"
+            continue
+        try:
+            payload = response.json()
+        except Exception:
+            last_reason = "invalid_json"
+            continue
+        verified = parse_reddit_payload(original, payload)
+        if verified is None:
+            last_reason = "payload_mismatch"
+            continue
+
+        published = str(verified.get("published") or "")
+        if published:
+            try:
+                dt = datetime.fromisoformat(published.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if dt < now_utc() - timedelta(days=LOOKBACK_DAYS):
+                    return None, "stale_reddit_post"
+            except Exception:
+                pass
+        return verified, "verified"
+
+    return None, last_reason
+
+
 def serper_search(profile: str, query: str) -> list[dict]:
     key = os.getenv("SERPER_API_KEY", "").strip()
     if not key:
@@ -165,9 +277,12 @@ def serper_search(profile: str, query: str) -> list[dict]:
     )
     if r.status_code != 200:
         raise RuntimeError(f"Serper HTTP {r.status_code}: {r.text[:180]}")
+
     out = []
+    verified_count = 0
+    dropped_count = 0
     for row in r.json().get("organic", []) or []:
-        out.append({
+        item = {
             "source": "Serper",
             "url": row.get("link", ""),
             "title": row.get("title", ""),
@@ -175,8 +290,31 @@ def serper_search(profile: str, query: str) -> list[dict]:
             "published": row.get("date", ""),
             "author": "",
             "discovery_query": query,
-        })
+        }
+        if is_reddit_post(str(item.get("url") or "")):
+            verified, reason = fetch_reddit_post(item)
+            if verified is None:
+                dropped_count += 1
+                print(
+                    "HOME_REDDIT_VERIFY_DROP",
+                    f"profile={profile}",
+                    f"reason={reason}",
+                    f"url={item.get('url','')}",
+                )
+                continue
+            item = verified
+            verified_count += 1
+        out.append(item)
+
     print(f"HOME_SERPER_OK profile={profile} results={len(out)} query={query!r}")
+    if verified_count or dropped_count:
+        print(
+            "HOME_REDDIT_VERIFY_SUMMARY",
+            f"profile={profile}",
+            f"verified={verified_count}",
+            f"dropped={dropped_count}",
+            f"query={query!r}",
+        )
     return out
 
 
@@ -244,7 +382,7 @@ def classify(profile: str, item: dict) -> tuple[dict | None, str]:
         "classification": classification,
         "buyer_stage": stage,
         "intent_score": min(100, intent),
-        "credibility_score": 82 if not bridged else 74,
+        "credibility_score": 90 if item.get("source_verified") else (82 if not bridged else 74),
         "requirements": {
             "budget": clean(budget.group(0)) if budget else "",
             "city": city,
