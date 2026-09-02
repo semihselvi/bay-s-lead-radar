@@ -103,6 +103,22 @@ class V55RealSignalTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result["classification"], "HOT")
 
+    def test_surfaces_specific_ambiguous_property_seeker_for_qualification(self):
+        message = "Ищу виллу или икиз виллу в Арабкёе. 2+1"
+        result = radar.refine_telegram_v55(self.lead(message, author="@human_seeker"))
+        self.assertIsNotNone(result)
+        self.assertEqual(result["classification"], "WARM")
+        self.assertEqual(result["buyer_signal"], "needs_purchase_confirmation")
+        self.assertIn("Satın alma", result["qualification_question"])
+
+    def test_rejects_monthly_scale_ambiguous_demand(self):
+        message = "Ищу квартиру 2+1 за 650 в центре Гирне Или 1+1 за 600"
+        self.assertIsNone(radar.refine_telegram_v55(self.lead(message)))
+
+    def test_rejects_service_request_that_mentions_apartment(self):
+        message = "Ищу сантехника, который сможет найти и устранить протечку, в нашей квартире сухо."
+        self.assertIsNone(radar.refine_telegram_v55(self.lead(message)))
+
     def test_rejects_short_stay_request(self):
         message = (
             "Ищу квартиру на северном Кипре Искале-боаз 2+1. "
