@@ -6,13 +6,12 @@ import os
 import re
 import time
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urlparse
 
 import requests
 
 import main
 
-VERSION = "1.0-reddit-comment-intent"
+VERSION = "1.1-reddit-comment-intent"
 LOOKBACK_DAYS = int(os.getenv("NC_REDDIT_COMMENT_LOOKBACK_DAYS", "14"))
 QUERY_LIMIT = int(os.getenv("NC_REDDIT_QUERY_LIMIT", "10"))
 WATCHLIST_COLLECTION = "bay_s_nc_reddit_watchlist"
@@ -21,12 +20,12 @@ SCAN_COLLECTION = "bay_s_nc_reddit_scans"
 
 SESSION = requests.Session()
 SESSION.headers.update({
-    "User-Agent": "Mozilla/5.0 (compatible; BAY-S-NC-Reddit-Buyer-Miner/1.0)",
+    "User-Agent": "Mozilla/5.0 (compatible; BAY-S-NC-Reddit-Buyer-Miner/1.1)",
     "Accept-Language": "en-US,en;q=0.9",
 })
 
-# Proven North-Cyprus buyer discussions. The point is not to alert on their old
-# content; they are evergreen magnet threads that can receive NEW buyer comments.
+# Proven North-Cyprus buyer discussions. Old content is never alerted merely for
+# being on this list; these are evergreen magnet threads watched for NEW comments.
 SEED_THREADS = {
     "1cegsun": "Buying property in North Cyprus",
     "1k04v1u": "Buying property in TRNC",
@@ -72,7 +71,7 @@ PROPERTY_RE = re.compile(
 
 DIRECT_RE = re.compile(
     r"(?:"
-    r"\b(?:i|we)\b.{0,70}\b(?:want|looking|planning|thinking|considering|interested|ready|hoping)\b"
+    r"\b(?:i|we)\b.{0,70}\b(?:want|planning|thinking|considering|interested|ready|hoping)\b"
     r".{0,70}\b(?:buy|buying|purchase|purchasing|invest|investing)\b|"
     r"\b(?:looking\s+to\s+buy|want\s+to\s+buy|planning\s+to\s+buy|considering\s+buying|"
     r"thinking\s+(?:of|about)\s+buying|interested\s+in\s+buying|ready\s+to\s+buy)\b|"
@@ -237,7 +236,6 @@ def discover_threads(db) -> dict[str, str]:
                 threads.setdefault(tid, "")
         time.sleep(0.15)
 
-    # Persist newly discovered thread ids and keep monitoring old buyer magnets.
     if db:
         for tid, title in threads.items():
             try:
