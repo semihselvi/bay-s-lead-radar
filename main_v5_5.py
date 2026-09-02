@@ -8,7 +8,7 @@ import main as core
 import main_v5_3 as v53
 
 
-VERSION = "5.6-telegram-supply-bot-guard"
+VERSION = "5.7-web-rental-listing-guard"
 v53.VERSION = VERSION
 v53.v52.VERSION = VERSION
 v53.gate.VERSION = VERSION
@@ -16,13 +16,12 @@ v53.gate.v5.VERSION = VERSION
 v5 = v53.gate.v5
 
 # ---------------------------------------------------------------------------
-# WEB: tune buyer intent from real Serper diagnostics
+# WEB: precision-first buyer intent from real user discussions only
 # ---------------------------------------------------------------------------
 
-# Real buyer phrasing seen in diagnostics, including:
-#   "im planning on buying two properties..."
-#   "father-in-law wants to buy..."
-#   "Looking for property in Northern Cyprus"
+# Keep only purchase-explicit expansions. A bare phrase such as "looking for an
+# apartment" is intentionally NOT direct buyer intent because it is also common
+# in rental demand and property listings.
 v5.DIRECT_PATTERNS.extend([
     re.compile(
         r"\b(?:i|i'm|im|i\s+am|we|we're|we\s+are)\b.{0,55}"
@@ -35,11 +34,6 @@ v5.DIRECT_PATTERNS.extend([
         r".{0,55}\b(?:wants?|plans?|is\s+looking|are\s+looking)\b"
         r".{0,70}\b(?:buy|purchase|buying|purchasing)\b",
         re.I | re.S,
-    ),
-    re.compile(
-        r"\b(?:i(?:'m|\s+am)?\s+)?looking\s+for\s+(?:an?\s+)?"
-        r"(?:property|apartment|apartement|flat|house|villa|studio|land)\b",
-        re.I,
     ),
 ])
 
@@ -54,7 +48,7 @@ v5.BUDGET_RE = re.compile(
 )
 
 # Serper should prefer fresh pages/posts. This affects only the Serper fallback;
-# Exa keeps its own returned dates and the V5 90-day freshness gate.
+# Exa keeps its own returned dates and the V5 freshness gate.
 _original_site_query = v53._site_query
 
 
@@ -66,8 +60,8 @@ def recent_site_query(query: str, domains: list[str] | None) -> str:
 
 v53._site_query = recent_site_query
 
-# Preserve which North-Cyprus query produced the result so a truncated title such
-# as "...in northern ..." can still be safely interpreted in context.
+# Preserve which North-Cyprus query produced the result so a genuinely truncated
+# forum title can still be interpreted in query context.
 _original_search = core.exa_search
 
 
@@ -85,26 +79,84 @@ _WEAK_NORTH_CUE = re.compile(
     re.I,
 )
 
+# Hard web rejects. Buyer radar must never classify portal inventory or rental
+# adverts as people intending to buy.
+_WEB_RENTAL_RE = re.compile(
+    r"(?:"
+    r"\bfor\s+rent\b|\bflats?\s+for\s+rent\b|\bapartments?\s+for\s+rent\b|"
+    r"\bhouses?\s+for\s+rent\b|\bmonthly\s+rent\b|\bper\s+month\b|"
+    r"\bnot\s+negotiable\b.{0,80}\bper\s+month\b|"
+    r"\bà\s+louer\b|\ba\s+louer\b|\bzu\s+mieten\b|\bmietwohnung\b|"
+    r"\bаренд\w*\b|\bснять\b|\bсниму\b|\bkiralık\b|\bkiralam\w*\b"
+    r")",
+    re.I | re.S,
+)
+
+_WEB_LISTING_RE = re.compile(
+    r"(?:"
+    r"\bagency\s+report\b|\breal\s+estate\s+agency\b|\bestate\s+agent\b|"
+    r"\bproperty\s+features\s*[:：]|\bvideo\s+walkthrough\s+available\b|"
+    r"\bviews?\s+agency\s+report\b|\bnot\s+negotiable\b|"
+    r"\bcovered\s+veranda\b|\binternal\s+area\b.{0,30}\bsqm\b|"
+    r"\bcontact\s+(?:the\s+)?(?:agent|agency)\b|\bproperty\s+reference\b"
+    r")",
+    re.I | re.S,
+)
+
+# Expat.com's /housing/ area is a classifieds inventory surface, not a user
+# discussion forum. It can contain sale/rent adverts whose page chrome mentions
+# North Cyprus and whose numeric rent is mistaken for buyer budget.
+def _web_listing_url(url: str) -> bool:
+    low = str(url or "").casefold()
+    if "expat.com/" in low and "/housing/" in low:
+        return True
+    return any(token in low for token in (
+        "/flats-for-rent/", "/flat-for-rent/", "/apartments-for-rent/",
+        "/apartment-for-rent/", "/houses-for-rent/", "/house-for-rent/",
+        "/properties-for-rent/", "/property-for-rent/",
+    ))
+
+
 _original_classify_web = v5.classify_web
 
 
 def classify_web_v55(item: dict[str, Any]):
-    result = _original_classify_web(item)
+    url = str(item.get("url") or "")
+    raw_text = str(item.get("text") or "")
+    title = str(item.get("title") or "")
+
+    # Reject obvious inventory/rental pages before any buyer regex can fire.
+    hard_text = f"{title} {raw_text[:3200]}"
+    if _web_listing_url(url):
+        return None
+    if _WEB_RENTAL_RE.search(hard_text):
+        return None
+    if _WEB_LISTING_RE.search(hard_text):
+        return None
+
+    # Exa can return a whole page including footer/navigation/related-content text.
+    # Classify only the title + first part of the page so unrelated footer phrases
+    # cannot inject "North Cyprus" or buyer language into a South Cyprus listing.
+    primary = dict(item)
+    primary["text"] = raw_text[:2600]
+    primary_text = v5._blob(primary)
+
+    result = _original_classify_web(primary)
     if result is not None:
+        result["radar_version"] = VERSION
         return result
 
-    text = v5._blob(item)
     query = str(item.get("_search_query") or "")
     if (
-        not v5.NORTH_RE.search(text)
+        not v5.NORTH_RE.search(primary_text)
         and v5.NORTH_RE.search(query)
-        and _WEAK_NORTH_CUE.search(text)
+        and _WEAK_NORTH_CUE.search(primary_text)
     ):
-        shadow = dict(item)
-        shadow["title"] = f"{item.get('title', '')} North Cyprus"
+        shadow = dict(primary)
+        shadow["title"] = f"{title} North Cyprus"
         result = _original_classify_web(shadow)
         if result is not None:
-            result["title"] = item.get("title", "")
+            result["title"] = title
             result["north_context_bridge"] = True
             result["radar_version"] = VERSION
             return result
@@ -141,14 +193,8 @@ TG_SHORT_STAY_RE = re.compile(
     re.I | re.S,
 )
 
-# Buyer radar must never promote automated listing publishers. A Telegram account
-# ending in "bot" is not a human buyer even if its advert contains words such as
-# "нужно" and a purchase-scale price.
 TG_BOT_AUTHOR_RE = re.compile(r"^@?[a-z0-9_]*bot$", re.I)
 
-# Strong supply/advertising language observed in real false positives. These are
-# checked BEFORE the older terse-demand classifier because seller copy such as
-# "клиенту нужно продать виллу" can otherwise look like "нужно ... виллу" demand.
 TG_STRONG_SUPPLY_RE = re.compile(
     r"(?:"
     r"\bсрочн\w*.{0,30}\bпродаж\w*\b|"
@@ -163,8 +209,6 @@ TG_STRONG_SUPPLY_RE = re.compile(
     re.I | re.S,
 )
 
-# Extend the shared seller gate as well so every V5 Telegram path recognises the
-# common Russian noun form "продажа", not only "продаётся/продам".
 v53.gate.TG_SUPPLY_RE = re.compile(
     v53.gate.TG_SUPPLY_RE.pattern
     + r"|\b(?:срочная\s+)?продаж\w*\b|\bпродаю\b|\bпродать\b.{0,80}\b(?:вилл\w*|квартир\w*|апартамент\w*|дом\w*)\b",
@@ -178,7 +222,6 @@ def refine_telegram_v55(lead: dict[str, Any]):
     text = str(lead.get("message") or "")
     author = str(lead.get("author") or "").strip()
 
-    # Hard precision gates MUST run before the inherited classifier.
     if TG_BOT_AUTHOR_RE.search(author):
         return None
     if TG_STRONG_SUPPLY_RE.search(text):
