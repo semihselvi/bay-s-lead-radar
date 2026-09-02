@@ -22,6 +22,18 @@ class BrokenWebsiteSalesTests(unittest.TestCase):
             rating_count=42,
         )
 
+    def test_preserves_wix_site_slug(self):
+        self.assertEqual(
+            sales.root_url("https://onayandonay.wixsite.com/home/contact"),
+            "https://onayandonay.wixsite.com/home",
+        )
+
+    def test_normal_domains_still_collapse_to_root(self):
+        self.assertEqual(
+            sales.root_url("https://example.com/services/page"),
+            "https://example.com/",
+        )
+
     def test_http_404_is_hot_when_business_has_direct_contact(self):
         response = type("Resp", (), {"status_code": 404})()
         with patch.object(sales.requests, "get", return_value=response):
