@@ -78,7 +78,7 @@ def _base_candidate(group: str, entity: Any, msg: Any, started: datetime) -> dic
             if getattr(msg, "date", None)
             else ""
         ),
-        "author": "",
+        "author": core.tg_sender(msg),
         "message": text,
         "url": core.tg_link(entity, getattr(msg, "id", 0)),
         "market": "north_cyprus",
@@ -207,6 +207,15 @@ async def candidate_first_telegram_scan(db_client, started):
                         continue
 
                     buyer_signal_messages += 1
+
+                    # Resolve the sender BEFORE the strict gate. Previous versions
+                    # populated author only after refinement, so an *_bot username
+                    # could bypass the bot-author guard during classification.
+                    try:
+                        await msg.get_sender()
+                    except Exception:
+                        pass
+
                     candidate = _base_candidate(group, entity, msg, started)
                     refined = gate.refine_telegram_property_buyer(candidate)
                     if refined is None:
@@ -223,13 +232,8 @@ async def candidate_first_telegram_scan(db_client, started):
                             already_notified += 1
                             continue
 
-                    try:
-                        await msg.get_sender()
-                    except Exception:
-                        pass
-
                     refined["lead_id"] = lead_id
-                    refined["author"] = core.tg_sender(msg)
+                    refined["author"] = candidate.get("author") or core.tg_sender(msg)
                     refined["found_at"] = started.isoformat()
                     refined["radar_version"] = VERSION
                     ref.set(refined, merge=True)
