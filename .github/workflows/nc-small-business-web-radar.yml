@@ -5,6 +5,7 @@ name: SALES - North Cyprus Small Business Web Radar
   push:
     paths:
       - "small_business_web_radar.py"
+      - "small_business_web_radar_reviewed.py"
       - "test_small_business_web_radar.py"
       - ".github/workflows/nc-small-business-web-radar.yml"
   schedule:
@@ -32,10 +33,10 @@ jobs:
 
       - name: Verify small-business web radar
         run: |
-          python -m py_compile small_business_web_radar.py test_small_business_web_radar.py
+          python -m py_compile small_business_web_radar.py small_business_web_radar_reviewed.py test_small_business_web_radar.py
           python -m unittest -q test_small_business_web_radar.py
 
-      - name: Find North Cyprus small-business website redesign leads
+      - name: Find and pre-review North Cyprus website redesign leads
         env:
           SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
@@ -47,4 +48,4 @@ jobs:
           SMALL_BIZ_MAX_ALERTS: "12"
           SMALL_BIZ_REQUEST_TIMEOUT: "12"
           SMALL_BIZ_MAX_WORKERS: "6"
-        run: python small_business_web_radar.py
+        run: python small_business_web_radar_reviewed.py
