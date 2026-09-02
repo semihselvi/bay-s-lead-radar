@@ -8,7 +8,7 @@ import main as core
 import main_v5_3 as v53
 
 
-VERSION = "5.5-real-signal-tuning"
+VERSION = "5.6-telegram-supply-bot-guard"
 v53.VERSION = VERSION
 v53.v52.VERSION = VERSION
 v53.gate.VERSION = VERSION
@@ -114,7 +114,7 @@ def classify_web_v55(item: dict[str, Any]):
 v5.classify_web = classify_web_v55
 
 # ---------------------------------------------------------------------------
-# TELEGRAM: accept purchase-specific terse demand, reject short-stay noise
+# TELEGRAM: accept purchase-specific terse demand, reject short-stay/supply noise
 # ---------------------------------------------------------------------------
 
 TG_PURCHASE_QUALIFIER_RE = re.compile(
@@ -141,10 +141,53 @@ TG_SHORT_STAY_RE = re.compile(
     re.I | re.S,
 )
 
+# Buyer radar must never promote automated listing publishers. A Telegram account
+# ending in "bot" is not a human buyer even if its advert contains words such as
+# "нужно" and a purchase-scale price.
+TG_BOT_AUTHOR_RE = re.compile(r"^@?[a-z0-9_]*bot$", re.I)
+
+# Strong supply/advertising language observed in real false positives. These are
+# checked BEFORE the older terse-demand classifier because seller copy such as
+# "клиенту нужно продать виллу" can otherwise look like "нужно ... виллу" demand.
+TG_STRONG_SUPPLY_RE = re.compile(
+    r"(?:"
+    r"\bсрочн\w*.{0,30}\bпродаж\w*\b|"
+    r"\bнов\w*\s+объявлен\w*\b|"
+    r"\bклиент\w*.{0,80}\b(?:нужно|надо|хочет|хотят)\b.{0,60}\bпродать\b|"
+    r"\b(?:продажа|продаю|продаем|продаём|продать)\b.{0,70}\b(?:вилл\w*|квартир\w*|апартамент\w*|дом\w*|недвижимост\w*)\b|"
+    r"\bpulsemarket\b|"
+    r"\bбольше\s+фотографий\b|\bсмотреть\s+на\s+сайте\b|"
+    r"\bподключить\s+алерт\w*\b|\bполучать\s+новые\s+объявлен\w*\b|"
+    r"\bновое\s+объявление\b.{0,120}\b(?:цена|контакт)\s*[:：]"
+    r")",
+    re.I | re.S,
+)
+
+# Extend the shared seller gate as well so every V5 Telegram path recognises the
+# common Russian noun form "продажа", not only "продаётся/продам".
+v53.gate.TG_SUPPLY_RE = re.compile(
+    v53.gate.TG_SUPPLY_RE.pattern
+    + r"|\b(?:срочная\s+)?продаж\w*\b|\bпродаю\b|\bпродать\b.{0,80}\b(?:вилл\w*|квартир\w*|апартамент\w*|дом\w*)\b",
+    re.I | re.S,
+)
+
 _original_refine = v53.refine_with_budgeted_demand
 
 
 def refine_telegram_v55(lead: dict[str, Any]):
+    text = str(lead.get("message") or "")
+    author = str(lead.get("author") or "").strip()
+
+    # Hard precision gates MUST run before the inherited classifier.
+    if TG_BOT_AUTHOR_RE.search(author):
+        return None
+    if TG_STRONG_SUPPLY_RE.search(text):
+        return None
+    if v53.gate.TG_SUPPLY_RE.search(text):
+        return None
+    if TG_SHORT_STAY_RE.search(text):
+        return None
+
     result = _original_refine(lead)
     if result is not None:
         return result
@@ -152,12 +195,7 @@ def refine_telegram_v55(lead: dict[str, Any]):
     if str(lead.get("market") or "") != "north_cyprus":
         return None
 
-    text = str(lead.get("message") or "")
-    if TG_SHORT_STAY_RE.search(text):
-        return None
     if v53.gate.TG_RENT_RE.search(text):
-        return None
-    if v53.gate.TG_SUPPLY_RE.search(text):
         return None
     if not v53.gate.TG_PROPERTY_RE.search(text):
         return None
