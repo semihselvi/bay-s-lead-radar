@@ -8,7 +8,7 @@ import main as core
 import main_v5_3 as v53
 
 
-VERSION = "5.7-web-rental-listing-guard"
+VERSION = "5.8-qualification-aware-buyer-radar"
 v53.VERSION = VERSION
 v53.v52.VERSION = VERSION
 v53.gate.VERSION = VERSION
@@ -166,7 +166,7 @@ def classify_web_v55(item: dict[str, Any]):
 v5.classify_web = classify_web_v55
 
 # ---------------------------------------------------------------------------
-# TELEGRAM: accept purchase-specific terse demand, reject short-stay/supply noise
+# TELEGRAM: buyer leads + a separate qualification lane for valuable ambiguity
 # ---------------------------------------------------------------------------
 
 TG_PURCHASE_QUALIFIER_RE = re.compile(
@@ -209,6 +209,67 @@ TG_STRONG_SUPPLY_RE = re.compile(
     re.I | re.S,
 )
 
+# Requests for a tradesperson/service often contain a property word later in the
+# sentence ("plumber ... our apartment") and used to enter the buyer candidate net.
+TG_SERVICE_REQUEST_RE = re.compile(
+    r"(?:"
+    r"\b(?:ищу|ищем|нужен|нужна|нужно)\b.{0,90}\b(?:сантехник\w*|электрик\w*|мастер\w*|"
+    r"ремонтник\w*|клининг\w*|уборк\w*|риэлтор\w*|адвокат\w*)\b|"
+    r"\b(?:looking\s+for|need)\b.{0,90}\b(?:plumber|electrician|handyman|repairman|cleaner|cleaning\s+service)\b|"
+    r"\b(?:arıyorum|ariyorum|lazım|lazim)\b.{0,90}\b(?:tesisatçı|tesisatci|elektrikçi|elektrikci|usta|tamirci|temizlikçi|temizlikci)\b"
+    r")",
+    re.I | re.S,
+)
+
+# Terse demand can be valuable even when the writer did not say "buy" or "rent".
+# We only surface it for qualification when it is specific enough to contact:
+# a North-Cyprus locality plus a concrete unit/property type/configuration.
+TG_LOCALITY_RE = re.compile(
+    r"\b(?:girne|kyrenia|iskele|İskele|long\s+beach|esentepe|lapta|alsancak|karaoğlanoğlu|karaoglanoglu|"
+    r"arabk[oö]y|arabkoy|арабк[её]й|искеле|гирне|эсентепе|лапта|алсанджак|"
+    r"famagusta|gazimağusa|gazimagusa|yeniboğaziçi|yenibogazici|tatlısu|tatlisu|bafra|gaziveren|lefke)\b",
+    re.I,
+)
+TG_UNIT_SPEC_RE = re.compile(
+    r"(?:\b(?:studio|студи\w*|квартир\w*|вилл\w*|дом\w*|apartment|flat|house|villa|daire|ev)\b|"
+    r"\b[1-5]\s*\+\s*[01]\b)",
+    re.I,
+)
+
+# Bare monthly-scale amounts in terse demand are overwhelmingly rental requests
+# in the groups we scan. Purchase-scale amounts are already handled by V5.3.
+TG_LOW_AMOUNT_RE = re.compile(
+    r"\b(?:за|до|up\s+to|max(?:imum)?|budget|бюджет|bütçe|butce|bis)\s*"
+    r"(?:[£€$])?\s*(\d{2,4})(?!\s*[kKmM])\b",
+    re.I,
+)
+
+
+def _likely_monthly_scale(text: str) -> bool:
+    for m in TG_LOW_AMOUNT_RE.finditer(text or ""):
+        try:
+            value = int(m.group(1))
+        except Exception:
+            continue
+        if 100 <= value <= 5000:
+            return True
+    return False
+
+
+def _specific_ambiguous_property_demand(text: str) -> bool:
+    if not v53.TG_TERSE_DEMAND_RE.search(text):
+        return False
+    if TG_SERVICE_REQUEST_RE.search(text):
+        return False
+    if v53.gate.TG_RENT_RE.search(text) or TG_SHORT_STAY_RE.search(text):
+        return False
+    if TG_STRONG_SUPPLY_RE.search(text) or v53.gate.TG_SUPPLY_RE.search(text):
+        return False
+    if _likely_monthly_scale(text):
+        return False
+    return bool(TG_LOCALITY_RE.search(text) and TG_UNIT_SPEC_RE.search(text))
+
+
 v53.gate.TG_SUPPLY_RE = re.compile(
     v53.gate.TG_SUPPLY_RE.pattern
     + r"|\b(?:срочная\s+)?продаж\w*\b|\bпродаю\b|\bпродать\b.{0,80}\b(?:вилл\w*|квартир\w*|апартамент\w*|дом\w*)\b",
@@ -230,6 +291,8 @@ def refine_telegram_v55(lead: dict[str, Any]):
         return None
     if TG_SHORT_STAY_RE.search(text):
         return None
+    if TG_SERVICE_REQUEST_RE.search(text):
+        return None
 
     result = _original_refine(lead)
     if result is not None:
@@ -237,27 +300,67 @@ def refine_telegram_v55(lead: dict[str, Any]):
 
     if str(lead.get("market") or "") != "north_cyprus":
         return None
-
     if v53.gate.TG_RENT_RE.search(text):
         return None
     if not v53.gate.TG_PROPERTY_RE.search(text):
         return None
     if not v53.TG_TERSE_DEMAND_RE.search(text):
         return None
-    if not TG_PURCHASE_QUALIFIER_RE.search(text):
-        return None
 
-    out = dict(lead)
-    has_budget = v53._purchase_scale_budget(text)
-    out["classification"] = "HOT" if has_budget else "WARM"
-    out["buyer_signal"] = "purchase_qualified_demand"
-    out["telegram_score"] = max(int(out.get("telegram_score") or 0), 76 if has_budget else 64)
-    out["budget_detected"] = has_budget
-    out["radar_version"] = VERSION
-    return out
+    # Explicit ownership/title/payment language is a genuine purchase qualifier.
+    if TG_PURCHASE_QUALIFIER_RE.search(text):
+        out = dict(lead)
+        has_budget = v53._purchase_scale_budget(text)
+        out["classification"] = "HOT" if has_budget else "WARM"
+        out["buyer_signal"] = "purchase_qualified_demand"
+        out["telegram_score"] = max(int(out.get("telegram_score") or 0), 76 if has_budget else 64)
+        out["budget_detected"] = has_budget
+        out["radar_version"] = VERSION
+        return out
+
+    # Do not silently throw away a specific property seeker just because they did
+    # not state buy/rent. It is NOT a buyer lead yet; route it as a qualification
+    # opportunity so Semih can ask one question and potentially turn it into work.
+    if _specific_ambiguous_property_demand(text):
+        out = dict(lead)
+        out["classification"] = "WARM"  # compatibility with the existing pipeline
+        out["buyer_signal"] = "needs_purchase_confirmation"
+        out["telegram_score"] = max(int(out.get("telegram_score") or 0), 52)
+        out["budget_detected"] = False
+        out["qualification_question"] = "Satın alma mı kiralama mı düşünüyorsunuz?"
+        out["radar_version"] = VERSION
+        return out
+
+    return None
 
 
 v53.gate.refine_telegram_property_buyer = refine_telegram_v55
+
+# The legacy notifier calls every HOT/WARM row a BUYER. Qualification rows must
+# be visibly different so they never contaminate the buyer count semantically.
+_base_notify = v5.notify_telegram_lead
+
+
+def notify_telegram_v58(lead: dict[str, Any], prefix: str = "NEW") -> bool:
+    if lead.get("buyer_signal") == "needs_purchase_confirmation":
+        if str(lead.get("market") or "") != "north_cyprus":
+            return False
+        message = v5._clip(lead.get("message") or "", 900)
+        msg = (
+            f"🟠 BAY-S | TALEP VAR — SATIN ALMA/KİRALAMA NET DEĞİL [{prefix}]\n\n"
+            f"Grup: {lead.get('group','')}\n"
+            f"Kişi: {lead.get('author','-') or '-'}\n"
+            f"Skor: {lead.get('telegram_score',0)}\n\n"
+            f"{message}\n\n"
+            f"✅ Sorulacak tek soru: Satın alma mı kiralama mı düşünüyorsunuz?\n\n"
+            f"🔗 {lead.get('url','') or 'Doğrudan link yok'}"
+        )
+        core.telegram(msg[:3900])
+        return True
+    return _base_notify(lead, prefix)
+
+
+v5.notify_telegram_lead = notify_telegram_v58
 
 
 def main() -> None:
