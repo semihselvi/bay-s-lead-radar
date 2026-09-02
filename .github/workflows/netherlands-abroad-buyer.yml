@@ -8,7 +8,7 @@ name: ABROAD - Netherlands Residents Buying Abroad
 jobs:
   netherlands-abroad-buyer:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -16,10 +16,10 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
-      - name: Test abroad buyer radar
+      - name: Test source-verified abroad buyer radar
         run: |
-          python -m py_compile europe_abroad_buyer_radar.py test_europe_abroad_buyer_radar.py
-          python -m unittest -q test_europe_abroad_buyer_radar.py
+          python -m py_compile europe_abroad_buyer_radar.py europe_abroad_buyer_radar_verified.py test_europe_abroad_buyer_radar.py test_europe_abroad_buyer_radar_verified.py
+          python -m unittest -q test_europe_abroad_buyer_radar.py test_europe_abroad_buyer_radar_verified.py
       - name: Run Netherlands residents buying abroad radar
         env:
           ABROAD_RADAR_PROFILE: netherlands_abroad
@@ -29,4 +29,4 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python europe_abroad_buyer_radar.py
+        run: python europe_abroad_buyer_radar_verified.py
