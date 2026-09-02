@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import re
 from urllib.parse import urlparse, urlunparse
 
 import requests
@@ -9,7 +10,7 @@ import small_business_web_radar as base
 import small_business_web_radar_reviewed as reviewed
 
 
-VERSION = "1.4-hosted-path-safe-sales-fit"
+VERSION = "1.5-small-local-business-only"
 
 # reviewed import has already patched base.inspect_site with the pre-alert sales
 # quality gate. Keep that function as the normal path for reachable websites.
@@ -23,14 +24,22 @@ HOSTED_PATH_SITES = (
     "webnode.com",
 )
 
+# The sales radar is intentionally for small, straightforward local brochure/
+# service websites. These sectors either tend to be larger/corporate or need a
+# more complex product than the quick redesign offer we want to sell.
+NON_TARGET_BUSINESS_RE = re.compile(
+    r"(?:investment(?:\s+advice|\s+company|\s+consult|\s+firm)?|"
+    r"real\s+estate(?:\s+agency|\s+agent|\s+company)?|estate\s+agency|"
+    r"property\s+(?:agency|developer|development|investment)|"
+    r"immigration(?:\s+consult|\s+company|\s+services)?|"
+    r"construction\s+(?:company|group)|corporate\s+office|"
+    r"hotel\b|resort\b|casino\b|university\b|college\b|hospital\b)",
+    re.I,
+)
+
 
 def root_url(url: str) -> str:
-    """Keep the site slug for hosted builders where the hostname alone is 404.
-
-    Example: onayandonay.wixsite.com/home is a valid live website while
-    onayandonay.wixsite.com/ is not. Stripping /home creates a false broken-site
-    lead, so preserve the first path segment for these builders.
-    """
+    """Keep the site slug for hosted builders where the hostname alone is 404."""
     try:
         parsed = urlparse(url)
         host = (parsed.hostname or "").lower()
@@ -42,6 +51,22 @@ def root_url(url: str) -> str:
     except Exception:
         pass
     return _original_root_url(url)
+
+
+def _business_meta(discovery) -> str:
+    return " ".join(
+        str(value or "")
+        for value in (
+            getattr(discovery, "title", ""),
+            getattr(discovery, "place_type", ""),
+            getattr(discovery, "description", ""),
+            getattr(discovery, "address", ""),
+        )
+    )
+
+
+def non_target_business(discovery) -> bool:
+    return bool(NON_TARGET_BUSINESS_RE.search(_business_meta(discovery)))
 
 
 def _alternate_scheme(url: str) -> str:
@@ -88,6 +113,13 @@ def _broken_lead(discovery, reason: str, score: int = 95) -> dict | None:
 def inspect_site(discovery):
     url = str(getattr(discovery, "url", "") or "")
     if not url or reviewed.blocked_url(url):
+        return None
+    if non_target_business(discovery):
+        print(
+            "SMALL_BIZ_REJECT reason=non_target_sector "
+            f"business={getattr(discovery, 'title', '')!r} url={url} "
+            f"place_type={getattr(discovery, 'place_type', '')!r}"
+        )
         return None
 
     headers = {"User-Agent": base.UA, "Accept-Language": "en,tr;q=0.9"}
