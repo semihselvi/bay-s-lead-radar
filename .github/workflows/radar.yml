@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 25
 
     steps:
-      - name: Checkout V5.5 production branch
+      - name: Checkout NC production branch
         uses: actions/checkout@v6
         with:
           ref: feature/radar-v5-buyer-expansion
@@ -63,7 +63,7 @@ jobs:
           print(f"Telegram session restored: {len(data)} bytes")
           PY
 
-      - name: Run BAY-S Radar V5.7 with buyer diagnostics
+      - name: Run BAY-S Radar V5.8 qualification-aware diagnostics
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
