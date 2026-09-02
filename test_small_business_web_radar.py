@@ -2,6 +2,7 @@ import unittest
 from bs4 import BeautifulSoup
 
 import small_business_web_radar as radar
+import small_business_web_radar_reviewed as reviewed
 
 
 class SmallBusinessWebRadarTests(unittest.TestCase):
@@ -9,6 +10,11 @@ class SmallBusinessWebRadarTests(unittest.TestCase):
         self.assertTrue(radar.blocked_url("https://www.facebook.com/example"))
         self.assertTrue(radar.blocked_url("https://www.tripadvisor.com/Restaurant_Review-x"))
         self.assertFalse(radar.blocked_url("https://example-cafe.com/"))
+
+    def test_review_layer_blocks_booking_marketplaces(self):
+        self.assertTrue(reviewed.blocked_url("https://www.salonbir.com/tj-cutz"))
+        self.assertTrue(reviewed.blocked_url("https://www.fresha.com/a/example"))
+        self.assertFalse(reviewed.blocked_url("https://famagustadentalclinic.com/"))
 
     def test_detects_north_cyprus_context(self):
         self.assertIsNotNone(radar.NORTH_CYPRUS_RE.search("Family salon in Girne"))
@@ -85,6 +91,36 @@ class SmallBusinessWebRadarTests(unittest.TestCase):
         soup = BeautifulSoup(html, "html.parser")
         score, _ = radar.score_site("https://example.com/", html, soup, 0.5)
         self.assertLess(score, radar.MIN_SCORE)
+
+    def test_review_rejects_minor_seo_only_warm_candidate(self):
+        lead = {
+            "website": "https://petlinehotel.com/",
+            "redesign_score": 41,
+            "reasons": [
+                "meta açıklama zayıf/yok",
+                "sosyal paylaşım meta verisi yok",
+                "telefon/WhatsApp/e-posta CTA görünmüyor",
+                "karışık HTTP içerik",
+                "H1 başlık yok",
+                "canonical SEO etiketi yok",
+                "yerel işletme schema verisi yok",
+            ],
+        }
+        self.assertFalse(reviewed.sales_worthy(lead))
+
+    def test_review_keeps_real_redesign_sales_case(self):
+        lead = {
+            "website": "https://famagustadentalclinic.com/",
+            "redesign_score": 73,
+            "reasons": [
+                "meta açıklama zayıf/yok",
+                "eski HTML/JS izleri",
+                "telif yılı eski (2021)",
+                "telefon/WhatsApp/e-posta CTA görünmüyor",
+                "H1 başlık yok",
+            ],
+        }
+        self.assertTrue(reviewed.sales_worthy(lead))
 
     def test_extracts_public_business_contacts(self):
         html = """
