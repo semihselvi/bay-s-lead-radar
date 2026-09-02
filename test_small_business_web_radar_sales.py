@@ -34,6 +34,25 @@ class BrokenWebsiteSalesTests(unittest.TestCase):
             "https://example.com/",
         )
 
+    def test_excludes_investment_real_estate_corporate_leak(self):
+        discovery = base.Discovery(
+            url="http://euromy.info/",
+            title="euromy company",
+            category="accountant",
+            city="Gazimağusa",
+            query="accountant in Gazimagusa North Cyprus",
+            address="Famagusta, North Cyprus",
+            phone="+90 533 842 66 05",
+            description="Immigration and real estate investment advice in Northern Cyprus",
+            place_type="Investment company",
+            rating=4.0,
+            rating_count=100,
+        )
+        self.assertTrue(sales.non_target_business(discovery))
+        with patch.object(sales.requests, "get") as mocked_get:
+            self.assertIsNone(sales.inspect_site(discovery))
+            mocked_get.assert_not_called()
+
     def test_http_404_is_hot_when_business_has_direct_contact(self):
         response = type("Resp", (), {"status_code": 404})()
         with patch.object(sales.requests, "get", return_value=response):
