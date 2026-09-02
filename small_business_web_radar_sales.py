@@ -9,11 +9,39 @@ import small_business_web_radar as base
 import small_business_web_radar_reviewed as reviewed
 
 
-VERSION = "1.3-broken-site-sales-fit"
+VERSION = "1.4-hosted-path-safe-sales-fit"
 
 # reviewed import has already patched base.inspect_site with the pre-alert sales
 # quality gate. Keep that function as the normal path for reachable websites.
 _reviewed_inspect = base.inspect_site
+_original_root_url = base._root_url
+
+HOSTED_PATH_SITES = (
+    "wixsite.com",
+    "weebly.com",
+    "webnode.page",
+    "webnode.com",
+)
+
+
+def root_url(url: str) -> str:
+    """Keep the site slug for hosted builders where the hostname alone is 404.
+
+    Example: onayandonay.wixsite.com/home is a valid live website while
+    onayandonay.wixsite.com/ is not. Stripping /home creates a false broken-site
+    lead, so preserve the first path segment for these builders.
+    """
+    try:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        if parsed.scheme in {"http", "https"} and any(host.endswith(x) for x in HOSTED_PATH_SITES):
+            parts = [p for p in parsed.path.split("/") if p]
+            path = f"/{parts[0]}" if parts else "/"
+            port = f":{parsed.port}" if parsed.port else ""
+            return f"{parsed.scheme}://{parsed.hostname}{port}{path}"
+    except Exception:
+        pass
+    return _original_root_url(url)
 
 
 def _alternate_scheme(url: str) -> str:
@@ -94,8 +122,6 @@ def inspect_site(discovery):
                     allow_redirects=True,
                 )
                 if r2.status_code == 200:
-                    # The business is reachable only on the alternate scheme;
-                    # inspect that live page and let normal scoring handle it.
                     return _reviewed_inspect(replace(discovery, url=alt))
             except requests.RequestException:
                 pass
@@ -133,6 +159,7 @@ def inspect_site(discovery):
 
 
 base.VERSION = VERSION
+base._root_url = root_url
 base.inspect_site = inspect_site
 
 
