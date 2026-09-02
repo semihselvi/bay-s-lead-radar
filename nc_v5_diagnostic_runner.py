@@ -4,6 +4,14 @@ import re
 
 import main_v5_5 as radar
 
+# Russian users spell Arabköy in several declined/transliterated forms
+# (Арабкёй / Арабкёе). Production runs use this wrapper, so normalize that
+# locality before classification without broadening generic buyer intent.
+radar.TG_LOCALITY_RE = re.compile(
+    radar.TG_LOCALITY_RE.pattern + r"|\bарабк[её](?:й|е)?\b",
+    re.I,
+)
+
 _tg_seen = 0
 _tg_limit = 12
 _web_seen = 0
