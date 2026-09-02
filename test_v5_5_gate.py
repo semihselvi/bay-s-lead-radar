@@ -42,6 +42,47 @@ class V55RealSignalTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertTrue(result.get("north_context_bridge"))
 
+    def test_rejects_expat_rental_listing_false_positive(self):
+        item = {
+            "source": "Exa",
+            "url": "https://www.expat.com/en/housing/europe/cyprus/nicosia/40-flats-for-rent/801836-3-bedroom-apartment-on-the-2nd-floor-of-a-small-residential-building-video-walkthrough-available.html",
+            "title": "3-bedroom apartment on the 2nd floor of a small residential building - Video Walkthrough available - Expat.com",
+            "text": (
+                "3-bedroom apartment on the 2nd floor of a small residential building - Video Walkthrough available. "
+                "Nicosia, Lefkosia € 1295 per month, Not negotiable. 4 months ago. 67 Views Agency Report. "
+                "A beautifully maintained 3-bedroom apartment. Property Features: 125sqm internal area + 15sqm covered veranda. "
+                "Related navigation may mention North Cyprus property and people looking for an apartment."
+            ),
+            "published": "",
+            "author": "",
+            "_search_query": "North Cyprus looking to buy property apartment villa budget",
+        }
+        self.assertIsNone(radar.classify_web_v55(item))
+
+    def test_rejects_expat_housing_inventory_even_if_sale_copy_mentions_buy(self):
+        item = {
+            "source": "Exa",
+            "url": "https://www.expat.com/en/housing/europe/cyprus/example/42-houses-for-sale/123.html",
+            "title": "Villa available in Cyprus",
+            "text": "North Cyprus villa. Contact the agency to buy. Property Features: pool and garden.",
+            "published": "",
+            "author": "",
+            "_search_query": "North Cyprus want to buy property",
+        }
+        self.assertIsNone(radar.classify_web_v55(item))
+
+    def test_rejects_bare_looking_for_property_without_purchase_intent(self):
+        item = {
+            "source": "Serper",
+            "url": "https://www.reddit.com/r/NorthCyprus/comments/example_rental/",
+            "title": "Looking for an apartment in North Cyprus",
+            "text": "I am looking for an apartment in North Cyprus, ideally near the sea.",
+            "published": "",
+            "author": "",
+            "_search_query": "North Cyprus looking for apartment",
+        }
+        self.assertIsNone(radar.classify_web_v55(item))
+
     def test_accepts_title_deed_terse_buyer_without_budget(self):
         message = (
             "Ищу квартиру 2+1 в İskele Long Beach. "
