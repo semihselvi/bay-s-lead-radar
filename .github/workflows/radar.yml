@@ -11,7 +11,7 @@ name: NC - North Cyprus Buyer Radar
 jobs:
   radar:
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 25
 
     steps:
       - name: Checkout V5.5 production branch
@@ -32,8 +32,8 @@ jobs:
 
       - name: Verify buyer gates before scan
         run: |
-          python -m py_compile main.py main_v5.py main_v5_1.py main_v5_2.py main_v5_3.py main_v5_4.py main_v5_5.py test_v5_1_gate.py test_v5_3_gate.py test_v5_5_gate.py
-          python -m unittest -q test_v5_1_gate.py test_v5_3_gate.py test_v5_5_gate.py
+          python -m py_compile main.py main_v5.py main_v5_1.py main_v5_2.py main_v5_3.py main_v5_4.py main_v5_5.py reddit_nc_buyer_miner.py test_v5_1_gate.py test_v5_3_gate.py test_v5_5_gate.py test_reddit_nc_buyer_miner.py
+          python -m unittest -q test_v5_1_gate.py test_v5_3_gate.py test_v5_5_gate.py test_reddit_nc_buyer_miner.py
 
       - name: Restore Telegram session
         env:
@@ -78,6 +78,17 @@ jobs:
           RADAR_V5_TELEGRAM_BACKFILL_LIMIT: "12"
           RADAR_V5_WEB_MAX_AGE_DAYS: "90"
         run: python main_v5_5.py
+
+      - name: Mine verified Reddit buyer comments
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+          SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
+          NC_REDDIT_COMMENT_LOOKBACK_DAYS: "14"
+          NC_REDDIT_QUERY_LIMIT: "10"
+        run: python reddit_nc_buyer_miner.py
 
       - name: Cleanup Telegram session
         if: always()
