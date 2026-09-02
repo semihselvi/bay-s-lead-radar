@@ -104,7 +104,7 @@ class V55RealSignalTests(unittest.TestCase):
         self.assertEqual(result["classification"], "HOT")
 
     def test_surfaces_specific_ambiguous_property_seeker_for_qualification(self):
-        message = "Ищу виллу или икиз виллу в Арабкёе. 2+1"
+        message = "Ищу виллу или икиз виллу в Arabköy. 2+1"
         result = radar.refine_telegram_v55(self.lead(message, author="@human_seeker"))
         self.assertIsNotNone(result)
         self.assertEqual(result["classification"], "WARM")
