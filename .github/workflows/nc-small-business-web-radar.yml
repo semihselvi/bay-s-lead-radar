@@ -6,7 +6,9 @@ name: SALES - North Cyprus Small Business Web Radar
     paths:
       - "small_business_web_radar.py"
       - "small_business_web_radar_reviewed.py"
+      - "small_business_web_radar_sales.py"
       - "test_small_business_web_radar.py"
+      - "test_small_business_web_radar_sales.py"
       - ".github/workflows/nc-small-business-web-radar.yml"
   schedule:
     - cron: "35 5 * * *"
@@ -14,7 +16,7 @@ name: SALES - North Cyprus Small Business Web Radar
 jobs:
   radar:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -33,8 +35,8 @@ jobs:
 
       - name: Verify small-business web radar
         run: |
-          python -m py_compile small_business_web_radar.py small_business_web_radar_reviewed.py test_small_business_web_radar.py
-          python -m unittest -q test_small_business_web_radar.py
+          python -m py_compile small_business_web_radar.py small_business_web_radar_reviewed.py small_business_web_radar_sales.py test_small_business_web_radar.py test_small_business_web_radar_sales.py
+          python -m unittest -q test_small_business_web_radar.py test_small_business_web_radar_sales.py
 
       - name: Find and pre-review North Cyprus website redesign leads
         env:
@@ -42,10 +44,10 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          SMALL_BIZ_QUERY_LIMIT: "16"
-          SMALL_BIZ_SITE_LIMIT: "60"
+          SMALL_BIZ_QUERY_LIMIT: "24"
+          SMALL_BIZ_SITE_LIMIT: "80"
           SMALL_BIZ_MIN_SCORE: "38"
           SMALL_BIZ_MAX_ALERTS: "12"
           SMALL_BIZ_REQUEST_TIMEOUT: "12"
           SMALL_BIZ_MAX_WORKERS: "6"
-        run: python small_business_web_radar_reviewed.py
+        run: python small_business_web_radar_sales.py
