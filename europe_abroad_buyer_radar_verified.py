@@ -90,7 +90,6 @@ def _reddit_json_urls(url: str) -> list[str]:
     return [
         f"{clean_url}.json?raw_json=1",
         f"https://www.reddit.com/comments/{post_id}.json?raw_json=1&limit=1",
-        f"https://old.reddit.com/comments/{post_id}.json?raw_json=1&limit=1",
     ]
 
 
@@ -102,7 +101,7 @@ def fetch_reddit_post(original: dict) -> tuple[dict | None, str]:
     last_status = "fetch_failed"
     for endpoint in _reddit_json_urls(url):
         try:
-            response = SESSION.get(endpoint, timeout=15, allow_redirects=True)
+            response = SESSION.get(endpoint, timeout=6, allow_redirects=True)
         except Exception as exc:
             last_status = f"exception:{type(exc).__name__}"
             continue
