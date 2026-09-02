@@ -32,7 +32,7 @@ jobs:
 
       - name: Verify buyer gates before scan
         run: |
-          python -m py_compile main.py main_v5.py main_v5_1.py main_v5_2.py main_v5_3.py main_v5_4.py main_v5_5.py reddit_nc_buyer_miner.py reddit_nc_buyer_miner_resilient.py test_v5_1_gate.py test_v5_3_gate.py test_v5_5_gate.py test_reddit_nc_buyer_miner.py test_reddit_nc_buyer_miner_resilient.py
+          python -m py_compile main.py main_v5.py main_v5_1.py main_v5_2.py main_v5_3.py main_v5_4.py main_v5_5.py nc_v5_diagnostic_runner.py reddit_nc_buyer_miner.py reddit_nc_buyer_miner_resilient.py test_v5_1_gate.py test_v5_3_gate.py test_v5_5_gate.py test_reddit_nc_buyer_miner.py test_reddit_nc_buyer_miner_resilient.py
           python -m unittest -q test_v5_1_gate.py test_v5_3_gate.py test_v5_5_gate.py test_reddit_nc_buyer_miner.py test_reddit_nc_buyer_miner_resilient.py
 
       - name: Restore Telegram session
@@ -63,7 +63,7 @@ jobs:
           print(f"Telegram session restored: {len(data)} bytes")
           PY
 
-      - name: Run BAY-S Radar V5.5
+      - name: Run BAY-S Radar V5.7 with buyer diagnostics
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -77,7 +77,7 @@ jobs:
           RADAR_V5_TELEGRAM_BACKFILL_DAYS: "7"
           RADAR_V5_TELEGRAM_BACKFILL_LIMIT: "12"
           RADAR_V5_WEB_MAX_AGE_DAYS: "90"
-        run: python main_v5_5.py
+        run: python nc_v5_diagnostic_runner.py
 
       - name: Mine Reddit buyer and research intent
         env:
