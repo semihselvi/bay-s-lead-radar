@@ -13,7 +13,7 @@ import requests
 import main
 import reddit_nc_buyer_miner as base
 
-VERSION = "1.1-reddit-resilient-index-fallback"
+VERSION = "1.2-reddit-resilient-rental-guard"
 INDEX_LOOKBACK_DAYS = int(os.getenv("NC_REDDIT_INDEX_LOOKBACK_DAYS", "30"))
 INDEX_QUERY_LIMIT = int(os.getenv("NC_REDDIT_INDEX_QUERY_LIMIT", "12"))
 INDEX_COLLECTION = "bay_s_nc_reddit_index_notified"
@@ -21,7 +21,7 @@ INDEX_SCAN_COLLECTION = "bay_s_nc_reddit_index_scans"
 
 SESSION = requests.Session()
 SESSION.headers.update({
-    "User-Agent": "Mozilla/5.0 (compatible; BAY-S-NC-Reddit-Index-Miner/1.1)",
+    "User-Agent": "Mozilla/5.0 (compatible; BAY-S-NC-Reddit-Index-Miner/1.2)",
     "Accept-Language": "en-US,en;q=0.9",
 })
 
@@ -91,6 +91,20 @@ RENT_RE = re.compile(
     re.I,
 )
 
+# Explicit rental-only language must win even when an ambiguous Reddit title says
+# "buy or rent". This protects the fallback from turning a tenant into a buyer.
+RENT_ONLY_RE = re.compile(
+    r"(?:"
+    r"\b(?:actually\s+)?looking\s+to\s+rent\s+only\b|"
+    r"\bonly\s+looking\s+to\s+rent\b|\brent(?:al)?\s+only\b|"
+    r"\bnot\s+(?:looking\s+to\s+)?buy(?:ing)?\b.{0,50}\brent\b|"
+    r"\b(?:сниму|снять|аренд\w*)\b.{0,80}\bтолько\b|"
+    r"\bтолько\b.{0,80}\b(?:сниму|снять|аренд\w*)\b|"
+    r"\bsadece\s+kiral\w*\b|\bnur\s+mieten\b"
+    r")",
+    re.I | re.S,
+)
+
 PAST_OWNER_RE = re.compile(
     r"(?:\bi\s+(?:already\s+)?bought\b|\bwe\s+(?:already\s+)?bought\b|\bi\s+purchased\b|"
     r"\bwe\s+purchased\b|\bi\s+own\s+(?:a|an)\b|\bкупил\b|\bкупили\b|\bsatın\s+aldım\b|\bgekauft\b)",
@@ -137,14 +151,23 @@ def classify_index_result(row: dict, query: str):
         return None, "no_north_context"
     if SELLER_RE.search(combined):
         return None, "seller_or_listing"
-    if RENT_RE.search(combined) and not DIRECT_TITLE_RE.search(title):
-        return None, "rental"
-    if PAST_OWNER_RE.search(combined) and not DIRECT_TITLE_RE.search(title):
-        return None, "past_owner"
 
     title_direct = bool(DIRECT_TITLE_RE.search(title))
     title_research = bool(RESEARCH_TITLE_RE.search(title))
     snippet_direct = bool(FIRST_PERSON_BUY_RE.search(snippet))
+
+    # A clear rental-only statement is decisive, including ambiguous titles such
+    # as "Looking to buy or rent". Background rent mentions do not kill an
+    # explicit first-person plan to buy.
+    if RENT_ONLY_RE.search(snippet):
+        return None, "rental"
+    if RENT_RE.search(title) and not snippet_direct:
+        return None, "rental"
+    if RENT_RE.search(snippet) and not (title_direct or snippet_direct):
+        return None, "rental"
+
+    if PAST_OWNER_RE.search(combined) and not (title_direct or snippet_direct):
+        return None, "past_owner"
 
     # Precision rule: Serper snippets can contain related-content text. Never
     # accept a snippet-only hit unless the title itself is a buyer/research topic.
