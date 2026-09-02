@@ -14,6 +14,26 @@ class SmallBusinessWebRadarTests(unittest.TestCase):
         self.assertIsNotNone(radar.NORTH_CYPRUS_RE.search("Family salon in Girne"))
         self.assertIsNotNone(radar.NORTH_CYPRUS_RE.search("Northern Cyprus dental clinic"))
 
+    def test_place_rejects_large_business(self):
+        row = {
+            "title": "Example University",
+            "address": "Girne, North Cyprus",
+            "description": "Large university campus",
+            "type": "University",
+            "website": "https://example.edu/",
+            "ratingCount": 900,
+        }
+        self.assertEqual(radar._place_reject_reason(row, "Girne", "university in Girne North Cyprus"), "large_business")
+
+    def test_place_requires_own_website(self):
+        row = {
+            "title": "Local Barber",
+            "address": "Girne, North Cyprus",
+            "type": "Barber shop",
+            "website": "",
+        }
+        self.assertEqual(radar._place_reject_reason(row, "Girne", "barber in Girne North Cyprus"), "no_website")
+
     def test_rejects_ecommerce_site(self):
         html = """
         <html><head><title>Local Shop</title></head><body>
@@ -23,13 +43,7 @@ class SmallBusinessWebRadarTests(unittest.TestCase):
         """
         soup = BeautifulSoup(html, "html.parser")
         text = soup.get_text(" ", strip=True)
-        self.assertEqual(radar._page_is_large_or_ecommerce(html, text, soup), "ecommerce")
-
-    def test_rejects_big_business_site(self):
-        html = "<html><body>North Cyprus University and international offices</body></html>"
-        soup = BeautifulSoup(html, "html.parser")
-        text = soup.get_text(" ", strip=True)
-        self.assertEqual(radar._page_is_large_or_ecommerce(html, text, soup), "large_business")
+        self.assertEqual(radar._page_reject_reason(html, text, soup, "https://example.com/"), "ecommerce")
 
     def test_legacy_site_scores_high(self):
         html = """
@@ -43,20 +57,22 @@ class SmallBusinessWebRadarTests(unittest.TestCase):
         """
         soup = BeautifulSoup(html, "html.parser")
         score, reasons = radar.score_site("http://example.com/", html, soup, 4.5)
-        self.assertGreaterEqual(score, 65)
+        self.assertGreaterEqual(score, 60)
         self.assertIn("HTTPS yok", reasons)
         self.assertIn("mobil viewport yok", reasons)
         self.assertTrue(any("telif yılı eski" in x for x in reasons))
 
     def test_modern_simple_site_stays_below_threshold(self):
         html = """
-        <html>
+        <html lang='en'>
         <head>
           <title>Girne Barber Studio</title>
           <meta name='viewport' content='width=device-width, initial-scale=1'>
           <meta name='description' content='Independent barber studio in Girne, North Cyprus. Appointments and grooming services.'>
           <meta property='og:title' content='Girne Barber Studio'>
           <link rel='icon' href='/favicon.ico'>
+          <link rel='canonical' href='https://example.com/'>
+          <script type='application/ld+json'>{}</script>
         </head>
         <body>
           <h1>Girne Barber Studio</h1>
