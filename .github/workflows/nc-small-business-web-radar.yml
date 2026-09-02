@@ -42,8 +42,8 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           SMALL_BIZ_QUERY_LIMIT: "16"
-          SMALL_BIZ_SITE_LIMIT: "50"
-          SMALL_BIZ_MIN_SCORE: "45"
+          SMALL_BIZ_SITE_LIMIT: "60"
+          SMALL_BIZ_MIN_SCORE: "38"
           SMALL_BIZ_MAX_ALERTS: "12"
           SMALL_BIZ_REQUEST_TIMEOUT: "12"
           SMALL_BIZ_MAX_WORKERS: "6"
