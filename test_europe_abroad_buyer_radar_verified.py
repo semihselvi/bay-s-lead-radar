@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 import europe_abroad_buyer_radar as base
 import europe_abroad_buyer_radar_verified as verified
@@ -20,6 +21,32 @@ class VerifiedAbroadBuyerRadarTests(unittest.TestCase):
         self.assertEqual(
             verified.reddit_post_id("https://www.reddit.com/r/x/comments/AbC123/example/"),
             "abc123",
+        )
+
+    def test_reddit_listing_page_is_not_a_post(self):
+        url = "https://www.reddit.com/r/ifiwonthelottery/new/"
+        self.assertTrue(verified.is_reddit_url(url))
+        self.assertFalse(verified.is_reddit_post(url))
+
+    def test_reddit_listing_page_serper_snippet_is_dropped(self):
+        item = self.serper_item(
+            "r/ifiwonthelottery - Reddit",
+            "I plan to engage with a Golden Visa program to obtain citizenship in ...",
+            url="https://www.reddit.com/r/ifiwonthelottery/new/",
+        )
+        with patch.object(verified, "_ORIGINAL_SERPER", return_value=[item]):
+            rows = verified.verified_serper_search("golden_visa", 'site:reddit.com "golden visa" "I want" investment')
+        self.assertEqual(rows, [])
+
+    def test_exact_lottery_hypothetical_is_rejected(self):
+        item = self.serper_item(
+            "What I would do if I won",
+            "If I won the lottery, I would help my family and plan to engage with a Golden Visa program.",
+            url="https://www.reddit.com/r/ifiwonthelottery/comments/abc123/my_plan/",
+        )
+        self.assertEqual(
+            verified.hypothetical_reddit_reason(item),
+            "hypothetical_lottery_subreddit",
         )
 
     def test_parse_reddit_payload_replaces_search_snippet(self):
