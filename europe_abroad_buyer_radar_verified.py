@@ -8,18 +8,28 @@ import requests
 
 import europe_abroad_buyer_radar as base
 
-VERSION = "1.1-source-verified"
+VERSION = "1.2-source-verified-hypothetical-guard"
 base.VERSION = VERSION
 
 _ORIGINAL_SERPER = base.serper_search
 SESSION = requests.Session()
 SESSION.headers.update({
-    "User-Agent": "Mozilla/5.0 (compatible; BAY-S-Buyer-Radar/1.1; +https://github.com/semihselvi/bay-s-lead-radar)",
+    "User-Agent": "Mozilla/5.0 (compatible; BAY-S-Buyer-Radar/1.2; +https://github.com/semihselvi/bay-s-lead-radar)",
     "Accept": "application/json,text/plain,*/*",
     "Accept-Language": "en-US,en;q=0.9",
 })
 
 _REDDIT_POST_RE = re.compile(r"/comments/([a-z0-9]+)/", re.I)
+_HYPOTHETICAL_RE = re.compile(
+    r"(?:"
+    r"\bif\s+(?:i|we)\s+(?:win|won)\s+(?:the\s+)?lottery\b|"
+    r"\bwhen\s+(?:i|we)\s+win\s+(?:the\s+)?lottery\b|"
+    r"\blottery\s+winnings?\b|"
+    r"\bif\s+(?:i|we)\s+(?:became|become)\s+(?:a\s+)?(?:millionaire|billionaire)\b|"
+    r"\bif\s+(?:i|we)\s+had\s+(?:unlimited|millions?\s+of)\s+(?:money|dollars?|euros?|pounds?)\b"
+    r")",
+    re.I | re.S,
+)
 
 
 def reddit_post_id(url: str) -> str:
@@ -27,12 +37,27 @@ def reddit_post_id(url: str) -> str:
     return match.group(1).lower() if match else ""
 
 
-def is_reddit_post(url: str) -> bool:
+def is_reddit_url(url: str) -> bool:
     try:
         domain = urlparse(str(url or "")).netloc.lower().removeprefix("www.")
     except Exception:
         return False
-    return (domain == "reddit.com" or domain.endswith(".reddit.com")) and bool(reddit_post_id(url))
+    return domain == "reddit.com" or domain.endswith(".reddit.com")
+
+
+def is_reddit_post(url: str) -> bool:
+    return is_reddit_url(url) and bool(reddit_post_id(url))
+
+
+def hypothetical_reddit_reason(item: dict) -> str:
+    """Reject fantasy/what-if discussions that cannot be actionable buyer leads."""
+    url = str(item.get("url") or "").lower()
+    text = base.clean(f"{item.get('title','')} {item.get('text','')}")
+    if "/r/ifiwonthelottery/" in url:
+        return "hypothetical_lottery_subreddit"
+    if _HYPOTHETICAL_RE.search(text):
+        return "hypothetical_financial_scenario"
+    return ""
 
 
 def _parse_reddit_payload(original: dict, payload) -> dict | None:
@@ -96,7 +121,7 @@ def _reddit_json_urls(url: str) -> list[str]:
 def fetch_reddit_post(original: dict) -> tuple[dict | None, str]:
     url = str(original.get("url") or "")
     if not is_reddit_post(url):
-        return original, "not_reddit"
+        return None, "reddit_non_post_url" if is_reddit_url(url) else "not_reddit"
 
     last_status = "fetch_failed"
     for endpoint in _reddit_json_urls(url):
@@ -139,9 +164,23 @@ def verified_serper_search(profile: str, query: str) -> list[dict]:
     verified_count = 0
     dropped_count = 0
     for item in rows:
-        if not is_reddit_post(str(item.get("url") or "")):
+        url = str(item.get("url") or "")
+        if not is_reddit_url(url):
             out.append(item)
             continue
+
+        # Reddit listing/search/subreddit pages are discovery pages, not a person.
+        # Never qualify a Serper snippet attached to /new/, /search/, /r/foo/, etc.
+        if not is_reddit_post(url):
+            dropped_count += 1
+            print(
+                "ABROAD_REDDIT_VERIFY_DROP",
+                f"profile={profile}",
+                "reason=reddit_non_post_url",
+                f"url={url}",
+            )
+            continue
+
         verified, reason = fetch_reddit_post(item)
         if verified is None:
             dropped_count += 1
@@ -149,9 +188,21 @@ def verified_serper_search(profile: str, query: str) -> list[dict]:
                 "ABROAD_REDDIT_VERIFY_DROP",
                 f"profile={profile}",
                 f"reason={reason}",
-                f"url={item.get('url','')}",
+                f"url={url}",
             )
             continue
+
+        hypothetical_reason = hypothetical_reddit_reason(verified)
+        if hypothetical_reason:
+            dropped_count += 1
+            print(
+                "ABROAD_REDDIT_VERIFY_DROP",
+                f"profile={profile}",
+                f"reason={hypothetical_reason}",
+                f"url={verified.get('url','')}",
+            )
+            continue
+
         verified_count += 1
         out.append(verified)
     if verified_count or dropped_count:
