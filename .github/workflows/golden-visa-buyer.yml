@@ -6,6 +6,7 @@ name: GOLDEN VISA - Buyer Intent Radar
     paths:
       - europe_abroad_buyer_radar.py
       - europe_abroad_buyer_radar_verified.py
+      - europe_buyer_search_fallback.py
       - europe_buyer_serper_resilient.py
       - test_europe_abroad_buyer_radar.py
       - test_europe_abroad_buyer_radar_verified.py
@@ -28,7 +29,7 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Test source-verified abroad buyer radar
         run: |
-          python -m py_compile europe_abroad_buyer_radar.py europe_abroad_buyer_radar_verified.py europe_buyer_serper_resilient.py test_europe_abroad_buyer_radar.py test_europe_abroad_buyer_radar_verified.py test_europe_buyer_serper_resilient.py
+          python -m py_compile europe_abroad_buyer_radar.py europe_abroad_buyer_radar_verified.py europe_buyer_search_fallback.py europe_buyer_serper_resilient.py test_europe_abroad_buyer_radar.py test_europe_abroad_buyer_radar_verified.py test_europe_buyer_serper_resilient.py
           python -m unittest -q test_europe_abroad_buyer_radar.py test_europe_abroad_buyer_radar_verified.py test_europe_buyer_serper_resilient.py
       - name: Run Golden Visa buyer intent radar
         if: github.event_name != 'push'
@@ -36,7 +37,11 @@ jobs:
           ABROAD_RADAR_PROFILE: golden_visa
           ABROAD_RADAR_LOOKBACK_DAYS: "7"
           ABROAD_RADAR_QUERY_LIMIT: "10"
+          RADAR_FALLBACK_QUERY_LIMIT: "2"
+          RADAR_FALLBACK_MAX_RESULTS: "5"
           SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
