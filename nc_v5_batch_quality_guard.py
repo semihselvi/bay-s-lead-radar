@@ -28,16 +28,22 @@ TG_NON_PROPERTY_GOODS_RE = re.compile(
     re.I | re.S,
 )
 
-# A genuine property purchase overrides the goods guard. Keep this intentionally
-# close to the purchase verb so an unrelated word such as Russian "дома" (at
-# home) cannot turn "I will buy a school uniform" into a house buyer.
+_RU_PROPERTY_OBJECT = (
+    r"(?:недвижимост\w*|квартир\w*|апартамент\w*|вилл\w*|"
+    r"дом(?:\b|ом\b|у\b|е\b)|участ\w*|земл\w*|жиль[её]\w*|"
+    r"[0-6]\s*\+\s*[0-3]|caesar\s+resort|royal\s+sun(?:\s+elite)?|"
+    r"grand\s+sapphire|four\s+seasons|riverside\s+life|isatis|elysium)"
+)
+
+# A genuine property purchase overrides the goods guard. Keep the purchase object
+# close to the verb so an unrelated word such as Russian "дома" (at home) cannot
+# turn "I will buy a school uniform" into a house buyer. Unit configs/projects
+# are valid purchase objects too: "Куплю 1+1 в Royal Sun" is a real buyer.
 TG_DIRECT_PROPERTY_PURCHASE_RE = re.compile(
-    r"(?:"
-    r"\bкуплю\b.{0,80}\b(?:недвижимост\w*|квартир\w*|апартамент\w*|вилл\w*|"
-    r"дом(?:\b|ом\b|у\b|е\b)|участ\w*|земл\w*|жиль[её]\w*)\b|"
-    r"\b(?:хочу|хотим|планирую|планируем|рассматриваю|рассматриваем)\b.{0,70}"
-    r"\b(?:купить|покупк\w*)\b.{0,90}\b(?:квартир\w*|апартамент\w*|вилл\w*|"
-    r"дом(?:\b|ом\b|у\b|е\b)|недвижимост\w*|участ\w*|земл\w*)\b|"
+    rf"(?:"
+    rf"\bкуплю\b.{{0,110}}\b{_RU_PROPERTY_OBJECT}\b|"
+    rf"\b(?:хочу|хотим|планирую|планируем|рассматриваю|рассматриваем)\b.{{0,70}}"
+    rf"\b(?:купить|покупк\w*)\b(?:.{{0,100}}\b{_RU_PROPERTY_OBJECT}\b)?|"
     r"\b(?:looking|planning|want(?:ing)?|ready|considering)\b.{0,60}\b(?:buy|buying|purchase)\b"
     r".{0,90}\b(?:property|apartment|flat|house|villa|studio|land)\b|"
     r"\b(?:sat[ıi]n\s+almak|almak)\b.{0,80}\b(?:daire|ev|villa|arsa|gayrimenkul|konut)\b"
@@ -54,11 +60,34 @@ def is_nonproperty_goods_request(text: str) -> bool:
 _base_refine = radar.v53.gate.refine_telegram_property_buyer
 
 
+def _safe_direct_property_fallback(lead: dict, text: str):
+    if str(lead.get("market") or "") != "north_cyprus":
+        return None
+    if not TG_DIRECT_PROPERTY_PURCHASE_RE.search(text):
+        return None
+    if radar.TG_SERVICE_REQUEST_RE.search(text):
+        return None
+    if radar.TG_STRONG_SUPPLY_RE.search(text) or radar.v53.gate.TG_SUPPLY_RE.search(text):
+        return None
+    if radar.TG_SHORT_STAY_RE.search(text) or radar.v53.gate.TG_RENT_RE.search(text):
+        return None
+
+    out = dict(lead)
+    out["classification"] = "HOT" if (radar.v5.BUDGET_RE.search(text) or radar.v5.TIME_RE.search(text)) else "WARM"
+    out["buyer_signal"] = "self_purchase_object_verified"
+    out["telegram_score"] = max(int(out.get("telegram_score") or 0), 72 if out["classification"] == "HOT" else 62)
+    out["radar_version"] = VERSION
+    return out
+
+
 def refine_telegram_batch_guard(lead):
     text = str(lead.get("message") or "")
     if is_nonproperty_goods_request(text):
         return None
-    return _base_refine(lead)
+    result = _base_refine(lead)
+    if result is not None:
+        return result
+    return _safe_direct_property_fallback(lead, text)
 
 
 # Expose the patched final gate both where production calls it and where the
