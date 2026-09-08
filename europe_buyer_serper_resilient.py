@@ -4,6 +4,13 @@ import os
 from collections.abc import Callable
 from typing import Any
 
+from europe_buyer_search_fallback import (
+    FallbackProviderChain,
+    ProviderRecoverableError,
+    exa_search,
+    tavily_search,
+)
+
 
 _CREDIT_ERROR_MARKERS = (
     "serper http 402",
@@ -18,18 +25,25 @@ def is_serper_credit_error(error: BaseException | str) -> bool:
     return any(marker in text for marker in _CREDIT_ERROR_MARKERS)
 
 
-def resilient_serper(original: Callable[..., list[dict]], lane: str) -> Callable[..., list[dict]]:
-    """Disable Serper for the rest of one process after a credit-exhaustion response.
+def resilient_serper(
+    original: Callable[..., list[dict]],
+    lane: str,
+    fallback: Callable[..., list[dict]] | None = None,
+) -> Callable[..., list[dict]]:
+    """Use Serper normally, then switch the process to fallback providers on quota exhaustion.
 
-    Scheduled radars should degrade to an empty discovery result instead of failing
-    every GitHub Actions job when the external search quota is exhausted. Other
-    errors still raise normally so real code/network failures remain visible.
+    Only Serper credit exhaustion is swallowed. Other Serper failures still raise.
+    Optional fallback providers may treat their own quota/rate-limit conditions as
+    recoverable; configuration, HTTP 5xx, malformed requests and network failures remain
+    visible failures.
     """
     disabled = False
 
     def wrapped(*args: Any, **kwargs: Any) -> list[dict]:
         nonlocal disabled
         if disabled:
+            if fallback:
+                return fallback(*args, **kwargs)
             print(f"SERPER_SKIPPED lane={lane} reason=credits_exhausted_for_run")
             return []
         try:
@@ -39,12 +53,48 @@ def resilient_serper(original: Callable[..., list[dict]], lane: str) -> Callable
                 raise
             disabled = True
             print(
-                f"SERPER_CREDITS_EXHAUSTED lane={lane} action=disable_for_run "
+                f"SERPER_CREDITS_EXHAUSTED lane={lane} action=switch_to_fallback "
                 "workflow_status=degraded_not_failed"
             )
+            if fallback:
+                return fallback(*args, **kwargs)
             return []
 
     return wrapped
+
+
+def _home_postprocess(app):
+    def postprocess(profile: str, rows: list[dict]) -> list[dict]:
+        out: list[dict] = []
+        verified_count = 0
+        dropped_count = 0
+        for item in rows:
+            url = str(item.get("url") or "")
+            if not app.is_reddit_post(url):
+                out.append(item)
+                continue
+            verified, reason = app.fetch_reddit_post(item)
+            if verified is None:
+                dropped_count += 1
+                print(
+                    "HOME_REDDIT_VERIFY_DROP",
+                    f"profile={profile}",
+                    f"reason={reason}",
+                    f"url={url}",
+                )
+                continue
+            verified_count += 1
+            out.append(verified)
+        if verified_count or dropped_count:
+            print(
+                "HOME_FALLBACK_REDDIT_VERIFY_SUMMARY",
+                f"profile={profile}",
+                f"verified={verified_count}",
+                f"dropped={dropped_count}",
+            )
+        return out
+
+    return postprocess
 
 
 def run() -> list[dict]:
@@ -54,16 +104,22 @@ def run() -> list[dict]:
     if home_profile:
         import europe_home_buyer_radar as app
 
-        app.serper_search = resilient_serper(app.serper_search, "home")
+        fallback = FallbackProviderChain("home", postprocess=_home_postprocess(app))
+        app.serper_search = resilient_serper(app.serper_search, "home", fallback=fallback)
         return app.run()
 
     if abroad_profile:
-        # Keep the existing source-verification layer. It calls the original
-        # Serper function through this module-level reference, so wrapping that
-        # reference preserves all Reddit/source quality checks.
+        # Keep the existing source-verification layer. It calls the original search
+        # function through this module-level reference. Fallback rows therefore pass
+        # through the same Reddit permalink verification/hypothetical guards.
         import europe_abroad_buyer_radar_verified as app
 
-        app._ORIGINAL_SERPER = resilient_serper(app._ORIGINAL_SERPER, "abroad")
+        fallback = FallbackProviderChain("abroad")
+        app._ORIGINAL_SERPER = resilient_serper(
+            app._ORIGINAL_SERPER,
+            "abroad",
+            fallback=fallback,
+        )
         return app.run()
 
     raise SystemExit("Set HOME_RADAR_PROFILE or ABROAD_RADAR_PROFILE")
