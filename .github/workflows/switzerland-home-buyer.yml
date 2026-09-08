@@ -18,14 +18,18 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Test Europe home buyer radar
         run: |
-          python -m py_compile europe_home_buyer_radar.py test_europe_home_buyer_radar.py
-          python -m unittest -q test_europe_home_buyer_radar.py
+          python -m py_compile europe_home_buyer_radar.py europe_buyer_search_fallback.py europe_buyer_serper_resilient.py test_europe_home_buyer_radar.py test_europe_buyer_serper_resilient.py
+          python -m unittest -q test_europe_home_buyer_radar.py test_europe_buyer_serper_resilient.py
       - name: Run Switzerland home buyer radar
         env:
           HOME_RADAR_PROFILE: switzerland_home
           HOME_RADAR_LOOKBACK_DAYS: "7"
           HOME_RADAR_QUERY_LIMIT: "10"
+          RADAR_FALLBACK_QUERY_LIMIT: "2"
+          RADAR_FALLBACK_MAX_RESULTS: "5"
           SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
