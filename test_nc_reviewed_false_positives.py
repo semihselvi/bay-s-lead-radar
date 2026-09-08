@@ -1,6 +1,7 @@
 import unittest
 
 import nc_v5_diagnostic_runner_quality as v5_quality
+import nc_v5_batch_quality_guard as batch_guard
 import reddit_nc_buyer_miner_resilient_quality as reddit_quality
 
 
@@ -15,6 +16,69 @@ class ReviewedFalsePositiveTests(unittest.TestCase):
             "classification": "REVIEW",
         }
         self.assertIsNone(v5_quality.radar.refine_telegram_v55(lead))
+
+    def test_rejects_robot_vacuum_request_despite_apartment_context(self):
+        lead = {
+            "market": "north_cyprus",
+            "message": (
+                "Здравствуйте! Может кто-нибудь ещё продаёт робот-пылесос- моющий? "
+                "Геолокация Искеле-Фамагуста. Интересует для большой квартиры. В пределах 150 евро"
+            ),
+            "author": "Farida Hafiye",
+            "group": "СЕВЕРНЫЙ КИПР | БАРАХОЛКА",
+            "seller_matches": [],
+            "telegram_score": 52,
+            "classification": "REVIEW",
+        }
+        self.assertTrue(batch_guard.is_nonproperty_goods_request(lead["message"]))
+        self.assertIsNone(v5_quality.radar.refine_telegram_v55(lead))
+
+    def test_rejects_school_uniform_purchase_even_when_doma_appears(self):
+        lead = {
+            "market": "north_cyprus",
+            "message": (
+                "Куплю школьную форму şht Ertugrul ilkokulu Lefkoşa, для сына, "
+                "6,7 лет, у кого завалялась дома"
+            ),
+            "author": "Ay Us",
+            "group": "СЕВЕРНЫЙ КИПР | ФОРУМ",
+            "seller_matches": [],
+            "telegram_score": 58,
+            "classification": "WARM",
+        }
+        self.assertTrue(batch_guard.is_nonproperty_goods_request(lead["message"]))
+        self.assertIsNone(v5_quality.radar.refine_telegram_v55(lead))
+
+    def test_real_property_buyer_still_passes_goods_guard(self):
+        lead = {
+            "market": "north_cyprus",
+            "message": (
+                "Куплю от собственника 1+1 или 2+1 в Royal Sun или Royal Sun Elite. "
+                "Этаж только граунд! Либо выше, но с лифтом."
+            ),
+            "author": "@des_okk",
+            "group": "СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+            "seller_matches": [],
+            "telegram_score": 85,
+            "classification": "HOT",
+        }
+        self.assertFalse(batch_guard.is_nonproperty_goods_request(lead["message"]))
+        result = v5_quality.radar.refine_telegram_v55(lead)
+        self.assertIsNotNone(result)
+        self.assertIn(result.get("classification"), {"HOT", "WARM"})
+
+    def test_cross_group_semantic_duplicate_for_same_person(self):
+        batch_guard._SEMANTIC_SEEN.clear()
+        first = {
+            "author": "Ay Us",
+            "message": "Куплю школьную форму şht ertugrul ilkokulu Lefkoşa для сына 6,7 лет у кого дома завалялась",
+        }
+        second = {
+            "author": "Ay Us",
+            "message": "Куплю школьную форму şht Ertugrul ilkokulu Lefkoşa, для сына, 6,7 лет, у кого завалялась дома",
+        }
+        self.assertFalse(batch_guard.semantic_cross_group_duplicate(first))
+        self.assertTrue(batch_guard.semantic_cross_group_duplicate(second))
 
     def test_rejects_virtual_property_buttcoin(self):
         row = {
