@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import re
 
-import main_v5_5 as radar
+import nc_v5_batch_quality_guard as batch_guard
+
+radar = batch_guard.radar
 
 # Human-reviewed false positive: "Ищу дом ... на 1 день" is an explicit
 # short-term rental request, not a buy/rent ambiguity worth qualifying.
@@ -17,7 +19,7 @@ radar.TG_SHORT_STAY_RE = re.compile(
     re.I | re.S,
 )
 
-# Import the existing diagnostic wrapper only after the quality patch so its
+# Import the existing diagnostic wrapper only after all quality patches so its
 # reject-reason instrumentation sees the same production rules.
 import nc_v5_diagnostic_runner as diagnostics  # noqa: E402,F401
 
