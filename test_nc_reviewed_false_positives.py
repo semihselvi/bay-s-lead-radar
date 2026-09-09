@@ -67,6 +67,44 @@ class ReviewedFalsePositiveTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertIn(result.get("classification"), {"HOT", "WARM"})
 
+    def test_purchase_only_rejects_exact_long_term_tenant(self):
+        lead = {
+            "market": "north_cyprus",
+            "message": "Сниму 2+1, 3+1, на долгосрок, Алсанжак/Лапта. Семья 3 чел. От собственника",
+            "author": "@Queen77777777777777",
+            "group": "СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+            "seller_matches": [],
+            "telegram_score": 85,
+            "classification": "HOT",
+        }
+        self.assertIsNone(v5_quality.purchase_only_lead(lead))
+
+    def test_purchase_only_rejects_shared_rental_ambiguity(self):
+        lead = {
+            "market": "north_cyprus",
+            "message": "Ищем на подселение в комнату ,квартира в Гирне",
+            "author": "@krzhuby",
+            "group": "СЕВЕРНЫЙ КИПР | ФОРУМ",
+            "seller_matches": [],
+            "telegram_score": 68,
+            "classification": "WARM",
+        }
+        self.assertIsNone(v5_quality.purchase_only_lead(lead))
+
+    def test_purchase_only_keeps_real_property_buyer(self):
+        lead = {
+            "market": "north_cyprus",
+            "message": "Куплю 2+1 в Искеле. Бюджет £120000. Тапу обязательно.",
+            "author": "@real_buyer",
+            "group": "СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+            "seller_matches": [],
+            "telegram_score": 85,
+            "classification": "HOT",
+        }
+        result = v5_quality.purchase_only_lead(lead)
+        self.assertIsNotNone(result)
+        self.assertIn(result.get("classification"), {"HOT", "WARM"})
+
     def test_cross_group_semantic_duplicate_for_same_person(self):
         batch_guard._SEMANTIC_SEEN.clear()
         first = {
