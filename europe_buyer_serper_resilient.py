@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import os
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from europe_buyer_search_fallback import (
     FallbackProviderChain,
@@ -18,6 +20,24 @@ _CREDIT_ERROR_MARKERS = (
     "not enough credits",
     "insufficient credits",
 )
+
+_GLOBAL_DISCOVERY_DOMAINS = {
+    "reddit.com",
+    "old.reddit.com",
+    "expat.com",
+    "expatforum.com",
+    "internations.org",
+    "nomadgate.com",
+    "bogleheads.org",
+    "moneysavingexpert.com",
+}
+
+_REDDIT_COUNTRY_PATHS = {
+    "germany_abroad": ("/r/germany/",),
+    "netherlands_abroad": ("/r/netherlands/",),
+    "belgium_abroad": ("/r/belgium/",),
+    "switzerland_abroad": ("/r/switzerland/",),
+}
 
 
 def is_serper_credit_error(error: BaseException | str) -> bool:
@@ -97,6 +117,88 @@ def _home_postprocess(app):
     return postprocess
 
 
+def strict_abroad_audience_match(base, profile: str, item: dict, text: str) -> tuple[bool, bool]:
+    """Require real evidence that the poster belongs to the requested resident market.
+
+    A search query containing Germany/Belgium/etc. is discovery context, not evidence
+    about the person. Global communities such as Expat.com and generic Reddit therefore
+    require an explicit residence/nationality statement in the result text. Country-
+    specific forums and matching country subreddits may still act as a conservative
+    context bridge.
+    """
+    spec = base.PROFILES[profile]
+    if profile == "golden_visa":
+        return True, True
+
+    explicit = bool(spec["audience_re"].search(text))
+    if explicit:
+        return True, True
+
+    query = str(item.get("discovery_query") or "")
+    if not spec["query_anchor"].search(query):
+        return False, False
+
+    url = str(item.get("url") or "")
+    domain = base.domain_of(url)
+    try:
+        path = urlsplit(url).path.casefold()
+    except Exception:
+        path = ""
+
+    if domain in {"reddit.com", "old.reddit.com"}:
+        allowed_paths = _REDDIT_COUNTRY_PATHS.get(profile, ())
+        if any(token in path for token in allowed_paths):
+            return True, False
+        return False, False
+
+    bridge_domains = {
+        d for d in spec["bridge_domains"]
+        if d not in _GLOBAL_DISCOVERY_DOMAINS
+    }
+    bridge = any(domain == d or domain.endswith("." + d) for d in bridge_domains)
+    return bridge, False
+
+
+def _canonical_url(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parts = urlsplit(raw)
+        host = parts.netloc.casefold().removeprefix("www.")
+        path = parts.path.rstrip("/") or "/"
+        return urlunsplit((parts.scheme.casefold() or "https", host, path, "", ""))
+    except Exception:
+        return raw.split("?", 1)[0].rstrip("/").casefold()
+
+
+def cross_profile_abroad_lead_key(original_key, profile: str, lead: dict) -> str:
+    """Deduplicate the same resident-buyer page across Germany/NL/BE/CH radars."""
+    if profile == "golden_visa":
+        return original_key(profile, lead)
+    canonical = _canonical_url(lead.get("url", ""))
+    if canonical:
+        basis = f"abroad_resident|{canonical}"
+    else:
+        text = " ".join(str(lead.get("text") or "").casefold().split())[:320]
+        basis = f"abroad_resident|{text}"
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()
+
+
+def _patch_abroad_precision(app) -> None:
+    base = app.base
+    original_key = base.lead_key
+
+    def audience_match(profile: str, item: dict, text: str) -> tuple[bool, bool]:
+        return strict_abroad_audience_match(base, profile, item, text)
+
+    def lead_key(profile: str, lead: dict) -> str:
+        return cross_profile_abroad_lead_key(original_key, profile, lead)
+
+    base.audience_match = audience_match
+    base.lead_key = lead_key
+
+
 def run() -> list[dict]:
     home_profile = os.getenv("HOME_RADAR_PROFILE", "").strip()
     abroad_profile = os.getenv("ABROAD_RADAR_PROFILE", "").strip()
@@ -114,6 +216,7 @@ def run() -> list[dict]:
         # through the same Reddit permalink verification/hypothetical guards.
         import europe_abroad_buyer_radar_verified as app
 
+        _patch_abroad_precision(app)
         fallback = FallbackProviderChain("abroad")
         app._ORIGINAL_SERPER = resilient_serper(
             app._ORIGINAL_SERPER,
