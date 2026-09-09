@@ -2,6 +2,7 @@ import os
 import unittest
 from unittest.mock import patch
 
+import europe_abroad_buyer_radar as abroad_base
 import europe_buyer_search_fallback as fallback_search
 import europe_buyer_serper_resilient as guard
 
@@ -108,6 +109,103 @@ class SerperResilienceTests(unittest.TestCase):
             for i in range(10):
                 chain('germany_home', f'q{i}')
         self.assertEqual(len(calls), 2)
+
+    def test_global_expat_result_cannot_inherit_resident_country_from_query(self):
+        item = {
+            'source': 'Exa',
+            'url': 'https://www.expat.com/en/forum/africa/mauritius/1118773-spouse-permanent-resident-application.html',
+            'title': 'Spouse Permanent Resident Application - Mauritius forum - Expat.com',
+            'text': (
+                'I am a Mauritian by birth - still have my Mauritian passport and '
+                'we have Canadian citizenships. We are planning to buy a property in Mauritius.'
+            ),
+        }
+        queries = {
+            'germany_abroad': 'site:expat.com Germany "buy property abroad" forum',
+            'netherlands_abroad': 'site:expat.com Netherlands "buy property abroad" forum',
+            'belgium_abroad': 'site:expat.com Belgium "buy property abroad" forum',
+            'switzerland_abroad': 'site:expat.com Switzerland "buy property abroad" forum',
+        }
+        for profile, query in queries.items():
+            candidate = dict(item, discovery_query=query)
+            matched, explicit = guard.strict_abroad_audience_match(
+                abroad_base, profile, candidate, candidate['text']
+            )
+            self.assertFalse(matched, profile)
+            self.assertFalse(explicit, profile)
+
+    def test_mauritius_false_positive_is_rejected_by_production_audience_gate(self):
+        item = {
+            'source': 'Exa',
+            'url': 'https://www.expat.com/en/forum/africa/mauritius/1118773-spouse-permanent-resident-application.html',
+            'title': 'Spouse Permanent Resident Application - Mauritius forum - Expat.com',
+            'text': (
+                'I am a Mauritian by birth - still have my Mauritian passport and '
+                'we have Canadian citizenships. We are planning to buy a property in Mauritius.'
+            ),
+            'published': '2026-09-09T00:00:00Z',
+            'author': 'Lkjba',
+        }
+
+        def strict(profile, candidate, text):
+            return guard.strict_abroad_audience_match(abroad_base, profile, candidate, text)
+
+        with patch.object(abroad_base, 'audience_match', side_effect=strict):
+            for profile in (
+                'germany_abroad', 'netherlands_abroad',
+                'belgium_abroad', 'switzerland_abroad',
+            ):
+                query = abroad_base.PROFILES[profile]['queries'][4]
+                lead, reason = abroad_base.classify(
+                    profile, dict(item, discovery_query=query)
+                )
+                self.assertIsNone(lead, profile)
+                self.assertEqual(reason, 'audience_unverified', profile)
+
+    def test_explicit_resident_on_global_site_still_passes(self):
+        item = {
+            'url': 'https://www.expat.com/en/forum/europe/example.html',
+            'discovery_query': 'site:expat.com Switzerland "buy property abroad" forum',
+        }
+        matched, explicit = guard.strict_abroad_audience_match(
+            abroad_base,
+            'switzerland_abroad',
+            item,
+            'I live in Switzerland and I am planning to buy a property in Portugal.',
+        )
+        self.assertTrue(matched)
+        self.assertTrue(explicit)
+
+    def test_matching_country_subreddit_can_bridge(self):
+        item = {
+            'url': 'https://www.reddit.com/r/germany/comments/abc/buying_abroad/',
+            'discovery_query': 'site:reddit.com/r/germany "buy a house abroad"',
+        }
+        matched, explicit = guard.strict_abroad_audience_match(
+            abroad_base,
+            'germany_abroad',
+            item,
+            'We are planning to buy a property in Spain.',
+        )
+        self.assertTrue(matched)
+        self.assertFalse(explicit)
+
+    def test_resident_profiles_share_cross_profile_dedupe_key(self):
+        lead = {
+            'url': 'https://www.example.com/path/post?utm_source=test',
+            'text': 'I want to buy a property abroad',
+        }
+
+        def original(profile, row):
+            return f'original-{profile}'
+
+        de_key = guard.cross_profile_abroad_lead_key(original, 'germany_abroad', lead)
+        be_key = guard.cross_profile_abroad_lead_key(original, 'belgium_abroad', lead)
+        self.assertEqual(de_key, be_key)
+        self.assertEqual(
+            guard.cross_profile_abroad_lead_key(original, 'golden_visa', lead),
+            'original-golden_visa',
+        )
 
 
 if __name__ == '__main__':
