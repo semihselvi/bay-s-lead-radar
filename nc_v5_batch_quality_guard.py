@@ -4,7 +4,7 @@ import re
 
 import main_v5_5 as radar
 
-VERSION = "5.9-nonproperty-and-semantic-dedupe"
+VERSION = "5.9.1-nonproperty-object-guard"
 radar.VERSION = VERSION
 radar.v53.VERSION = VERSION
 radar.v53.v52.VERSION = VERSION
@@ -21,7 +21,8 @@ TG_NON_PROPERTY_GOODS_RE = re.compile(
     r"\bформ[ауые]\b.{0,45}\b(?:школ|сын|доч|ребен|ребён)\w*\b|"
     r"\bтелефон\w*\b|\bсмартфон\w*\b|\bноутбук\w*\b|\bкомпьютер\w*\b|"
     r"\bвелосипед\w*\b|\bколяск\w*\b|\bхолодильник\w*\b|\bстиральн\w*\s+машин\w*\b|"
-    r"\bмебел\w*\b|\bдиван\w*\b|\bстол\w*\b|\bкресл\w*\b|\bтелевизор\w*\b|"
+    r"\bмебел\w*\b|\bдиван\w*\b|\bстол\w*\b|\bстул\w*\b|\bзеркал\w*\b|\bгримерн\w*\b|"
+    r"\bкресл\w*\b|\bтелевизор\w*\b|"
     r"\brobot\s+vacuum\b|\bschool\s+uniform\b|\bphone\b|\blaptop\b|\bbicycle\b|"
     r"\bokul\s+formas[ıi]\b|\brobot\s+s[üu]p[üu]rge\b"
     r")",
@@ -35,15 +36,17 @@ _RU_PROPERTY_OBJECT = (
     r"grand\s+sapphire|four\s+seasons|riverside\s+life|isatis|elysium)"
 )
 
-# A genuine property purchase overrides the goods guard. Keep the purchase object
-# close to the verb so an unrelated word such as Russian "дома" (at home) cannot
-# turn "I will buy a school uniform" into a house buyer. Unit configs/projects
-# are valid purchase objects too: "Куплю 1+1 в Royal Sun" is a real buyer.
+# A genuine property purchase overrides the goods guard ONLY when a property
+# object is actually present. Previously "хочу купить" alone was enough, so
+# flea-market requests such as "хочу купить столик" leaked into the buyer lane.
+# Unit configs/projects are valid purchase objects too: "Куплю 1+1 в Royal Sun".
 TG_DIRECT_PROPERTY_PURCHASE_RE = re.compile(
     rf"(?:"
     rf"\bкуплю\b.{{0,110}}\b{_RU_PROPERTY_OBJECT}\b|"
     rf"\b(?:хочу|хотим|планирую|планируем|рассматриваю|рассматриваем)\b.{{0,70}}"
-    rf"\b(?:купить|покупк\w*)\b(?:.{{0,100}}\b{_RU_PROPERTY_OBJECT}\b)?|"
+    rf"\b(?:купить|покупк\w*)\b.{{0,100}}\b{_RU_PROPERTY_OBJECT}\b|"
+    rf"\b(?:хочу|хотим|планирую|планируем|рассматриваю|рассматриваем)\b.{{0,70}}"
+    rf"\b{_RU_PROPERTY_OBJECT}\b.{{0,100}}\b(?:купить|покупк\w*)\b|"
     r"\b(?:looking|planning|want(?:ing)?|ready|considering)\b.{0,60}\b(?:buy|buying|purchase)\b"
     r".{0,90}\b(?:property|apartment|flat|house|villa|studio|land)\b|"
     r"\b(?:sat[ıi]n\s+almak|almak)\b.{0,80}\b(?:daire|ev|villa|arsa|gayrimenkul|konut)\b"
