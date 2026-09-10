@@ -49,6 +49,25 @@ class ReviewedFalsePositiveTests(unittest.TestCase):
         self.assertTrue(batch_guard.is_nonproperty_goods_request(lead["message"]))
         self.assertIsNone(v5_quality.radar.refine_telegram_v55(lead))
 
+    def test_rejects_makeup_table_purchase_as_nonproperty_goods(self):
+        lead = {
+            "market": "north_cyprus",
+            "message": (
+                "Девочки, хочу купить столик/гримерный столик с зеркалом и стулом для спальни. "
+                "Нужен красивый и удобный вариант для домашнего макияжа. "
+                "Если кто-то продаёт или знает, где можно купить по хорошей цене, напишите мне в личку."
+            ),
+            "author": "Llllllllllllll Rrrrrr",
+            "group": "СЕВЕРНЫЙ КИПР | БАРАХОЛКА",
+            "seller_matches": [],
+            "telegram_score": 80,
+            "classification": "WARM",
+        }
+        self.assertTrue(batch_guard.TG_NON_PROPERTY_GOODS_RE.search(lead["message"]))
+        self.assertFalse(batch_guard.TG_DIRECT_PROPERTY_PURCHASE_RE.search(lead["message"]))
+        self.assertTrue(batch_guard.is_nonproperty_goods_request(lead["message"]))
+        self.assertIsNone(v5_quality.purchase_only_lead(lead))
+
     def test_real_property_buyer_still_passes_goods_guard(self):
         lead = {
             "market": "north_cyprus",
