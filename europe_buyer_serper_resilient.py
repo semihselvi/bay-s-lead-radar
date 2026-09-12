@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -38,6 +39,33 @@ _REDDIT_COUNTRY_PATHS = {
     "belgium_abroad": ("/r/belgium/",),
     "switzerland_abroad": ("/r/switzerland/",),
 }
+
+_HOME_REDDIT_COUNTRY_PATHS = {
+    "germany_home": ("/r/germany/", "/r/berlin/", "/r/munich/"),
+    "netherlands_home": ("/r/netherlandshousing/", "/r/netherlands/", "/r/amsterdam/"),
+    "belgium_home": ("/r/belgium/", "/r/brussels/"),
+    "switzerland_home": ("/r/swisspersonalfinance/", "/r/switzerland/", "/r/askswitzerland/"),
+}
+
+_HOME_BRIDGE_DOMAINS = {
+    "germany_home": {
+        "gutefrage.net", "finanztip.de", "hausbau-forum.de", "wertpapier-forum.de", "wiwi-treff.de",
+    },
+    "netherlands_home": {"tweakers.net", "forum.fok.nl", "fok.nl", "investeerders.nl"},
+    "belgium_home": {"pim.be", "bouwinfo.be"},
+    "switzerland_home": {"englishforum.ch", "beobachter.ch"},
+}
+
+_PAST_PURCHASE_RE = re.compile(
+    r"(?:"
+    r"\b(?:i|we)\s+(?:have\s+)?(?:already\s+)?(?:bought|purchased)\b|"
+    r"\b(?:already\s+bought|already\s+purchased|purchase\s+completed)\b|"
+    r"\b(?:ich\s+habe|wir\s+haben)\b.{0,80}\bgekauft\b|"
+    r"\b(?:ik\s+heb|wij\s+hebben|we\s+hebben)\b.{0,80}\bgekocht\b|"
+    r"\bj['’]ai\s+achet[ée]\b|\bnous\s+avons\s+achet[ée]\b"
+    r")",
+    re.I | re.S,
+)
 
 
 def is_serper_credit_error(error: BaseException | str) -> bool:
@@ -115,6 +143,61 @@ def _home_postprocess(app):
         return out
 
     return postprocess
+
+
+def strict_home_target_match(base, profile: str, item: dict, text: str) -> tuple[bool, bool]:
+    """Verify that a HOME lead actually belongs to the requested country market.
+
+    Search-query wording is discovery context, not person/location evidence. Global
+    sources such as Expat.com and generic Reddit cannot inherit Germany/NL/BE/CH from
+    the query. A matching country subreddit or clearly country-specific forum may act
+    as a conservative bridge when the post text omits the country name.
+    """
+    spec = base.PROFILES[profile]
+    if spec["target_re"].search(text):
+        return True, True
+
+    query = str(item.get("discovery_query") or "")
+    if not base.query_targets_profile(profile, query):
+        return False, False
+
+    url = str(item.get("url") or "")
+    domain = base.domain_of(url)
+    try:
+        path = urlsplit(url).path.casefold()
+    except Exception:
+        path = ""
+
+    if domain in {"reddit.com", "old.reddit.com"} or domain.endswith(".reddit.com"):
+        allowed_paths = _HOME_REDDIT_COUNTRY_PATHS.get(profile, ())
+        return any(token in path for token in allowed_paths), False
+
+    allowed_domains = _HOME_BRIDGE_DOMAINS.get(profile, set())
+    bridge = any(domain == d or domain.endswith("." + d) for d in allowed_domains)
+    return bridge, False
+
+
+def is_past_purchase(text: str) -> bool:
+    return bool(_PAST_PURCHASE_RE.search(str(text or "")))
+
+
+def _patch_home_precision(app) -> None:
+    original_classify = app.classify
+
+    def classify(profile: str, item: dict):
+        text = app.clean(f"{item.get('title','')} {item.get('text','')}")
+        if is_past_purchase(text):
+            return None, "past_purchase"
+
+        spec = app.PROFILES[profile]
+        if not spec["target_re"].search(text):
+            matched, _explicit = strict_home_target_match(app, profile, item, text)
+            if not matched:
+                return None, "target_unverified"
+
+        return original_classify(profile, item)
+
+    app.classify = classify
 
 
 def strict_abroad_audience_match(base, profile: str, item: dict, text: str) -> tuple[bool, bool]:
@@ -206,6 +289,7 @@ def run() -> list[dict]:
     if home_profile:
         import europe_home_buyer_radar as app
 
+        _patch_home_precision(app)
         fallback = FallbackProviderChain("home", postprocess=_home_postprocess(app))
         app.serper_search = resilient_serper(app.serper_search, "home", fallback=fallback)
         return app.run()
