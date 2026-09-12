@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch
 
 import europe_abroad_buyer_radar as abroad_base
+import europe_home_buyer_radar as home_base
 import europe_buyer_search_fallback as fallback_search
 import europe_buyer_serper_resilient as guard
 
@@ -206,6 +207,61 @@ class SerperResilienceTests(unittest.TestCase):
             guard.cross_profile_abroad_lead_key(original, 'golden_visa', lead),
             'original-golden_visa',
         )
+
+    def test_global_expat_home_result_cannot_inherit_germany_from_query(self):
+        item = {
+            'url': 'https://www.expat.com/fr/forum/afrique/tunisie/1119059-obtenir-la-main-levee-dun-appartement.html',
+            'discovery_query': 'site:expat.com Germany "buy apartment" forum',
+        }
+        text = (
+            "J'ai acheté un appartement en Tunisie, Gouvernorat de l'Ariana. "
+            "Paiement d'un acompte en 2022 lors de la signature de la promesse de vente."
+        )
+        matched, explicit = guard.strict_home_target_match(home_base, 'germany_home', item, text)
+        self.assertFalse(matched)
+        self.assertFalse(explicit)
+
+    def test_country_specific_home_subreddit_can_bridge(self):
+        item = {
+            'url': 'https://www.reddit.com/r/germany/comments/abc/looking_to_buy/',
+            'discovery_query': 'site:reddit.com/r/germany "buy apartment" Germany',
+        }
+        matched, explicit = guard.strict_home_target_match(
+            home_base,
+            'germany_home',
+            item,
+            'I am looking to buy an apartment. Budget €420000.',
+        )
+        self.assertTrue(matched)
+        self.assertFalse(explicit)
+
+    def test_past_purchase_language_is_rejected(self):
+        self.assertTrue(guard.is_past_purchase("J'ai acheté un appartement en Tunisie."))
+        self.assertTrue(guard.is_past_purchase("I already bought a house last year."))
+        self.assertTrue(guard.is_past_purchase("Ich habe eine Wohnung gekauft."))
+        self.assertTrue(guard.is_past_purchase("Ik heb een appartement gekocht."))
+
+    def test_tunisia_past_purchase_is_rejected_by_production_home_patch(self):
+        item = {
+            'source': 'Exa',
+            'url': 'https://www.expat.com/fr/forum/afrique/tunisie/1119059-obtenir-la-main-levee-dun-appartement.html',
+            'title': "Obtenir la main levée d'un appartement - Forum Tunisie - Expat.com",
+            'text': (
+                "J'ai acheté un appartement en Tunisie, Gouvernorat de l'Ariana. "
+                "Paiement d'un acompte en 2022 lors de la signature de la promesse de vente."
+            ),
+            'published': '2026-09-12T00:00:00Z',
+            'author': 'pouilloncaraibes',
+            'discovery_query': 'site:expat.com Germany "buy apartment" forum',
+        }
+        original = home_base.classify
+        guard._patch_home_precision(home_base)
+        try:
+            lead, reason = home_base.classify('germany_home', item)
+            self.assertIsNone(lead)
+            self.assertEqual(reason, 'past_purchase')
+        finally:
+            home_base.classify = original
 
 
 if __name__ == '__main__':
