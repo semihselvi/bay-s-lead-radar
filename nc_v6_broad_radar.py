@@ -4,6 +4,8 @@ import asyncio
 import hashlib
 import json
 import re
+import urllib.parse
+import xml.etree.ElementTree as ET
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -14,7 +16,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.0-broad-recall-intent-radar"
+VERSION = "6.1-broad-recall-precision-fallback"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -108,7 +110,9 @@ RENT_DEMAND_RE = re.compile(
     r"\bkiral[ıi]k\s+(?:ev|daire|villa|st[üu]dyo)?\s*ar[ıi]yorum\b|\b(?:ev|daire|villa|st[üu]dyo)\s+kiralamak\s+istiyorum\b|"
     r"\b(?:ev|daire|villa|st[üu]dyo)\s+ar[ıi]yorum\b.{0,80}\b(?:kiral[ıi]k|ayl[ıi]k|g[üu]nl[üu]k)\b|"
     r"\bсниму\b|\bхочу\s+снять\b|\bищу\b.{0,100}\b(?:аренд|долгосроч|посуточ)\b|"
-    r"\bищу\s+(?:квартир\w*|дом\w*|вилл\w*|студи\w*)\b.{0,100}\b(?:на\s+месяц|на\s+год|долгосроч|аренд)\b"
+    r"\bищу\s+в\s+аренд\w*\b|\bнужн(?:а|ы)\b.{0,100}\b(?:в\s+аренд\w*|на\s+аренд\w*)\b|"
+    r"\bищу\s+(?:квартир\w*|дом\w*|вилл\w*|студи\w*)\b.{0,100}\b(?:на\s+месяц|на\s+год|долгосроч|аренд)\b|"
+    r"\bищу\b.{0,120}\b(?:квартир\w*|дом\w*|вилл\w*|студи\w*)\b.{0,120}\b(?:с\s+\d|по\s+\d|на\s+\d+\s+(?:дн|день|дней|недел|месяц))\b"
     r")",
     re.I | re.S,
 )
@@ -157,6 +161,34 @@ PURCHASE_QUALIFIER_RE = re.compile(
     re.I,
 )
 
+FINANCIAL_OR_GOODS_RE = re.compile(
+    r"(?:"
+    r"\busdt\b|\bcrypto\b|\bкрипт\w*\b|\bобмен\s+валют\b|"
+    r"\bучебник\w*\b|\bресниц\w*\b|\bпротеин\w*\b|\bракетк\w*\b|"
+    r"\btextbook\b|\bprotein\b|\bracket\b|\bpaddle\b"
+    r")",
+    re.I,
+)
+
+POST_PURCHASE_OR_INFO_RE = re.compile(
+    r"(?:"
+    r"\b(?:получил[аи]?|у\s+меня\s+есть|своя)\b.{0,80}\b(?:титул\w*|квартир\w*|дом\w*|вилл\w*)\b|"
+    r"\b(?:титул\w*|договор\s+покупк\w*)\b.{0,100}\b(?:внж|подаю|документ\w*|полици\w*)\b|"
+    r"\bпосле\s+окончания\s+университета\b|\bперечень\s+должен\s+быть\b"
+    r")",
+    re.I | re.S,
+)
+
+COMMERCIAL_PROVIDER_RE = re.compile(
+    r"(?:"
+    r"\bуправляющ\w*\s+компани\w*\b|\bбер[её]м\s+в\s+управлени\w*\b|"
+    r"\bполное\s+обслуживани\w*\b.{0,80}\bнедвижимост\w*\b|"
+    r"\bproperty\s+management\s+company\b|\bwe\s+manage\s+propert\w*\b|"
+    r"\bуправление\s+недвижимост\w*\b"
+    r")",
+    re.I | re.S,
+)
+
 SERVICE_PROVIDER_REQUEST_RE = re.compile(
     r"(?:"
     r"\b(?:looking\s+for|need|recommend)\b.{0,80}\b(?:realtor|real\s+estate\s+agent|property\s+agent|agency|lawyer|solicitor|plumber|electrician|handyman|cleaner)\b|"
@@ -172,7 +204,7 @@ SUPPLY_STRONG_RE = re.compile(
     r"\bfor\s+sale\b.{0,150}\b(?:price|bedroom|sqm|m2|contact|whatsapp)\b|"
     r"\b(?:available\s+units?|price\s+from|book\s+a\s+viewing|property\s+(?:id|ref)|listing\s+(?:id|ref))\b|"
     r"\b(?:sat[ıi]l[ıi]k|kiral[ıi]k)\b.{0,140}\b(?:fiyat|m2|metrekare|ileti[şs]im|whatsapp|portf[öo]y)\b|"
-    r"\b(?:прода[её]тся|продам|сдам|сда[её]тся)\b.{0,140}\b(?:цена|м2|м²|пишите|whatsapp|контакт)\b|"
+    r"\b(?:прода[её]тся|продам|сдам|сда[её]тся|#?продаж\w*)\b.{0,180}\b(?:цена|цены|м2|м²|пишите|whatsapp|контакт|менеджер)\b|"
     r"\b(?:real\s+estate\s+agency|estate\s+agent|realtor|property\s+consultant|broker|agency)\b|"
     r"\b(?:агентство\s+недвижимости|риелтор|риэлтор|застройщик)\b"
     r")",
@@ -311,6 +343,12 @@ def _hard_reject(text: str, author: str = "") -> str:
         return "bot_author"
     if batch_guard.is_nonproperty_goods_request(text):
         return "nonproperty_goods"
+    if FINANCIAL_OR_GOODS_RE.search(text):
+        return "financial_or_goods"
+    if POST_PURCHASE_OR_INFO_RE.search(text):
+        return "post_purchase_or_info"
+    if COMMERCIAL_PROVIDER_RE.search(text):
+        return "commercial_provider"
     if radar.TG_SERVICE_REQUEST_RE.search(text) or SERVICE_PROVIDER_REQUEST_RE.search(text):
         return "service_request"
     if radar.TG_STRONG_SUPPLY_RE.search(text) or SUPPLY_STRONG_RE.search(text):
@@ -366,8 +404,19 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
     qualifier = bool(PURCHASE_QUALIFIER_RE.search(own))
     specificity = _specificity(own)
 
+    # A generic "buy" verb inside a North-Cyprus group is not enough. It must
+    # actually concern housing/property, otherwise books, crypto and household
+    # goods become fake BUYER leads.
+    if buy and not any((has_property, qualifier, investor, residency, relocation)):
+        return None, "no_property_purchase_context"
+
+    # Residency by itself is not a property lead; require a housing, relocation
+    # or explicit research/demand context.
+    if residency and not any((has_property, buy, relocation, demand, research, qualifier)):
+        return None, "residency_without_housing_intent"
+
     # Nothing housing/relocation/investment-shaped reached the semantic stage.
-    if not any((has_property, buy, rent, relocation, investor, research, residency, qualifier)):
+    if not any((has_property, buy, rent, relocation, investor, research, qualifier, residency)):
         return None, "no_housing_intent_signal"
 
     intent_type = "WATCH"
@@ -474,6 +523,7 @@ DEBUG: dict[str, Any] = {
     "web_platforms": Counter(),
     "web_accepted": 0,
     "web_reject_reasons": Counter(),
+    "web_provider_errors": Counter(),
     "errors": [],
 }
 
@@ -653,8 +703,51 @@ _existing_web_classifier = v5.classify_web
 _existing_search = core.exa_search
 
 
+def _bing_rss_search(query: str, include_domains: list[str] | None = None) -> list[dict[str, Any]]:
+    q = query
+    if include_domains:
+        q = f"{query} (" + " OR ".join(f"site:{d}" for d in include_domains) + ")"
+    url = "https://www.bing.com/search?format=rss&q=" + urllib.parse.quote_plus(q)
+    try:
+        r = core.requests.get(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; LeadRadar/6.1)"},
+            timeout=25,
+        )
+        if r.status_code != 200:
+            DEBUG["web_provider_errors"][f"bing_http_{r.status_code}"] += 1
+            return []
+        root = ET.fromstring(r.content)
+        out = []
+        for item in root.findall(".//item")[:10]:
+            title = item.findtext("title") or ""
+            link = item.findtext("link") or ""
+            desc = item.findtext("description") or ""
+            pub = item.findtext("pubDate") or ""
+            if not link:
+                continue
+            out.append({
+                "source": "Bing RSS",
+                "url": link,
+                "title": title,
+                "text": desc,
+                "published": pub,
+                "author": "",
+            })
+        if not out:
+            DEBUG["web_provider_errors"]["bing_zero_results"] += 1
+        return out
+    except Exception as exc:
+        DEBUG["web_provider_errors"][f"bing_{type(exc).__name__}"] += 1
+        return []
+
+
 def search_debug(query: str, include_domains: list[str] | None = None):
     rows = _existing_search(query, include_domains)
+    if not rows:
+        DEBUG["web_provider_errors"]["exa_serper_empty_or_quota"] += 1
+        rows = _bing_rss_search(query, include_domains)
+
     for row in rows:
         DEBUG["web_raw_by_source"][str(row.get("source") or "unknown")] += 1
         url = str(row.get("url") or "").casefold()
@@ -775,6 +868,7 @@ def _serializable_debug() -> dict[str, Any]:
         "web_raw_by_source": dict(DEBUG["web_raw_by_source"]),
         "web_platforms": dict(DEBUG["web_platforms"]),
         "web_reject_reasons": dict(DEBUG["web_reject_reasons"]),
+        "web_provider_errors": dict(DEBUG["web_provider_errors"]),
     }
 
 
@@ -793,6 +887,8 @@ def save_and_notify_debug() -> None:
     langs = ", ".join(f"{k}:{v}" for k, v in DEBUG["languages"].most_common()) or "-"
     sources = ", ".join(f"{k}:{v}" for k, v in DEBUG["web_raw_by_source"].most_common()) or "-"
     platforms = ", ".join(f"{k}:{v}" for k, v in DEBUG["web_platforms"].most_common()) or "-"
+    provider_errors = ", ".join(f"{k}:{v}" for k, v in DEBUG["web_provider_errors"].most_common()) or "-"
+    total_errors = len(DEBUG["errors"]) + sum(DEBUG["web_provider_errors"].values())
     msg = (
         "🧪 LEAD RADAR DEBUG | SON TARAMA\n\n"
         f"Telegram grup: {DEBUG['groups_relevant']}/{DEBUG['groups_total']}\n"
@@ -806,7 +902,8 @@ def save_and_notify_debug() -> None:
         f"Web sağlayıcı: {sources}\n"
         f"Web platform: {platforms}\n"
         f"Web kabul: {DEBUG['web_accepted']}\n"
-        f"Hata: {len(DEBUG['errors'])}"
+        f"Web provider sorunları: {provider_errors}\n"
+        f"Hata: {total_errors}"
     )
     core.telegram(msg[:3900])
     print("LEAD_RADAR_DEBUG", json.dumps(_serializable_debug(), ensure_ascii=False))
