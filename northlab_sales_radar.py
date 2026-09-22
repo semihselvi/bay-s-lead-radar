@@ -101,7 +101,7 @@ PARTNER_RE = re.compile(
 BUSINESS_RE = re.compile(
     r"(?:\bour\s+(?:company|business|restaurant|hotel|clinic|agency|shop)\b|\bmy\s+(?:company|business|shop)\b|"
     r"\bfirmam[ıi]z\b|\bi[sş]letmemiz\b|\brestoran[ıi]m[ıi]z\b|\bklini[gğ]imiz\b|"
-    r"\bнаша\s+(?:компания|фирма|клиника|ресторан|агентство|магазин)\b|\bмой\s+бизнес\b)",
+    r"\bнаш\w*\s+(?:компан\w*|фирм\w*|клиник\w*|ресторан\w*|агентств\w*|магазин\w*)\b|\bмой\s+бизнес\b)",
     re.I,
 )
 
