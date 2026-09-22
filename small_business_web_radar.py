@@ -265,10 +265,22 @@ def _place_reject_reason(row: dict[str, Any], city: str, query: str) -> str:
     # least echo the locality or North Cyprus somewhere. This keeps Google Maps
     # spillover from the Republic of Cyprus out of the prospect list.
     if not NORTH_CYPRUS_RE.search(meta) and city.casefold() not in meta.casefold():
-        if str(row.get("_fallback") or "") != "bing_rss":
+        if str(row.get("_fallback") or "") == "bing_rss":
+            host = _host(website)
+            location_tokens = {
+                "Gazimağusa": ("gazimagusa", "famagusta", "magusa"),
+                "İskele": ("iskele", "trikomo", "longbeach", "long-beach"),
+                "Girne": ("girne", "kyrenia"),
+                "Lefkoşa": ("lefko", "nicosia"),
+                "Lapta": ("lapta",),
+                "Alsancak": ("alsancak",),
+                "Çatalköy": ("catalkoy", "çatalköy"),
+                "Gönyeli": ("gonyeli", "gönyeli"),
+            }.get(city, ())
+            if not any(token in host for token in location_tokens):
+                return "fallback_location_mismatch"
+        else:
             return "location_mismatch"
-        # Bing rows are already generated from a city + North Cyprus query.
-        # The website itself is still inspected and scored before alerting.
     return ""
 
 
