@@ -152,6 +152,38 @@ class BroadIntentTests(unittest.TestCase):
         )
         self.assertIsNone(lead)
 
+    def test_agent_client_request_rejected(self):
+        lead, reason = v6.classify_text(
+            "ищу для клиента виллу в лапте ближе к морю",
+            group="СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+        )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "agent_client_request")
+
+    def test_housekeeper_job_rejected(self):
+        lead, reason = v6.classify_text(
+            "ВАКАНСИЯ — ПОМОЩНИЦА ПО ДОМУ. Зарплата 1500$ в месяц, проживание в доме.",
+            group="СЕВЕРНЫЙ КИПР | ФОРУМ",
+        )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "job_post")
+
+    def test_car_installment_listing_rejected(self):
+        lead, reason = v6.classify_text(
+            "🚗 Марка/модель: Honda S660 Год: 2022 Рассрочка: Есть Место: Гирне Цена: 23,500£",
+            group="СЕВЕРНЫЙ КИПР | ФОРУМ",
+        )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "vehicle")
+
+    def test_tutor_request_rejected(self):
+        lead, reason = v6.classify_text(
+            "Ищу репетитора для детей 7–11 лет. Репетитор должен приходить к нам домой.",
+            group="СЕВЕРНЫЙ КИПР | ФОРУМ",
+        )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "personal_service")
+
     def test_generic_cyprus_without_north_context_does_not_force_market(self):
         lead, reason = v6.classify_text(
             "Looking for an apartment in Limassol.",
