@@ -15,7 +15,7 @@ import requests
 
 import main as core
 
-VERSION = "1.0-northlab-project-intent"
+VERSION = "1.1-project-intent-precision"
 COLLECTION = "northlab_sales_project_leads"
 SCAN_COLLECTION = "northlab_sales_project_scans"
 TELEGRAM_HOURS = int(os.getenv("NORTHLAB_TELEGRAM_HOURS", "24"))
@@ -149,6 +149,49 @@ EDUCATION_RE = re.compile(
     re.I,
 )
 
+
+BOT_AUTHOR_RE = re.compile(r"(?:^|[_-])bot$", re.I)
+
+MARKETPLACE_AD_RE = re.compile(
+    r"(?:pulsemarket|новое\s+объявление|цена\s*[:：]|больше\s+фотографий|"
+    r"смотреть\s+на\s+сайте|подключить\s+алерты|#.*спрос)",
+    re.I | re.S,
+)
+
+PORTAL_SUPPORT_RE = re.compile(
+    r"(?:"
+    r"permissions\.gov|staypermit|government\s+portal|"
+    r"не\s+могу\s+зайти\s+в\s+личн\w*\s+кабинет|"
+    r"пользователь\s+не\s+найден|аккаунт\w*\s+уже\s+существует|"
+    r"смена\s+номера\s+телефона|куда\s+обращаться|"
+    r"cannot\s+log\s+in|account\s+already\s+exists|user\s+not\s+found|"
+    r"hesab(?:ı|i)ma\s+giremiyorum|kullanıcı\s+bulunamadı|hesap\s+zaten\s+mevcut"
+    r")",
+    re.I | re.S,
+)
+
+DOCUMENT_ACCOUNT_CONTEXT_RE = re.compile(
+    r"(?:"
+    r"список\s+документ\w*|банковск\w*\s+выписк\w*|"
+    r"если\s+в\s+списке\s+документов|"
+    r"document\s+list|bank\s+statement|belge\s+listesi|banka\s+ekstresi"
+    r")",
+    re.I,
+)
+
+PROJECT_REQUEST_RE = re.compile(
+    r"(?:"
+    r"\b(?:need|looking\s+for|want)\b.{0,90}\b(?:website|web\s*site|crm|booking\s+system|reservation\s+system|admin\s+panel|automation|payment\s+integration|e[-\s]?commerce)\b|"
+    r"\b(?:build|create|develop|redesign|redo|replace|integrate|implement|automate)\b.{0,100}\b(?:website|web\s*site|crm|booking\s+system|reservation\s+system|admin\s+panel|dashboard|payment|store)\b|"
+    r"\b(?:web\s+sitesi|crm|rezervasyon\s+sistemi|randevu\s+sistemi|yönetim\s+paneli|otomasyon|sanal\s+pos|e[-\s]?ticaret)\b.{0,100}\b(?:lazım|ihtiyac|arıyorum|yaptır|kur|geliştir|yenile|entegr)\w*|"
+    r"\b(?:lazım|ihtiyac|arıyorum|yaptırmak|kurmak|geliştirmek|yenilemek)\w*.{0,100}\b(?:web\s+sitesi|crm|rezervasyon\s+sistemi|yönetim\s+paneli|otomasyon|e[-\s]?ticaret)\b|"
+    r"\b(?:нужен|нужна|нужно|ищу|хотим)\b.{0,100}\b(?:сайт\w*|веб[-\s]?сайт\w*|crm|срм|систем\w*\s+бронирован\w*|админ[-\s]?панел\w*|автоматизац\w*|интернет[-\s]?магазин\w*)\b|"
+    r"\b(?:создать|сделать|разработать|обновить|переделать|интегрировать|автоматизировать)\w*.{0,100}\b(?:сайт\w*|crm|срм|систем\w*|панел\w*|магазин\w*)\b|"
+    r"\b(?:сайт\w*|crm|срм|систем\w*\s+бронирован\w*|админ[-\s]?панел\w*)\b.{0,100}\b(?:нужен|нужна|нужно|ищу|разработать|создать|сделать|обновить)\w*"
+    r")",
+    re.I | re.S,
+)
+
 WEB_QUERIES = [
     '"North Cyprus" "looking for" "website developer"',
     '"North Cyprus" "need a website"',
@@ -195,9 +238,16 @@ def classify(text: str) -> tuple[dict[str, Any] | None, str]:
         return None, "service_provider"
     if EDUCATION_RE.search(value):
         return None, "education"
+    if MARKETPLACE_AD_RE.search(value):
+        return None, "marketplace_ad"
+    if PORTAL_SUPPORT_RE.search(value):
+        return None, "portal_account_support"
+    if DOCUMENT_ACCOUNT_CONTEXT_RE.search(value) and re.search(r"личн\w*\s+кабинет|account|hesap", value, re.I):
+        return None, "document_portal_context"
 
     types = project_types(value)
     demand = bool(DEMAND_RE.search(value))
+    project_request = bool(PROJECT_REQUEST_RE.search(value))
     problem = bool(PROBLEM_RE.search(value))
     partner = bool(PARTNER_RE.search(value))
     business = bool(BUSINESS_RE.search(value))
@@ -211,7 +261,7 @@ def classify(text: str) -> tuple[dict[str, Any] | None, str]:
         lead_class = "PARTNER"
         score = 82 + (6 if specific else 0)
         reasons.append("explicit_partner_search")
-    elif demand and types:
+    elif demand and types and project_request:
         lead_class = "HOT PROJECT" if (specific or business) else "WARM PROJECT"
         score = 88 if lead_class == "HOT PROJECT" else 74
         reasons.append("explicit_project_demand")
@@ -334,19 +384,23 @@ async def scan_telegram(db_client, now: datetime, debug: dict[str, Any]) -> list
                         debug["rejects"]["duplicate_text"] += 1
                         continue
                     seen_text.add(key)
-                    signal, reason = classify(text)
-                    if signal is None:
-                        debug["rejects"][reason] += 1
-                        continue
                     try:
                         await msg.get_sender()
                     except Exception:
                         pass
+                    author = core.tg_sender(msg)
+                    if BOT_AUTHOR_RE.search(str(author or "")):
+                        debug["rejects"]["bot_author"] += 1
+                        continue
+                    signal, reason = classify(text)
+                    if signal is None:
+                        debug["rejects"][reason] += 1
+                        continue
                     lead = {
                         "source": "Telegram",
                         "platform": "Telegram",
                         "group": group,
-                        "author": core.tg_sender(msg),
+                        "author": author,
                         "text": text,
                         "url": core.tg_link(dialog.entity, getattr(msg, "id", 0)),
                         "message_time": dt.isoformat(),
