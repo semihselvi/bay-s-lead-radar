@@ -4,6 +4,8 @@ import hashlib
 import os
 import re
 import time
+import urllib.parse
+import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -17,7 +19,7 @@ from bs4 import BeautifulSoup
 import main as core
 
 
-VERSION = "1.1-serper-places-small-business"
+VERSION = "1.2-northlab-bing-fallback"
 COLLECTION = "bay_s_small_business_web_prospects"
 SCAN_COLLECTION = "bay_s_small_business_web_scans"
 QUERY_LIMIT = int(os.getenv("SMALL_BIZ_QUERY_LIMIT", "16"))
@@ -193,6 +195,49 @@ def serper_places(query: str) -> list[dict[str, Any]]:
     return list((r.json().get("places") or [])[:20])
 
 
+def bing_business_search(query: str) -> list[dict[str, Any]]:
+    """Free fallback when Places credits are unavailable.
+
+    Bing RSS does not provide Google-style place metadata, so these rows are
+    deliberately marked as web discovery and are still validated by the normal
+    site inspection layer before they can alert.
+    """
+    url = "https://www.bing.com/search?format=rss&q=" + urllib.parse.quote_plus(query)
+    try:
+        r = requests.get(
+            url,
+            headers={"User-Agent": UA, "Accept-Language": "en,tr;q=0.9"},
+            timeout=20,
+        )
+        if r.status_code != 200:
+            print(f"SMALL_BIZ_BING_HTTP_{r.status_code} query={query!r}")
+            return []
+        root = ET.fromstring(r.content)
+        out: list[dict[str, Any]] = []
+        for item in root.findall(".//item")[:12]:
+            link = str(item.findtext("link") or "").strip()
+            title = str(item.findtext("title") or "").strip()
+            desc = str(item.findtext("description") or "").strip()
+            if not link or blocked_url(link):
+                continue
+            out.append({
+                "website": link,
+                "title": title or _host(link),
+                "address": "",
+                "phoneNumber": "",
+                "description": desc,
+                "type": "Web discovery",
+                "rating": 0,
+                "ratingCount": 0,
+                "_fallback": "bing_rss",
+            })
+        print(f"SMALL_BIZ_BING_OK query={query!r} results={len(out)}")
+        return out
+    except Exception as exc:
+        print(f"SMALL_BIZ_BING_ERROR {type(exc).__name__}: {exc}")
+        return []
+
+
 def _place_reject_reason(row: dict[str, Any], city: str, query: str) -> str:
     website = str(row.get("website") or "")
     if not website:
@@ -220,7 +265,10 @@ def _place_reject_reason(row: dict[str, Any], city: str, query: str) -> str:
     # least echo the locality or North Cyprus somewhere. This keeps Google Maps
     # spillover from the Republic of Cyprus out of the prospect list.
     if not NORTH_CYPRUS_RE.search(meta) and city.casefold() not in meta.casefold():
-        return "location_mismatch"
+        if str(row.get("_fallback") or "") != "bing_rss":
+            return "location_mismatch"
+        # Bing rows are already generated from a city + North Cyprus query.
+        # The website itself is still inspected and scored before alerting.
     return ""
 
 
@@ -237,8 +285,10 @@ def discover() -> tuple[list[Discovery], int, int, dict[str, int]]:
             print(f"SMALL_BIZ_PLACES_OK results={len(rows)}")
         except Exception as exc:
             errors += 1
-            print(f"SMALL_BIZ_PLACES_ERROR {type(exc).__name__}: {exc}")
-            continue
+            print(f"SMALL_BIZ_PLACES_ERROR {type(exc).__name__}: {exc} -> Bing RSS fallback")
+            rows = bing_business_search(query)
+            if not rows:
+                continue
         for row in rows:
             raw += 1
             reason = _place_reject_reason(row, city, query)
@@ -533,7 +583,7 @@ def notify(lead: dict[str, Any]) -> None:
     reasons = ", ".join(lead.get("reasons") or [])
     reviews = f" | Google yorum: {lead.get('rating_count', 0)}" if lead.get("rating_count") else ""
     msg = (
-        f"{emoji} BAY-S WEB SATIŞ RADARI | {lead['classification']} {lead['redesign_score']}/100\n\n"
+        f"{emoji} NORTHLAB WEB FIRSAT RADARI | {lead['classification']} {lead['redesign_score']}/100\n\n"
         f"İşletme: {lead['business_name']}\n"
         f"Bölge: {lead['city']}\n"
         f"Kategori: {lead['category']}{reviews}\n"
@@ -541,7 +591,7 @@ def notify(lead: dict[str, Any]) -> None:
         f"Neden aday: {reasons}\n\n"
         f"İletişim: {_first_contact(lead['contacts']) or 'site iletişim kanalı'}\n"
         f"Web: {lead['website']}\n\n"
-        "Satış açısı: mevcut siteyi modern, mobil uyumlu, hızlı ve WhatsApp/arama dönüşümü güçlü yeni bir siteyle yenileme."
+        "Northlab satış açısı: mevcut siteyi modern, mobil uyumlu, hızlı ve WhatsApp/arama dönüşümü güçlü yeni bir siteyle yenileme."
     )
     core.telegram(msg[:3900])
 
@@ -578,7 +628,7 @@ def main() -> None:
         "started_at": now.isoformat(),
         "completed_at": datetime.now(timezone.utc).isoformat(),
         "radar_version": VERSION,
-        "focus": "north_cyprus_small_business_website_redesign",
+        "focus": "northlab_north_cyprus_small_business_website_opportunity",
         "queries": min(QUERY_LIMIT, len(LOCATIONS) * len(CATEGORIES)),
         "places_raw": raw,
         "unique_sites": len(discoveries),
