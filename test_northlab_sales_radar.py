@@ -54,6 +54,24 @@ class NorthlabSalesRadarTests(unittest.TestCase):
             "HOT PROJECT",
         )
 
+    def test_marketplace_bot_ad_rejected(self):
+        self.assertReject(
+            "🆕 НОВОЕ ОБЪЯВЛЕНИЕ НА PulseMarket! Цена: 1 ₺ 🌐 Смотреть на сайте #спрос",
+            "marketplace_ad",
+        )
+
+    def test_government_portal_login_problem_rejected(self):
+        self.assertReject(
+            "Не могу зайти в личный кабинет на сайте permissions.gov/staypermit - пользователь не найден. Куда обращаться?",
+            "portal_account_support",
+        )
+
+    def test_document_advice_in_personal_account_rejected(self):
+        self.assertReject(
+            "Если в списке документов в личном кабинете есть пункт с банковской выпиской, то нужна.",
+            "document_portal_context",
+        )
+
     def test_job_seeker_rejected(self):
         self.assertReject(
             "I am a web developer looking for a job. Here is my CV.",
