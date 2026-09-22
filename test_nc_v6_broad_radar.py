@@ -59,7 +59,7 @@ class BroadIntentTests(unittest.TestCase):
         self.assertLead("Oturma izni için Kuzey Kıbrıs'ta ev bakıyorum.", "WARM BUYER")
 
     def test_buy_to_rent_investor(self):
-        self.assertLead("Kuzey Kıbrıs'ta ev alıp kiraya vermek istiyorum.", "HOT BUYER")
+        self.assertLead("Kuzey Kıbrıs'ta ev alıp kiraya vermek istiyorum.", "INVESTOR")
 
     def test_russian_buyer(self):
         self.assertLead("Хочу купить квартиру на Северном Кипре, бюджет £140000.", "HOT BUYER")
