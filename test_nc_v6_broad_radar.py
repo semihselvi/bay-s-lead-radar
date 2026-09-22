@@ -97,6 +97,14 @@ class BroadIntentTests(unittest.TestCase):
         self.assertIsNone(lead)
         self.assertEqual(reason, "service_request")
 
+    def test_realtor_request_is_service_not_property_lead(self):
+        lead, reason = v6.classify_text(
+            "Kuzey Kıbrıs'ta güvenilir emlakçı arıyorum.",
+            group="North Cyprus Expats",
+        )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "service_request")
+
     def test_generic_cyprus_without_north_context_does_not_force_market(self):
         lead, reason = v6.classify_text(
             "Looking for an apartment in Limassol.",
