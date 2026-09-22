@@ -185,9 +185,9 @@ PROJECT_REQUEST_RE = re.compile(
     r"\b(?:build|create|develop|redesign|redo|replace|integrate|implement|automate)\b.{0,100}\b(?:website|web\s*site|crm|booking\s+system|reservation\s+system|admin\s+panel|dashboard|payment|store)\b|"
     r"\b(?:web\s+sitesi|crm|rezervasyon\s+sistemi|randevu\s+sistemi|yönetim\s+paneli|otomasyon|sanal\s+pos|e[-\s]?ticaret)\b.{0,100}\b(?:lazım|ihtiyac|arıyorum|yaptır|kur|geliştir|yenile|entegr)\w*|"
     r"\b(?:lazım|ihtiyac|arıyorum|yaptırmak|kurmak|geliştirmek|yenilemek)\w*.{0,100}\b(?:web\s+sitesi|crm|rezervasyon\s+sistemi|yönetim\s+paneli|otomasyon|e[-\s]?ticaret)\b|"
-    r"\b(?:нужен|нужна|нужно|ищу|хотим)\b.{0,100}\b(?:сайт\w*|веб[-\s]?сайт\w*|crm|срм|систем\w*\s+бронирован\w*|админ[-\s]?панел\w*|автоматизац\w*|интернет[-\s]?магазин\w*)\b|"
+    r"\b(?:нужен|нужна|нужно|ищу|хотим)\b.{0,100}\b(?:сайт\w*|веб[-\s]?сайт\w*|crm|срм|систем\w*.{0,40}бронирован\w*|админ[-\s]?панел\w*|автоматизац\w*|интернет[-\s]?магазин\w*)\b|"
     r"\b(?:создать|сделать|разработать|обновить|переделать|интегрировать|автоматизировать)\w*.{0,100}\b(?:сайт\w*|crm|срм|систем\w*|панел\w*|магазин\w*)\b|"
-    r"\b(?:сайт\w*|crm|срм|систем\w*\s+бронирован\w*|админ[-\s]?панел\w*)\b.{0,100}\b(?:нужен|нужна|нужно|ищу|разработать|создать|сделать|обновить)\w*"
+    r"\b(?:сайт\w*|crm|срм|систем\w*.{0,40}бронирован\w*|админ[-\s]?панел\w*)\b.{0,100}\b(?:нужен|нужна|нужно|ищу|разработать|создать|сделать|обновить)\w*"
     r")",
     re.I | re.S,
 )
