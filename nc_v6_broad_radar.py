@@ -407,7 +407,7 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
     # A generic "buy" verb inside a North-Cyprus group is not enough. It must
     # actually concern housing/property, otherwise books, crypto and household
     # goods become fake BUYER leads.
-    if buy and not any((has_property, qualifier, investor, residency, relocation)):
+    if buy and not any((has_property, qualifier, investor, residency, relocation, research)):
         return None, "no_property_purchase_context"
 
     # Residency by itself is not a property lead; require a housing, relocation
