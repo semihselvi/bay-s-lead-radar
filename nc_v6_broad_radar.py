@@ -31,7 +31,7 @@ NC_GEO_RE = re.compile(
     r"\balsancak\b|\blapta\b|\besentepe\b|\btatl[ıi]su\b|\bbafra\b|"
     r"\byenibo[ğg]azi[çc]i\b|\bbo[ğg]az\b|\blefke\b|\bg[üu]zelyurt\b|\bmorphou\b|"
     r"\bercan\b|\bnicosia\s+north\b|\blefko[şs]a\b|"
-    r"\bискел\w*\b|\блонг\s+бич\b|\bфамагуст\w*\b|\bгирн\w*\b|"
+    r"\bискел\w*\b|\bлонг\s+бич\b|\bфамагуст\w*\b|\bгирн\w*\b|"
     r"\bалсанджак\b|\bлапт\w*\b|\bэсентеп\w*\b|\bтатлысу\b|\bбафр\w*\b|"
     r"\bбоаз\w*\b|\bлефк\w*\b|\bгюзельюрт\b"
     r")",
