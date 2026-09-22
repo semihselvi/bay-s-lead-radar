@@ -105,6 +105,53 @@ class BroadIntentTests(unittest.TestCase):
         self.assertIsNone(lead)
         self.assertEqual(reason, "service_request")
 
+    def test_real_russian_rental_is_hot_tenant(self):
+        self.assertLead(
+            "Ищу в аренду Фамагуста квартиры 1+1/2+1 в Sky Sakarya или Premier за 600 долларов в месяц?",
+            "HOT TENANT",
+        )
+
+    def test_one_month_studio_is_tenant(self):
+        self.assertLead(
+            "Ищу небольшую студию в Thalassa Beach Resort на 1 месяц, ориентировочно с 29 сентября.",
+            "HOT TENANT",
+        )
+
+    def test_dated_short_stay_is_tenant(self):
+        self.assertLead(
+            "Ищу рядом 2 квартиры 2+1 и 1+1 с 9.10-19.10.",
+            "HOT TENANT",
+        )
+
+    def test_crypto_not_property_buyer(self):
+        lead, reason = v6.classify_text(
+            "Всем привет, срочно куплю USDT за наличные. Только личная встреча",
+            group="СЕВЕРНЫЙ КИПР | All you need",
+        )
+        self.assertIsNone(lead)
+
+    def test_textbook_not_property_buyer(self):
+        lead, reason = v6.classify_text("Куплю учебник", group="СЕВЕРНЫЙ КИПР | ФОРУМ")
+        self.assertIsNone(lead)
+
+    def test_padel_racket_not_property_buyer(self):
+        lead, reason = v6.classify_text("Куплю 2 ракетки для падела. Можно Б/у", group="Iskele | Long Beach")
+        self.assertIsNone(lead)
+
+    def test_post_purchase_residency_question_not_buyer(self):
+        lead, reason = v6.classify_text(
+            "Добрый вечер. Получила титул. Подаю в первый раз на ВНЖ. Выписка с банка требуется?",
+            group="СЕВЕРНЫЙ КИПР | ФОРУМ",
+        )
+        self.assertIsNone(lead)
+
+    def test_property_management_company_not_investor(self):
+        lead, reason = v6.classify_text(
+            "Наша управляющая компания берет на себя полное обслуживание и сдачу недвижимости в долгосрочную аренду. Берем в управление недвижимость в районе Гирне.",
+            group="СЕВЕРНЫЙ КИПР | ФОРУМ",
+        )
+        self.assertIsNone(lead)
+
     def test_generic_cyprus_without_north_context_does_not_force_market(self):
         lead, reason = v6.classify_text(
             "Looking for an apartment in Limassol.",
