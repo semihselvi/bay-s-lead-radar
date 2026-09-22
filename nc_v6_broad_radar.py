@@ -16,7 +16,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.1-broad-recall-precision-fallback"
+VERSION = "6.2-quality-routing-web-relevance"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -177,6 +177,32 @@ POST_PURCHASE_OR_INFO_RE = re.compile(
     r"\bпосле\s+окончания\s+университета\b|\bперечень\s+должен\s+быть\b"
     r")",
     re.I | re.S,
+)
+
+AGENT_CLIENT_RE = re.compile(
+    r"(?:\bдля\s+клиента\b|\bдля\s+моего\s+клиента\b|\bfor\s+(?:my|a)\s+client\b|\bm[üu][şs]terim\s+i[çc]in\b)",
+    re.I,
+)
+
+JOB_POST_RE = re.compile(
+    r"(?:\bваканси\w*\b|\bобязанност\w*\b|\bзарплат\w*\b|\bработодатель\b|"
+    r"\bvacancy\b|\bjob\s+opening\b|\bsalary\b|\bduties\b|"
+    r"\bi[şs]\s+ilan[ıi]\b|\bmaa[şs]\b)",
+    re.I,
+)
+
+VEHICLE_RE = re.compile(
+    r"(?:\b(?:suzuki|honda|toyota|nissan|mazda|bmw|mercedes|audi|ford|kia|hyundai|renault|peugeot|fiat|volkswagen)\b|"
+    r"\b(?:марка/модель|топливо|километров|автоматическ\w*|обмен)\b|"
+    r"\b(?:car|vehicle|auto|автомобил\w*|машин\w*)\b.{0,120}\b(?:year|model|price|fuel|km|рассрочк)\b)",
+    re.I | re.S,
+)
+
+TUTOR_OR_PERSONAL_SERVICE_RE = re.compile(
+    r"(?:\bрепетитор\w*\b|\bнян[яи]\b|\bдомработниц\w*\b|\bпомощниц\w*\s+по\s+дому\b|"
+    r"\btutor\b|\bbabysitter\b|\bhousekeeper\b|\bprivate\s+teacher\b|"
+    r"\b[öo]zel\s+ders\b|\b[öo][ğg]retmen\s+ar[ıi]yorum\b)",
+    re.I,
 )
 
 COMMERCIAL_PROVIDER_RE = re.compile(
@@ -347,6 +373,14 @@ def _hard_reject(text: str, author: str = "") -> str:
         return "financial_or_goods"
     if POST_PURCHASE_OR_INFO_RE.search(text):
         return "post_purchase_or_info"
+    if AGENT_CLIENT_RE.search(text):
+        return "agent_client_request"
+    if JOB_POST_RE.search(text):
+        return "job_post"
+    if VEHICLE_RE.search(text):
+        return "vehicle"
+    if TUTOR_OR_PERSONAL_SERVICE_RE.search(text):
+        return "personal_service"
     if COMMERCIAL_PROVIDER_RE.search(text):
         return "commercial_provider"
     if radar.TG_SERVICE_REQUEST_RE.search(text) or SERVICE_PROVIDER_REQUEST_RE.search(text):
@@ -565,6 +599,7 @@ async def broad_telegram_scan(db_client, started):
 
     client = core.TelegramClient(str(core.TELEGRAM_SESSION), core.TELEGRAM_API_ID, core.TELEGRAM_API_HASH)
     accepted: list[dict[str, Any]] = []
+    seen_text_hashes: set[str] = set()
     errors = 0
     try:
         await client.connect()
@@ -611,6 +646,13 @@ async def broad_telegram_scan(db_client, started):
 
                     DEBUG["messages_scanned"] += 1
                     DEBUG["groups"][group] += 1
+
+                    text_key = hashlib.sha256(_norm(text).encode("utf-8", "ignore")).hexdigest()
+                    if text_key in seen_text_hashes:
+                        DEBUG["reject_reasons"]["duplicate_text"] += 1
+                        continue
+                    seen_text_hashes.add(text_key)
+
                     explicit_geo = has_nc_geo(text)
 
                     # Generic Cyprus or thematic groups need message-level North
@@ -705,8 +747,17 @@ _existing_search = core.exa_search
 
 def _bing_rss_search(query: str, include_domains: list[str] | None = None) -> list[dict[str, Any]]:
     q = query
+    low = query.casefold()
+    if "north cyprus" in low and '"north cyprus"' not in low:
+        q = re.sub(r"north cyprus", '"North Cyprus"', q, flags=re.I)
+    if "northern cyprus" in low and '"northern cyprus"' not in low:
+        q = re.sub(r"northern cyprus", '"Northern Cyprus"', q, flags=re.I)
+    if "северный кипр" in low and '"северный кипр"' not in low:
+        q = re.sub(r"северный кипр", '"Северный Кипр"', q, flags=re.I)
+    if "kuzey kıbrıs" in low and '"kuzey kıbrıs"' not in low:
+        q = re.sub(r"kuzey kıbrıs", '"Kuzey Kıbrıs"', q, flags=re.I)
     if include_domains:
-        q = f"{query} (" + " OR ".join(f"site:{d}" for d in include_domains) + ")"
+        q = f"{q} (" + " OR ".join(f"site:{d}" for d in include_domains) + ")"
     url = "https://www.bing.com/search?format=rss&q=" + urllib.parse.quote_plus(q)
     try:
         r = core.requests.get(
@@ -748,7 +799,16 @@ def search_debug(query: str, include_domains: list[str] | None = None):
         DEBUG["web_provider_errors"]["exa_serper_empty_or_quota"] += 1
         rows = _bing_rss_search(query, include_domains)
 
+    filtered = []
     for row in rows:
+        blob = f"{row.get('title','')} {row.get('text','')}"
+        url = str(row.get("url") or "").casefold()
+        if not (has_nc_geo(blob) or "/r/northcyprus/" in url or "northcyprus" in url or "north-cyprus" in url):
+            DEBUG["web_reject_reasons"]["search_irrelevant_no_nc_context"] += 1
+            continue
+        filtered.append(row)
+
+    for row in filtered:
         DEBUG["web_raw_by_source"][str(row.get("source") or "unknown")] += 1
         url = str(row.get("url") or "").casefold()
         platform = (
@@ -760,7 +820,7 @@ def search_debug(query: str, include_domains: list[str] | None = None):
         )
         DEBUG["web_platforms"][platform] += 1
         row.setdefault("_search_query", query)
-    return rows
+    return filtered
 
 
 core.exa_search = search_debug
