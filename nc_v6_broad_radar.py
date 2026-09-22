@@ -157,6 +157,15 @@ PURCHASE_QUALIFIER_RE = re.compile(
     re.I,
 )
 
+SERVICE_PROVIDER_REQUEST_RE = re.compile(
+    r"(?:"
+    r"\b(?:looking\s+for|need|recommend)\b.{0,80}\b(?:realtor|real\s+estate\s+agent|property\s+agent|agency|lawyer|solicitor)\b|"
+    r"\b(?:emlak[çc][ıi]|gayrimenkul\s+dan[ıi][şs]man[ıi]|avukat)\s+ar[ıi]yorum\b|"
+    r"\b(?:ищу|нужен|посоветуйте)\b.{0,80}\b(?:риелтор|риэлтор|агент\w*\s+по\s+недвижимости|юрист|адвокат)\b"
+    r")",
+    re.I | re.S,
+)
+
 SUPPLY_STRONG_RE = re.compile(
     r"(?:"
     r"\bfor\s+sale\b.{0,150}\b(?:price|bedroom|sqm|m2|contact|whatsapp)\b|"
@@ -298,7 +307,7 @@ def _hard_reject(text: str, author: str = "") -> str:
         return "bot_author"
     if batch_guard.is_nonproperty_goods_request(text):
         return "nonproperty_goods"
-    if radar.TG_SERVICE_REQUEST_RE.search(text):
+    if radar.TG_SERVICE_REQUEST_RE.search(text) or SERVICE_PROVIDER_REQUEST_RE.search(text):
         return "service_request"
     if radar.TG_STRONG_SUPPLY_RE.search(text) or SUPPLY_STRONG_RE.search(text):
         # Explicit first-person demand overrides incidental words such as
