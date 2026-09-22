@@ -160,7 +160,7 @@ PURCHASE_QUALIFIER_RE = re.compile(
 SERVICE_PROVIDER_REQUEST_RE = re.compile(
     r"(?:"
     r"\b(?:looking\s+for|need|recommend)\b.{0,80}\b(?:realtor|real\s+estate\s+agent|property\s+agent|agency|lawyer|solicitor)\b|"
-    r"\b(?:emlak[çc][ıi]|gayrimenkul\s+dan[ıi][şs]man[ıi]|avukat)\s+ar[ıi]yorum\b|"
+    r"\b(?:emlak[çc][ıi]|gayrimenkul\s+dan[ıi][şs]man[ıi]|avukat|tesisat[çc][ıi]|elektrik[çc]i|usta|tamirci|temizlik[çc]i)\s+ar[ıi]yorum\b|"
     r"\b(?:ищу|нужен|посоветуйте)\b.{0,80}\b(?:риелтор|риэлтор|агент\w*\s+по\s+недвижимости|юрист|адвокат)\b"
     r")",
     re.I | re.S,
@@ -379,6 +379,11 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
         lead_class = "HOT TENANT" if specificity >= 1 else "WATCH"
         score = 78 + min(16, specificity * 4)
         reasons.append("explicit_rental_demand")
+    elif buy and investor:
+        intent_type = "INVESTOR"
+        lead_class = "INVESTOR"
+        score = 82 + min(14, specificity * 3)
+        reasons.extend(["explicit_purchase_intent", "investment_or_yield_research"])
     elif buy:
         intent_type = "BUYER"
         lead_class = "HOT BUYER" if specificity >= 1 else "WARM BUYER"
