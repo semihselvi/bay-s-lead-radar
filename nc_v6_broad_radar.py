@@ -159,9 +159,10 @@ PURCHASE_QUALIFIER_RE = re.compile(
 
 SERVICE_PROVIDER_REQUEST_RE = re.compile(
     r"(?:"
-    r"\b(?:looking\s+for|need|recommend)\b.{0,80}\b(?:realtor|real\s+estate\s+agent|property\s+agent|agency|lawyer|solicitor)\b|"
+    r"\b(?:looking\s+for|need|recommend)\b.{0,80}\b(?:realtor|real\s+estate\s+agent|property\s+agent|agency|lawyer|solicitor|plumber|electrician|handyman|cleaner)\b|"
     r"\b(?:emlak[çc][ıi]|gayrimenkul\s+dan[ıi][şs]man[ıi]|avukat|tesisat[çc][ıi]|elektrik[çc]i|usta|tamirci|temizlik[çc]i)\s+ar[ıi]yorum\b|"
-    r"\b(?:ищу|нужен|посоветуйте)\b.{0,80}\b(?:риелтор|риэлтор|агент\w*\s+по\s+недвижимости|юрист|адвокат)\b"
+    r"\b(?:dairem|evim|villam|konutum)\w*.{0,80}\b(?:elektrik[çc]i|tesisat[çc][ıi]|usta|tamirci|temizlik[çc]i|avukat|emlak[çc][ıi])\b.{0,80}\bar[ıi]yorum\b|"
+    r"\b(?:ищу|нужен|посоветуйте)\b.{0,80}\b(?:риелтор|риэлтор|агент\w*\s+по\s+недвижимости|юрист|адвокат|электрик|сантехник|мастер)\b"
     r")",
     re.I | re.S,
 )
