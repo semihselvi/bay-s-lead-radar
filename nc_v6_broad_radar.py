@@ -948,7 +948,8 @@ def save_and_notify_debug() -> None:
     sources = ", ".join(f"{k}:{v}" for k, v in DEBUG["web_raw_by_source"].most_common()) or "-"
     platforms = ", ".join(f"{k}:{v}" for k, v in DEBUG["web_platforms"].most_common()) or "-"
     provider_errors = ", ".join(f"{k}:{v}" for k, v in DEBUG["web_provider_errors"].most_common()) or "-"
-    total_errors = len(DEBUG["errors"]) + sum(DEBUG["web_provider_errors"].values())
+    web_rejects = ", ".join(f"{k}:{v}" for k, v in DEBUG["web_reject_reasons"].most_common(8)) or "-"
+    total_errors = len(DEBUG["errors"])
     msg = (
         "🧪 LEAD RADAR DEBUG | SON TARAMA\n\n"
         f"Telegram grup: {DEBUG['groups_relevant']}/{DEBUG['groups_total']}\n"
@@ -962,8 +963,9 @@ def save_and_notify_debug() -> None:
         f"Web sağlayıcı: {sources}\n"
         f"Web platform: {platforms}\n"
         f"Web kabul: {DEBUG['web_accepted']}\n"
-        f"Web provider sorunları: {provider_errors}\n"
-        f"Hata: {total_errors}"
+        f"Web eleme nedenleri: {web_rejects}\n"
+        f"Web provider durumu: {provider_errors}\n"
+        f"Gerçek hata: {total_errors}"
     )
     core.telegram(msg[:3900])
     print("LEAD_RADAR_DEBUG", json.dumps(_serializable_debug(), ensure_ascii=False))
