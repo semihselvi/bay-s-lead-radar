@@ -74,7 +74,8 @@ PROPERTY_RE = re.compile(
     r"\bproperty\b|\breal\s+estate\b|\bapartment\b|\bflat\b|\bvilla\b|\bhouse\b|\bstudio\b|\bland\b|\bplot\b|"
     r"\bdaire\b|\bev\b|\bkonut\b|\bvilla\b|\bst[üu]dyo\b|\barsa\b|\bgayrimenkul\b|"
     r"\bквартир\w*\b|\bапартамент\w*\b|\bвилл\w*\b|\bдом\w*\b|\bстуди\w*\b|\bнедвижимост\w*\b|\bземл\w*\b|"
-    r"\b[0-6]\s*\+\s*[0-3]\b|\b(?:one|two|three|1|2|3)\s+bed(?:room)?s?\b"
+    r"\b[0-6]\s*\+\s*[0-3]\b|\b(?:one|two|three|1|2|3)\s+bed(?:room)?s?\b|"
+    r"\b(?:bir|iki|üç|uc|1|2|3)\s+yatak\s+odal[ıi]\b"
     r")",
     re.I,
 )
@@ -84,7 +85,8 @@ BUY_RE = re.compile(
     r"\blooking\s+to\s+buy\b|\bwant(?:ing)?\s+to\s+buy\b|\bplanning\s+to\s+buy\b|\bconsidering\s+buying\b|"
     r"\bwhere\s+should\s+(?:i|we)\s+buy\b|\bwhat\s+can\s+(?:i|we)\s+(?:buy|get)\b|\bbuy\s+(?:a|an)?\s*(?:property|apartment|flat|house|villa|studio|land)\b|"
     r"\bsat[ıi]n\s+almak\s+istiyorum\b|\bev\s+almak\s+istiyorum\b|\bdaire\s+almak\s+istiyorum\b|"
-    r"\b(?:ev|daire|villa|arsa|konut|gayrimenkul)\s+al(?:mak|may[ıi])\b|\bne\s+al[ıi]n[ıi]r\b|\bnereden\s+ev\s+al[ıi]n[ıi]r\b|"
+    r"\b(?:ev|daire|villa|arsa|konut|gayrimenkul)\s+al(?:mak|may[ıi]|[ıi]p)\b|"
+    r"\bne\s+al[ıi]n(?:[ıi]r|abilir|abilirim|abiliriz)\b|\bnereden\s+ev\s+al[ıi]n[ıi]r\b|"
     r"\bхочу\s+купить\b|\bкуплю\b|\bпланир\w*\s+купить\b|\bстоит\s+ли\s+покупать\b|\bгде\s+(?:лучше\s+)?купить\b|"
     r"\bчто\s+можно\s+купить\b|\bищу\s+на\s+покупку\b"
     r")",
@@ -126,6 +128,7 @@ INVESTOR_RE = re.compile(
     r"\binvest(?:ment|ing|or)\b|\brental\s+yield\b|\byield\b|\broi\b|\breturn\s+on\s+investment\b|\bpayment\s+plan\b|"
     r"\bbest\s+area\s+to\s+invest\b|\bproperty\s+prices?\b|\brental\s+income\b|"
     r"\byat[ıi]r[ıi]m\b|\bkira\s+getirisi\b|\bgeri\s+d[öo]n[üu][şs]\b|\btaksit\w*\b|\b[öo]deme\s+plan[ıi]\b|"
+    r"\b(?:ev|daire|villa)\s+al[ıi]p\s+kiraya\s+ver\w*\b|\bbuy\b.{0,80}\brent\s+(?:it|the\s+property)\s+out\b|"
     r"\binvestic\w*\b|\bинвест\w*\b|\bдоход\s+от\s+аренд\w*\b|\bдоходност\w*\b|\bрассрочк\w*\b"
     r")",
     re.I,
@@ -135,7 +138,8 @@ RESEARCH_RE = re.compile(
     r"(?:"
     r"\bhow\s+much\s+(?:is|are|does)\b|\bproperty\s+prices?\b|\bwhere\s+should\s+(?:i|we)\b|\bwhich\s+area\b|"
     r"\bwhat\s+can\s+(?:i|we)\s+(?:buy|get)\b|\bbest\s+area\b|"
-    r"\bfiyatlar[ıi]?\s+ne\s+kadar\b|\bka[çc]\s+para\b|\bhangi\s+b[öo]lge\b|\bne\s+al[ıi]n[ıi]r\b|"
+    r"\bfiyatlar[ıi]?\s+ne\s+kadar\b|\bka[çc]\s+para\b|\bhangi\s+b[öo]lge\b|"
+    r"\bne\s+al[ıi]n(?:[ıi]r|abilir|abilirim|abiliriz)\b|"
     r"\bnereden\s+(?:ev|daire|villa)\s+al[ıi]n[ıi]r\b|"
     r"\bсколько\s+стоит\b|\bкакие\s+цены\b|\bпосоветуйте\s+район\b|\bкакой\s+район\b|\bгде\s+лучше\b|\bстоит\s+ли\b"
     r")",
@@ -172,7 +176,11 @@ TIME_RE = re.compile(
     re.I,
 )
 
-ROOM_RE = re.compile(r"\b(?:studio|st[üu]dyo|студи\w*|[0-6]\s*\+\s*[0-3]|one|two|three|1|2|3)\s*(?:bed(?:room)?s?)?\b", re.I)
+ROOM_RE = re.compile(
+    r"(?:\b(?:studio|st[üu]dyo|студи\w*|[0-6]\s*\+\s*[0-3]|one|two|three|1|2|3)\s*(?:bed(?:room)?s?)?\b|"
+    r"\b(?:bir|iki|üç|uc|1|2|3)\s+yatak\s+odal[ıi]\b)",
+    re.I,
+)
 SEA_RE = re.compile(r"(?:near\s+(?:the\s+)?sea|sea\s+view|denize\s+yak[ıi]n|море|у\s+моря)", re.I)
 FURNISHED_RE = re.compile(r"(?:furnished|e[şs]yal[ıi]|меблирован\w*|с\s+мебелью)", re.I)
 
@@ -254,6 +262,7 @@ def extract_budget(text: str) -> str:
     patterns = [
         r"(?:£|€|\$)\s?\d[\d\s,.]*(?:k|m)?",
         r"\b\d[\d\s,.]*(?:k)?\s?(?:gbp|eur|usd|pounds?|euros?|dollars?|фунт\w*)\b",
+        r"\b\d[\d\s,.]*\s*bin\s*(?:£|gbp|pound|pounds?|sterlin)?\b",
         r"\b(?:budget|b[üu]t[çc]e|бюджет)\s*[:\-]?\s*((?:£|€|\$)?\s?\d[\d\s,.]*(?:k|m)?)",
     ]
     for pattern in patterns:
