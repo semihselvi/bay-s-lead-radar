@@ -214,6 +214,9 @@ v5.EXA_QUERIES = [
     ("Северный Кипр инвестиции доход от аренды цены недвижимость", None),
     ("Искеле Long Beach квартира у моря сколько стоит где лучше купить", None),
     ("Северный Кипр ВНЖ через недвижимость квартира", None),
+    ('site:facebook.com/groups "North Cyprus" ("looking for" OR "moving" OR "investment" OR "rent")', None),
+    ('site:facebook.com/groups "Kuzey Kıbrıs" ("arıyorum" OR "taşın" OR "yatırım" OR "kiralık")', None),
+    ('site:facebook.com/groups "Северный Кипр" ("ищу" OR "переезд" OR "инвест" OR "аренда")', None),
 ]
 
 # Expand the legacy North-Cyprus regex used by the web path.
@@ -462,6 +465,7 @@ DEBUG: dict[str, Any] = {
     "languages": Counter(),
     "groups": Counter(),
     "web_raw_by_source": Counter(),
+    "web_platforms": Counter(),
     "web_accepted": 0,
     "web_reject_reasons": Counter(),
     "errors": [],
@@ -647,6 +651,15 @@ def search_debug(query: str, include_domains: list[str] | None = None):
     rows = _existing_search(query, include_domains)
     for row in rows:
         DEBUG["web_raw_by_source"][str(row.get("source") or "unknown")] += 1
+        url = str(row.get("url") or "").casefold()
+        platform = (
+            "Facebook" if "facebook.com" in url else
+            "Reddit" if "reddit.com" in url else
+            "Expat" if "expat.com" in url else
+            "Forum" if "forum" in url or "gutefrage.net" in url or "britishexpats.com" in url else
+            "Other Web"
+        )
+        DEBUG["web_platforms"][platform] += 1
         row.setdefault("_search_query", query)
     return rows
 
@@ -754,6 +767,7 @@ def _serializable_debug() -> dict[str, Any]:
         "languages": dict(DEBUG["languages"]),
         "top_groups": dict(DEBUG["groups"].most_common(30)),
         "web_raw_by_source": dict(DEBUG["web_raw_by_source"]),
+        "web_platforms": dict(DEBUG["web_platforms"]),
         "web_reject_reasons": dict(DEBUG["web_reject_reasons"]),
     }
 
@@ -772,6 +786,7 @@ def save_and_notify_debug() -> None:
     classes = ", ".join(f"{k}:{v}" for k, v in DEBUG["accepted_classes"].most_common()) or "-"
     langs = ", ".join(f"{k}:{v}" for k, v in DEBUG["languages"].most_common()) or "-"
     sources = ", ".join(f"{k}:{v}" for k, v in DEBUG["web_raw_by_source"].most_common()) or "-"
+    platforms = ", ".join(f"{k}:{v}" for k, v in DEBUG["web_platforms"].most_common()) or "-"
     msg = (
         "🧪 LEAD RADAR DEBUG | SON TARAMA\n\n"
         f"Telegram grup: {DEBUG['groups_relevant']}/{DEBUG['groups_total']}\n"
@@ -782,7 +797,8 @@ def save_and_notify_debug() -> None:
         f"Sınıflar: {classes}\n"
         f"Diller: {langs}\n"
         f"Eleme nedenleri: {rejects}\n"
-        f"Web ham: {sources}\n"
+        f"Web sağlayıcı: {sources}\n"
+        f"Web platform: {platforms}\n"
         f"Web kabul: {DEBUG['web_accepted']}\n"
         f"Hata: {len(DEBUG['errors'])}"
     )
