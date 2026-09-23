@@ -184,6 +184,81 @@ class BroadIntentTests(unittest.TestCase):
         self.assertIsNone(lead)
         self.assertEqual(reason, "personal_service")
 
+    def test_long_term_studio_is_hot_tenant(self):
+        self.assertLead(
+            "Ищу студию в роял сан, роял лайф (Искеле) на долгий срок",
+            "HOT TENANT",
+        )
+
+    def test_owner_rental_request_is_hot_tenant(self):
+        self.assertLead(
+            "Я ищу квартиру-студию в Caesar Resort для себя. Владельцы, планирующие сдавать свои квартиры в аренду, пожалуйста, напишите мне.",
+            "HOT TENANT",
+        )
+
+    def test_ready_client_intermediary_rejected(self):
+        lead, reason = v6.classify_text(
+            "I am urgently looking for a 1+1 apartment in Famagusta for a ready client; the budget is between £45,000 and £50,000.",
+            group="СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+        )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "agent_client_request")
+
+    def test_vehicle_rental_rejected(self):
+        lead, reason = v6.classify_text(
+            "ищу в аренду авто 25€ в сутки. На 3ое суток!",
+            group="Северный Кипр: объявления, работа, недвижимость",
+        )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "vehicle")
+
+    def test_rental_supply_listing_rejected(self):
+        lead, reason = v6.classify_text(
+            "Аренда, Алсанджак 2+1 комплексе Olive hill. 1100£ 1-1-1 Айдат в цене Рассматриваем только европейцев.",
+            group="СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+        )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "supply_or_agent")
+
+    def test_sale_with_installment_rejected_not_investor(self):
+        lead, reason = v6.classify_text(
+            "Продаю таунхаус 2+1 с прямым видом на море в Эсентапе. 220000£, 120000£ сразу +100000£ в рассрочку.",
+            group="СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+        )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "supply_or_agent")
+
+    def test_marketing_investment_listing_rejected(self):
+        lead, reason = v6.classify_text(
+            "Такие участки появляются редко. Этот объект продается по цене ниже рынка. Если вы ищете ликвидную инвестицию — сейчас момент. 155 000 £. Пишите в личные сообщения.",
+            group="Северный Кипр Недвижимость",
+        )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "supply_or_agent")
+
+    def test_property_law_discussion_rejected(self):
+        lead, reason = v6.classify_text(
+            "Так все было хорошо до закона, мы квартиры продавали за час через переуступку, желающих было море.",
+            group="СЕВЕРНЫЙ КИПР | ЧАТ",
+        )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "discussion_or_hypothetical")
+
+    def test_hypothetical_sarcastic_buy_rejected(self):
+        lead, reason = v6.classify_text(
+            "может, я когда-нибудь тогда квартиру куплю в Риксе, а пока будем сидеть и плакать",
+            group="СЕВЕРНЫЙ КИПР | ЧАТ",
+        )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "discussion_or_hypothetical")
+
+    def test_lefkosa_not_lefke(self):
+        lead = self.assertLead(
+            "Здравстуйте! Ищу квартиру 1+1 в Лефкоше, на долгосрочную аренду, с октября, от собственника.",
+            "HOT TENANT",
+        )
+        self.assertEqual(lead["estimated_region"], "Lefkoşa")
+
     def test_generic_cyprus_without_north_context_does_not_force_market(self):
         lead, reason = v6.classify_text(
             "Looking for an apartment in Limassol.",
