@@ -16,7 +16,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.2-quality-routing-web-relevance"
+VERSION = "6.3-live-precision-rental-routing"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -111,7 +111,7 @@ RENT_DEMAND_RE = re.compile(
     r"\b(?:ev|daire|villa|st[üu]dyo)\s+ar[ıi]yorum\b.{0,80}\b(?:kiral[ıi]k|ayl[ıi]k|g[üu]nl[üu]k)\b|"
     r"\bсниму\b|\bхочу\s+снять\b|\bищу\b.{0,100}\b(?:аренд|долгосроч|посуточ)\b|"
     r"\bищу\s+в\s+аренд\w*\b|\bнужн(?:а|ы)\b.{0,100}\b(?:в\s+аренд\w*|на\s+аренд\w*)\b|"
-    r"\bищу\s+(?:квартир\w*|дом\w*|вилл\w*|студи\w*)\b.{0,100}\b(?:на\s+месяц|на\s+год|долгосроч|аренд)\b|"
+    r"\bищу\s+(?:квартир\w*|дом\w*|вилл\w*|студи\w*)\b.{0,180}\b(?:на\s+месяц|на\s+год|на\s+долгий\s+срок|долгосроч|долгосрок|аренд|сдавать\w*)\b|"
     r"\bищу\b.{0,120}\b(?:квартир\w*|дом\w*|вилл\w*|студи\w*)\b.{0,120}\b(?:с\s+\d|по\s+\d|на\s+\d+\s+(?:дн|день|дней|недел|месяц))\b"
     r")",
     re.I | re.S,
@@ -180,7 +180,7 @@ POST_PURCHASE_OR_INFO_RE = re.compile(
 )
 
 AGENT_CLIENT_RE = re.compile(
-    r"(?:\bдля\s+клиента\b|\bдля\s+моего\s+клиента\b|\bfor\s+(?:my|a)\s+client\b|\bm[üu][şs]terim\s+i[çc]in\b)",
+    r"(?:\bдля\s+клиента\b|\bдля\s+моего\s+клиента\b|\bfor\s+(?:my|a|the|a\s+ready)\s+client\b|\bready\s+client\b|\bm[üu][şs]terim\s+i[çc]in\b)",
     re.I,
 )
 
@@ -194,7 +194,8 @@ JOB_POST_RE = re.compile(
 VEHICLE_RE = re.compile(
     r"(?:\b(?:suzuki|honda|toyota|nissan|mazda|bmw|mercedes|audi|ford|kia|hyundai|renault|peugeot|fiat|volkswagen)\b|"
     r"\b(?:марка/модель|топливо|километров|автоматическ\w*|обмен)\b|"
-    r"\b(?:car|vehicle|auto|автомобил\w*|машин\w*)\b.{0,120}\b(?:year|model|price|fuel|km|рассрочк)\b)",
+    r"\b(?:car|vehicle|auto|автомобил\w*|машин\w*)\b.{0,120}\b(?:year|model|price|fuel|km|рассрочк)\b|"
+    r"\b(?:ищу\s+в\s+аренду\s+авто|аренд\w*\s+авто|rent\s+(?:a\s+)?car|car\s+rental)\b)",
     re.I | re.S,
 )
 
@@ -203,6 +204,18 @@ TUTOR_OR_PERSONAL_SERVICE_RE = re.compile(
     r"\btutor\b|\bbabysitter\b|\bhousekeeper\b|\bprivate\s+teacher\b|"
     r"\b[öo]zel\s+ders\b|\b[öo][ğg]retmen\s+ar[ıi]yorum\b)",
     re.I,
+)
+
+DISCUSSION_OR_HYPOTHETICAL_RE = re.compile(
+    r"(?:"
+    r"\bмы\s+квартир\w*\s+продавали\b|\bя\s+таких\s+продаж\w*\s+сделал\b|"
+    r"\bвы\s+купили\s+квартир\w*\b|\bне\s+нужно\s+покупать\s+недвижимост\w*\b|"
+    r"\bкогда-нибудь\b.{0,80}\bкуплю\b|\bбудем\s+сидеть\s+и\s+плакать\b|"
+    r"\bквартир\w*\s+мне\s+и\s+даром\s+не\s+нужн\w*\b|"
+    r"\bпереуступк\w*\b.{0,160}\b(?:закон|налог|продаж)\w*\b|"
+    r"\bзакон\w*\b.{0,160}\b(?:титул|оформлен|квартир|недвижимост)\w*\b.{0,160}\b(?:виноват|измен|обязал|ужесточ)\w*"
+    r")",
+    re.I | re.S,
 )
 
 COMMERCIAL_PROVIDER_RE = re.compile(
@@ -230,7 +243,8 @@ SUPPLY_STRONG_RE = re.compile(
     r"\bfor\s+sale\b.{0,150}\b(?:price|bedroom|sqm|m2|contact|whatsapp)\b|"
     r"\b(?:available\s+units?|price\s+from|book\s+a\s+viewing|property\s+(?:id|ref)|listing\s+(?:id|ref))\b|"
     r"\b(?:sat[ıi]l[ıi]k|kiral[ıi]k)\b.{0,140}\b(?:fiyat|m2|metrekare|ileti[şs]im|whatsapp|portf[öo]y)\b|"
-    r"\b(?:прода[её]тся|продам|сдам|сда[её]тся|#?продаж\w*)\b.{0,180}\b(?:цена|цены|м2|м²|пишите|whatsapp|контакт|менеджер)\b|"
+    r"\b(?:прода[её]тся|продаю|продам|сдам|сдаю|сда[её]тся|#?продаж\w*)\b.{0,220}\b(?:цена|цены|м2|м²|пишите|whatsapp|контакт|менеджер|£|€|\$)\b|"
+    r"^\s*аренда\s*[,.:\-].{0,180}\b(?:£|€|\$|айдат|рассматриваем|комплекс)\b|"
     r"\b(?:real\s+estate\s+agency|estate\s+agent|realtor|property\s+consultant|broker|agency)\b|"
     r"\b(?:агентство\s+недвижимости|риелтор|риэлтор|застройщик)\b"
     r")",
@@ -318,10 +332,10 @@ def extract_region(text: str) -> str:
         ("Bafra", r"bafra|бафр\w*"),
         ("Yeniboğaziçi", r"yenibo[ğg]azi[çc]i"),
         ("Boğaz", r"bo[ğg]az|боаз\w*"),
-        ("Lefke", r"lefke|лефк\w*"),
+        ("Lefkoşa", r"lefko[şs]a|nicosia\s+north|лефкош\w*|никоси\w*"),
+        ("Lefke", r"\blefke\b|\bлефке\b"),
         ("Güzelyurt", r"g[üu]zelyurt|morphou|гюзельюрт"),
         ("Ercan", r"ercan"),
-        ("Lefkoşa", r"lefko[şs]a|nicosia\s+north"),
     ]
     for label, pattern in mapping:
         if re.search(pattern, text or "", re.I):
@@ -331,7 +345,8 @@ def extract_region(text: str) -> str:
 
 def extract_budget(text: str) -> str:
     patterns = [
-        r"(?:£|€|\$)\s?\d[\d\s,.]*(?:k|m)?",
+        r"\b\d[\d\s,.]*(?:k|m)?\s?(?:£|€|\$)",
+        r"(?<!\d)(?:£|€|\$)\s?\d[\d\s,.]*(?:k|m)?",
         r"\b\d[\d\s,.]*(?:k)?\s?(?:gbp|eur|usd|pounds?|euros?|dollars?|фунт\w*)\b",
         r"\b\d[\d\s,.]*\s*bin\s*(?:£|gbp|pound|pounds?|sterlin)?\b",
         r"\b(?:budget|b[üu]t[çc]e|бюджет)\s*[:\-]?\s*((?:£|€|\$)?\s?\d[\d\s,.]*(?:k|m)?)",
@@ -381,15 +396,14 @@ def _hard_reject(text: str, author: str = "") -> str:
         return "vehicle"
     if TUTOR_OR_PERSONAL_SERVICE_RE.search(text):
         return "personal_service"
+    if DISCUSSION_OR_HYPOTHETICAL_RE.search(text):
+        return "discussion_or_hypothetical"
     if COMMERCIAL_PROVIDER_RE.search(text):
         return "commercial_provider"
     if radar.TG_SERVICE_REQUEST_RE.search(text) or SERVICE_PROVIDER_REQUEST_RE.search(text):
         return "service_request"
     if radar.TG_STRONG_SUPPLY_RE.search(text) or SUPPLY_STRONG_RE.search(text):
-        # Explicit first-person demand overrides incidental words such as
-        # "agent" or "for sale" inside a question.
-        if not (BUY_RE.search(text) or RENT_DEMAND_RE.search(text) or DEMAND_RE.search(text)):
-            return "supply_or_agent"
+        return "supply_or_agent"
     return ""
 
 
