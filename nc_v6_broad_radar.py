@@ -111,7 +111,7 @@ RENT_DEMAND_RE = re.compile(
     r"\b(?:ev|daire|villa|st[üu]dyo)\s+ar[ıi]yorum\b.{0,80}\b(?:kiral[ıi]k|ayl[ıi]k|g[üu]nl[üu]k)\b|"
     r"\bсниму\b|\bхочу\s+снять\b|\bищу\b.{0,100}\b(?:аренд|долгосроч|посуточ)\b|"
     r"\bищу\s+в\s+аренд\w*\b|\bнужн(?:а|ы)\b.{0,100}\b(?:в\s+аренд\w*|на\s+аренд\w*)\b|"
-    r"\bищу\s+(?:квартир\w*|дом\w*|вилл\w*|студи\w*)\b.{0,180}\b(?:на\s+месяц|на\s+год|на\s+долгий\s+срок|долгосроч|долгосрок|аренд|сдавать\w*)\b|"
+    r"\bищу\s+(?:квартир\w*|дом\w*|вилл\w*|студи\w*)\b.{0,180}\b(?:на\s+месяц|на\s+год|на\s+долгий\s+срок|долгосроч\w*|долгосрок\w*|аренд\w*|сдавать\w*)\b|"
     r"\bищу\b.{0,120}\b(?:квартир\w*|дом\w*|вилл\w*|студи\w*)\b.{0,120}\b(?:с\s+\d|по\s+\d|на\s+\d+\s+(?:дн|день|дней|недел|месяц))\b"
     r")",
     re.I | re.S,
@@ -236,6 +236,11 @@ SERVICE_PROVIDER_REQUEST_RE = re.compile(
     r"\b(?:ищу|нужен|посоветуйте)\b.{0,80}\b(?:риелтор|риэлтор|агент\w*\s+по\s+недвижимости|юрист|адвокат|электрик|сантехник|мастер)\b"
     r")",
     re.I | re.S,
+)
+
+SELLER_DIRECTION_RE = re.compile(
+    r"\b(?:продаю|продам|прода[её]тся|сдаю|сдам|сда[её]тся)\b",
+    re.I,
 )
 
 SUPPLY_STRONG_RE = re.compile(
@@ -400,6 +405,8 @@ def _hard_reject(text: str, author: str = "") -> str:
         return "discussion_or_hypothetical"
     if COMMERCIAL_PROVIDER_RE.search(text):
         return "commercial_provider"
+    if SELLER_DIRECTION_RE.search(text) and PROPERTY_RE.search(text):
+        return "supply_or_agent"
     if radar.TG_SERVICE_REQUEST_RE.search(text) or SERVICE_PROVIDER_REQUEST_RE.search(text):
         return "service_request"
     if radar.TG_STRONG_SUPPLY_RE.search(text) or SUPPLY_STRONG_RE.search(text):
