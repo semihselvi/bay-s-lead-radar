@@ -181,7 +181,9 @@ DOCUMENT_ACCOUNT_CONTEXT_RE = re.compile(
 
 PROJECT_REQUEST_RE = re.compile(
     r"(?:"
-    r"\b(?:need|looking\s+for|want)\b.{0,90}\b(?:website|web\s*site|crm|booking\s+system|reservation\s+system|admin\s+panel|automation|payment\s+integration|e[-\s]?commerce)\b|"
+    r"\bneed\s+(?:a|an|new|our|someone|somebody|developer|agency|company)\b.{0,90}\b(?:website|web\s*site|crm|booking\s+system|reservation\s+system|admin\s+panel|automation|payment\s+integration|e[-\s]?commerce)\b|"
+    r"\blooking\s+for\s+(?:a|an|someone|somebody|developer|agency|company)\b.{0,90}\b(?:website|web\s*site|crm|booking\s+system|reservation\s+system|admin\s+panel|automation|payment\s+integration|e[-\s]?commerce)\b|"
+    r"\bwant\s+to\s+(?:build|create|develop|redesign|redo|replace|integrate|implement|automate)\b.{0,100}\b(?:website|web\s*site|crm|booking\s+system|reservation\s+system|admin\s+panel|dashboard|payment|store)\b|"
     r"\b(?:build|create|develop|redesign|redo|replace|integrate|implement|automate)\b.{0,100}\b(?:website|web\s*site|crm|booking\s+system|reservation\s+system|admin\s+panel|dashboard|payment|store)\b|"
     r"\b(?:web\s+sitesi|crm|rezervasyon\s+sistemi|randevu\s+sistemi|yönetim\s+paneli|otomasyon|sanal\s+pos|e[-\s]?ticaret)\b.{0,100}\b(?:lazım|ihtiyac|arıyorum|yaptır|kur|geliştir|yenile|entegr)\w*|"
     r"\b(?:lazım|ihtiyac|arıyorum|yaptırmak|kurmak|geliştirmek|yenilemek)\w*.{0,100}\b(?:web\s+sitesi|crm|rezervasyon\s+sistemi|yönetim\s+paneli|otomasyon|e[-\s]?ticaret)\b|"
