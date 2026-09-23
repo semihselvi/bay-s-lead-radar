@@ -72,6 +72,12 @@ class NorthlabSalesRadarTests(unittest.TestCase):
             "document_portal_context",
         )
 
+    def test_tourism_portal_copy_rejected(self):
+        self.assertReject(
+            "WELCOME TO THE CYPRUS TOURISM PORTAL. Everything you need to plan your perfect trip is here on the Deputy Ministry of Tourism website.",
+            "weak_project_signal",
+        )
+
     def test_job_seeker_rejected(self):
         self.assertReject(
             "I am a web developer looking for a job. Here is my CV.",
