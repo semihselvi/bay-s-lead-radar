@@ -79,6 +79,7 @@ jobs:
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           TELEGRAM_SESSION_PATH: telegram_radar_session/radar_session.session
           RADAR_V5_TELEGRAM_HOURS: "24"
+          RADAR_SALES_ONLY: "1"
           RADAR_V5_TELEGRAM_BACKFILL_DAYS: "7"
           RADAR_V5_TELEGRAM_BACKFILL_LIMIT: "12"
           RADAR_V5_WEB_MAX_AGE_DAYS: "90"
