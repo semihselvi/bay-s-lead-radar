@@ -255,12 +255,13 @@ class BroadIntentTests(unittest.TestCase):
         self.assertIsNone(lead)
         self.assertEqual(reason, "discussion_or_hypothetical")
 
-    def test_lefkosa_not_lefke(self):
-        lead = self.assertLead(
+    def test_lefkosa_owner_direct_rental_rejected(self):
+        lead, reason = v6.classify_text(
             "Здравстуйте! Ищу квартиру 1+1 в Лефкоше, на долгосрочную аренду, с октября, от собственника.",
-            "HOT TENANT",
+            group="СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
         )
-        self.assertEqual(lead["estimated_region"], "Lefkoşa")
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "owner_direct_only")
 
     def test_generic_cyprus_without_north_context_does_not_force_market(self):
         lead, reason = v6.classify_text(
@@ -318,6 +319,25 @@ class BroadIntentTests(unittest.TestCase):
         self.assertIsNotNone(lead)
         self.assertIn(lead["lead_class"], {"HOT BUYER", "INVESTOR"})
         self.assertEqual(reason, "accepted")
+
+
+    def test_sales_only_accepts_budget_property_demand_without_buy_verb(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            lead, reason = v6.classify_text(
+                "Ищу 1+1 в Искеле, бюджет £100000",
+                group="СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+            )
+        self.assertIsNotNone(lead)
+        self.assertIn(lead["lead_class"], {"HOT BUYER", "WARM BUYER"})
+        self.assertEqual(reason, "accepted")
+
+    def test_sales_only_rejects_small_rental_sized_budget_without_buy(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            lead, reason = v6.classify_text(
+                "Ищу 1+1 в Искеле, бюджет £600",
+                group="СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+            )
+        self.assertIsNone(lead)
 
 if __name__ == "__main__":
     unittest.main()
