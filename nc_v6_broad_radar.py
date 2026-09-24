@@ -185,6 +185,16 @@ AGENT_CLIENT_RE = re.compile(
     re.I,
 )
 
+OWNER_DIRECT_ONLY_RE = re.compile(
+    r"(?:"
+    r"\bsahibinden\b|\bmal\s+sahibinden\b|\barac[ıi]s[ıi]z\b|\bemlak[çc][ıi]\s+istemiyorum\b|"
+    r"\bdirect\s+from\s+(?:the\s+)?owner\b|\bowner\s+direct\b|\bno\s+(?:agents?|brokers?)\b|"
+    r"\bот\s+собственник\w*\b|\bтолько\s+собственник\w*\b|\bбез\s+посредник\w*\b|"
+    r"\bагент\w*\s+не\s+писать\b|\bриелтор\w*\s+не\s+писать\b|\bриэлтор\w*\s+не\s+писать\b"
+    r")",
+    re.I,
+)
+
 JOB_POST_RE = re.compile(
     r"(?:\bваканси\w*\b|\bобязанност\w*\b|\bзарплат\w*\b|\bработодатель\b|"
     r"\bvacancy\b|\bjob\s+opening\b|\bsalary\b|\bduties\b|"
@@ -394,8 +404,8 @@ def _hard_reject(text: str, author: str = "") -> str:
         return "financial_or_goods"
     if POST_PURCHASE_OR_INFO_RE.search(text):
         return "post_purchase_or_info"
-    if AGENT_CLIENT_RE.search(text):
-        return "agent_client_request"
+    if OWNER_DIRECT_ONLY_RE.search(text):
+        return "owner_direct_only"
     if JOB_POST_RE.search(text):
         return "job_post"
     if VEHICLE_RE.search(text):
@@ -458,6 +468,8 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
     residency = bool(RESIDENCY_RE.search(own))
     demand = bool(DEMAND_RE.search(own))
     qualifier = bool(PURCHASE_QUALIFIER_RE.search(own))
+    agent_client = bool(AGENT_CLIENT_RE.search(own))
+    budget = extract_budget(own)
     specificity = _specificity(own)
 
     # Production sales-only mode: Prime Kibris wants direct purchase demand only.
@@ -468,7 +480,8 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
     if sales_only:
         if rent:
             return None, "rental_excluded_sales_only"
-        if not buy:
+        agent_purchase_request = bool(agent_client and has_property and demand and (budget or qualifier or investor))
+        if not buy and not agent_purchase_request:
             return None, "no_explicit_purchase_intent"
         if not any((has_property, qualifier, investor, residency)):
             return None, "no_property_purchase_context"
@@ -498,6 +511,11 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
         lead_class = "HOT TENANT" if specificity >= 1 else "WATCH"
         score = 78 + min(16, specificity * 4)
         reasons.append("explicit_rental_demand")
+    elif sales_only and agent_client and has_property and demand and (budget or qualifier or investor):
+        intent_type = "BUYER"
+        lead_class = "HOT BUYER" if specificity >= 2 else "WARM BUYER"
+        score = 76 + min(18, specificity * 4)
+        reasons.append("agent_client_purchase_request")
     elif buy and investor:
         intent_type = "INVESTOR"
         lead_class = "INVESTOR"
