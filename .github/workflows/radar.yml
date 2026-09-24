@@ -2,6 +2,9 @@ name: NC - North Cyprus Buyer Radar
 
 "on":
   workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/radar.yml"
   schedule:
     - cron: "25 0 * * *"
     - cron: "25 6 * * *"
