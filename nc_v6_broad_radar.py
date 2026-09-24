@@ -374,6 +374,31 @@ def extract_budget(text: str) -> str:
     return ""
 
 
+def has_purchase_sized_budget(text: str) -> bool:
+    value = str(text or "")
+    # Property purchase requests in this market are normally quoted in GBP/EUR/USD
+    # at five- or six-figure levels. This catches "ищу 1+1, бюджет £100000"
+    # even when the writer omits an explicit "buy" verb.
+    patterns = [
+        r"(?:£|€|\$)\s*([0-9][0-9\s,.]{3,})",
+        r"([0-9][0-9\s,.]{3,})\s*(?:£|€|\$|gbp|eur|usd|фунт\w*)",
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, value, re.I)
+        if not m:
+            continue
+        digits = re.sub(r"\D", "", m.group(1))
+        if not digits:
+            continue
+        try:
+            amount = int(digits)
+        except ValueError:
+            continue
+        if amount >= 20000:
+            return True
+    return False
+
+
 def criteria(text: str) -> list[str]:
     out: list[str] = []
     if ROOM_RE.search(text or ""):
@@ -480,8 +505,9 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
     if sales_only:
         if rent:
             return None, "rental_excluded_sales_only"
-        agent_purchase_request = bool(agent_client and has_property and demand and (budget or qualifier or investor))
-        if not buy and not agent_purchase_request:
+        purchase_budget_request = bool(has_property and demand and has_purchase_sized_budget(own))
+        agent_purchase_request = bool(agent_client and has_property and demand and (purchase_budget_request or qualifier or investor))
+        if not buy and not agent_purchase_request and not purchase_budget_request:
             return None, "no_explicit_purchase_intent"
         if not any((has_property, qualifier, investor, residency)):
             return None, "no_property_purchase_context"
@@ -511,11 +537,16 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
         lead_class = "HOT TENANT" if specificity >= 1 else "WATCH"
         score = 78 + min(16, specificity * 4)
         reasons.append("explicit_rental_demand")
-    elif sales_only and agent_client and has_property and demand and (budget or qualifier or investor):
+    elif sales_only and agent_client and has_property and demand and (has_purchase_sized_budget(own) or qualifier or investor):
         intent_type = "BUYER"
         lead_class = "HOT BUYER" if specificity >= 2 else "WARM BUYER"
         score = 76 + min(18, specificity * 4)
         reasons.append("agent_client_purchase_request")
+    elif sales_only and has_property and demand and has_purchase_sized_budget(own):
+        intent_type = "BUYER"
+        lead_class = "HOT BUYER" if specificity >= 2 else "WARM BUYER"
+        score = 78 + min(18, specificity * 4)
+        reasons.append("purchase_budget_demand")
     elif buy and investor:
         intent_type = "INVESTOR"
         lead_class = "INVESTOR"
