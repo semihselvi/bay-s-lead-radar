@@ -632,6 +632,8 @@ DEBUG: dict[str, Any] = {
     "geography_pass": 0,
     "signal_pass": 0,
     "accepted": 0,
+    "review_candidates": 0,
+    "review_saved": 0,
     "already_notified": 0,
     "reject_reasons": Counter(),
     "accepted_classes": Counter(),
@@ -673,6 +675,59 @@ def _base_candidate(group: str, entity: Any, msg: Any, started: datetime) -> dic
     }
 
 
+def build_review_candidate(candidate: dict[str, Any]) -> dict[str, Any] | None:
+    text = str(candidate.get("message") or "")
+    if not text:
+        return None
+
+    has_property = bool(PROPERTY_RE.search(text))
+    demand = bool(DEMAND_RE.search(text))
+    budget = extract_budget(text)
+    purchase_budget = has_purchase_sized_budget(text)
+    room = bool(ROOM_RE.search(text))
+    region = extract_region(text)
+    qualifier = bool(PURCHASE_QUALIFIER_RE.search(text))
+    investor = bool(INVESTOR_RE.search(text))
+    agent_client = bool(AGENT_CLIENT_RE.search(text))
+
+    score = 0
+    reasons: list[str] = []
+    if has_property:
+        score += 2; reasons.append("property")
+    if demand:
+        score += 2; reasons.append("demand")
+    if purchase_budget:
+        score += 4; reasons.append("purchase_sized_budget")
+    elif budget:
+        score += 1; reasons.append("budget")
+    if room:
+        score += 1; reasons.append("room")
+    if region:
+        score += 1; reasons.append("region")
+    if qualifier:
+        score += 2; reasons.append("purchase_qualifier")
+    if investor:
+        score += 1; reasons.append("investment")
+    if agent_client:
+        score += 2; reasons.append("agent_client")
+
+    # Review is only useful for cases that have multiple commercial signals.
+    if score < 4:
+        return None
+
+    return {
+        **candidate,
+        "lead_class": "REVIEW",
+        "classification": "REVIEW",
+        "review_score": score,
+        "review_reasons": reasons,
+        "estimated_budget": budget,
+        "estimated_region": region,
+        "important_criteria": criteria(text),
+        "radar_version": VERSION,
+    }
+
+
 async def broad_telegram_scan(db_client, started):
     if not core.TELEGRAM_API_ID or not core.TELEGRAM_API_HASH:
         DEBUG["errors"].append("telegram_missing_api_credentials")
@@ -683,6 +738,7 @@ async def broad_telegram_scan(db_client, started):
 
     client = core.TelegramClient(str(core.TELEGRAM_SESSION), core.TELEGRAM_API_ID, core.TELEGRAM_API_HASH)
     accepted: list[dict[str, Any]] = []
+    review_pool: list[dict[str, Any]] = []
     seen_text_hashes: set[str] = set()
     errors = 0
     try:
@@ -767,6 +823,21 @@ async def broad_telegram_scan(db_client, started):
                     )
                     if signal is None:
                         DEBUG["reject_reasons"][reason] += 1
+                        if reason == "no_explicit_purchase_intent":
+                            DEBUG["review_candidates"] += 1
+                            review = build_review_candidate(candidate)
+                            if review is not None:
+                                stable_id = f"telegram-review|{dialog.id}|{msg.id}"
+                                review_id = hashlib.sha256(stable_id.encode("utf-8")).hexdigest()
+                                review["lead_id"] = review_id
+                                review["review_reason"] = reason
+                                review["buyer_signal"] = "review_purchase_possible"
+                                try:
+                                    db_client.collection("bay_s_lead_radar_review").document(review_id).set(review, merge=True)
+                                    DEBUG["review_saved"] += 1
+                                except Exception as exc:
+                                    DEBUG["errors"].append(f"review_firestore:{type(exc).__name__}:{exc}")
+                                review_pool.append(review)
                         continue
 
                     stable_id = f"telegram|{dialog.id}|{msg.id}"
@@ -807,6 +878,7 @@ async def broad_telegram_scan(db_client, started):
             "hot_warm": len(accepted),
             "errors": errors,
             "new_leads": accepted,
+            "review_pool": sorted(review_pool, key=lambda x: x.get("review_score", 0), reverse=True)[:30],
             "candidate_first_buyer_signals": DEBUG["signal_pass"],
             "candidate_first_total_groups": DEBUG["groups_total"],
             "candidate_first_already_notified": DEBUG["already_notified"],
@@ -1041,6 +1113,7 @@ def save_and_notify_debug() -> None:
         f"Coğrafya geçti: {DEBUG['geography_pass']}\n"
         f"Intent/keyword adayı: {DEBUG['signal_pass']}\n"
         f"Kabul edilen: {DEBUG['accepted']}\n"
+        f"REVIEW adayı: {DEBUG['review_candidates']} | Kaydedilen: {DEBUG['review_saved']}\n"
         f"Sınıflar: {classes}\n"
         f"Diller: {langs}\n"
         f"Eleme nedenleri: {rejects}\n"
@@ -1052,6 +1125,24 @@ def save_and_notify_debug() -> None:
         f"Gerçek hata: {total_errors}"
     )
     core.telegram(msg[:3900])
+    try:
+        db = core.db()
+        docs = list(db.collection("bay_s_lead_radar_review").order_by("found_at", direction="DESCENDING").limit(20).stream()) if db else []
+        rows = [doc.to_dict() or {} for doc in docs]
+        rows.sort(key=lambda x: x.get("review_score", 0), reverse=True)
+        for row in rows[:12]:
+            print("LEAD_RADAR_REVIEW", json.dumps({
+                "score": row.get("review_score", 0),
+                "author": row.get("author", ""),
+                "group": row.get("group", ""),
+                "message": row.get("message", "")[:500],
+                "url": row.get("url", ""),
+                "budget": row.get("estimated_budget", ""),
+                "region": row.get("estimated_region", ""),
+                "reasons": row.get("review_reasons", []),
+            }, ensure_ascii=False))
+    except Exception as exc:
+        DEBUG["errors"].append(f"review_debug:{type(exc).__name__}:{exc}")
     print("LEAD_RADAR_DEBUG", json.dumps(_serializable_debug(), ensure_ascii=False))
 
 
