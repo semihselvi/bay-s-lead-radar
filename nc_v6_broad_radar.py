@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import re
 import urllib.parse
 import xml.etree.ElementTree as ET
@@ -458,6 +459,19 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
     demand = bool(DEMAND_RE.search(own))
     qualifier = bool(PURCHASE_QUALIFIER_RE.search(own))
     specificity = _specificity(own)
+
+    # Production sales-only mode: Prime Kibris wants direct purchase demand only.
+    # Rentals, generic investment discussion/research, relocation and ambiguous
+    # property chatter are intentionally excluded unless there is an explicit
+    # property purchase statement in the person's own message.
+    sales_only = os.getenv("RADAR_SALES_ONLY", "0").strip() == "1"
+    if sales_only:
+        if rent:
+            return None, "rental_excluded_sales_only"
+        if not buy:
+            return None, "no_explicit_purchase_intent"
+        if not any((has_property, qualifier, investor, residency)):
+            return None, "no_property_purchase_context"
 
     # A generic "buy" verb inside a North-Cyprus group is not enough. It must
     # actually concern housing/property, otherwise books, crypto and household
