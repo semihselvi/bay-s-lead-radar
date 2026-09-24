@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 import nc_v6_broad_radar as v6
 
@@ -267,6 +268,35 @@ class BroadIntentTests(unittest.TestCase):
         self.assertIsNone(lead)
         self.assertEqual(reason, "no_north_context")
 
+
+
+    def test_sales_only_rejects_rental(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            lead, reason = v6.classify_text(
+                "Сниму 1+1 в Искеле, бюджет 600 евро",
+                group="Северный Кипр Недвижимость",
+            )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "rental_excluded_sales_only")
+
+    def test_sales_only_rejects_generic_investment_discussion(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            lead, reason = v6.classify_text(
+                "Какая доходность от недвижимости в Искеле?",
+                group="Северный Кипр Недвижимость",
+            )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "no_explicit_purchase_intent")
+
+    def test_sales_only_accepts_direct_property_buyer(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            lead, reason = v6.classify_text(
+                "Хочу купить квартиру 1+1 в Искеле, бюджет £120000",
+                group="Северный Кипр Недвижимость",
+            )
+        self.assertIsNotNone(lead)
+        self.assertIn(lead["lead_class"], {"HOT BUYER", "INVESTOR"})
+        self.assertEqual(reason, "accepted")
 
 if __name__ == "__main__":
     unittest.main()
