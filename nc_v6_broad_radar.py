@@ -17,7 +17,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.8-purchase-target-guard"
+VERSION = "6.9-telegram-global-public-search"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -647,6 +647,13 @@ DEBUG: dict[str, Any] = {
     "strict_extra_signal_pass": 0,
     "strict_extra_accepted": 0,
     "strict_extra_reject_reasons": Counter(),
+    "global_search_queries": 0,
+    "global_search_raw": 0,
+    "global_search_public": 0,
+    "global_search_geo_pass": 0,
+    "global_search_signal_pass": 0,
+    "global_search_accepted": 0,
+    "global_search_reject_reasons": Counter(),
     "geography_pass": 0,
     "signal_pass": 0,
     "accepted": 0,
@@ -695,6 +702,32 @@ def strict_extra_candidate_signal(text: str) -> bool:
             or INVESTOR_RE.search(own)
         )
     )
+
+
+TELEGRAM_GLOBAL_PUBLIC_QUERIES = (
+    "Северный Кипр купить квартиру",
+    "Северный Кипр хочу купить",
+    "Искеле купить квартиру",
+    "Гирне купить квартиру",
+    "North Cyprus buy apartment",
+    "North Cyprus looking to buy",
+    "Kuzey Kıbrıs ev almak",
+    "Kuzey Kıbrıs daire almak",
+)
+
+
+def global_public_candidate_signal(text: str) -> bool:
+    """No group-title context is trusted for global search results."""
+    return strict_extra_candidate_signal(text)
+
+
+def _public_chat_username(chat: Any) -> str:
+    username = str(getattr(chat, "username", "") or "").strip()
+    if not username:
+        return ""
+    if not re.fullmatch(r"[A-Za-z0-9_]{4,64}", username):
+        return ""
+    return username
 
 
 def _base_candidate(group: str, entity: Any, msg: Any, started: datetime) -> dict[str, Any]:
@@ -1009,6 +1042,141 @@ async def broad_telegram_scan(db_client, started):
                 DEBUG["errors"].append(f"telegram_group:{scope}:{group}:{type(exc).__name__}:{exc}")
             await asyncio.sleep(0.20)
 
+        # Second discovery surface: Telegram global public message search.
+        # We only retain messages from public username-addressable chats/channels.
+        # No private chats, no private groups and no group-name context are trusted.
+        global_cutoff = datetime.now(timezone.utc) - timedelta(hours=min(core.TELEGRAM_HOURS, 72))
+        global_seen: set[tuple[str, int]] = set()
+
+        for query in TELEGRAM_GLOBAL_PUBLIC_QUERIES:
+            DEBUG["global_search_queries"] += 1
+            try:
+                async for msg in client.iter_messages(None, search=query, limit=80):
+                    DEBUG["global_search_raw"] += 1
+
+                    dt = getattr(msg, "date", None)
+                    if not dt:
+                        DEBUG["global_search_reject_reasons"]["no_date"] += 1
+                        continue
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    if dt < global_cutoff:
+                        DEBUG["global_search_reject_reasons"]["stale"] += 1
+                        continue
+
+                    text = str(getattr(msg, "message", "") or "").strip()
+                    if not text:
+                        DEBUG["global_search_reject_reasons"]["empty"] += 1
+                        continue
+
+                    try:
+                        chat = await msg.get_chat()
+                    except Exception:
+                        chat = None
+                    username = _public_chat_username(chat)
+                    if not username:
+                        DEBUG["global_search_reject_reasons"]["not_public_username_chat"] += 1
+                        continue
+                    DEBUG["global_search_public"] += 1
+
+                    msg_id = int(getattr(msg, "id", 0) or 0)
+                    identity = (username.casefold(), msg_id)
+                    if identity in global_seen:
+                        DEBUG["global_search_reject_reasons"]["duplicate_message"] += 1
+                        continue
+                    global_seen.add(identity)
+
+                    text_key = hashlib.sha256(_norm(text).encode("utf-8", "ignore")).hexdigest()
+                    if text_key in seen_text_hashes:
+                        DEBUG["global_search_reject_reasons"]["duplicate_text"] += 1
+                        continue
+                    seen_text_hashes.add(text_key)
+
+                    if not has_nc_geo(text):
+                        DEBUG["global_search_reject_reasons"]["no_north_context"] += 1
+                        continue
+                    DEBUG["global_search_geo_pass"] += 1
+
+                    if not global_public_candidate_signal(text):
+                        if not PROPERTY_RE.search(text):
+                            DEBUG["global_search_reject_reasons"]["no_property"] += 1
+                        else:
+                            DEBUG["global_search_reject_reasons"]["no_buyer_signal"] += 1
+                        continue
+                    DEBUG["global_search_signal_pass"] += 1
+
+                    try:
+                        await msg.get_sender()
+                    except Exception:
+                        pass
+
+                    group = str(
+                        getattr(chat, "title", None)
+                        or getattr(chat, "first_name", None)
+                        or username
+                    )
+                    candidate = {
+                        "source": "Telegram",
+                        "platform": "Telegram",
+                        "source_type": "telegram_global_public_search",
+                        "group": group,
+                        "group_priority": "GLOBAL_PUBLIC",
+                        "group_username": username,
+                        "message_id": msg_id,
+                        "message_time": dt.isoformat(timespec="seconds"),
+                        "author": core.tg_sender(msg),
+                        "message": text,
+                        "url": f"https://t.me/{username}/{msg_id}",
+                        "market": "north_cyprus",
+                        "found_at": started.isoformat(),
+                        "search_query": query,
+                    }
+
+                    signal, reason = classify_text(
+                        text,
+                        group="",
+                        author=candidate.get("author", ""),
+                        explicit_geo=True,
+                    )
+                    if signal is None:
+                        DEBUG["global_search_reject_reasons"][reason] += 1
+                        continue
+
+                    stable_id = f"telegram-global|{username.casefold()}|{msg_id}"
+                    lead_id = hashlib.sha256(stable_id.encode("utf-8")).hexdigest()
+                    ref = db_client.collection(core.COLLECTION).document(lead_id)
+                    snap = ref.get()
+                    if snap.exists:
+                        previous = snap.to_dict() or {}
+                        if previous.get("v5_notified_at") or previous.get("v6_notified_at"):
+                            DEBUG["already_notified"] += 1
+                            DEBUG["global_search_reject_reasons"]["already_notified"] += 1
+                            continue
+
+                    lead = {**candidate, **signal}
+                    lead["lead_id"] = lead_id
+                    lead["classification"] = "HOT" if signal["lead_class"] in {"HOT BUYER", "HOT TENANT"} else "WARM"
+                    lead["telegram_score"] = signal["intent_score"]
+                    lead["buyer_signal"] = signal["intent_type"].lower()
+                    lead["radar_version"] = VERSION
+                    lead["why_selected"] = ", ".join(signal["lead_reasons"])
+                    ref.set(lead, merge=True)
+                    accepted.append(lead)
+
+                    DEBUG["accepted"] += 1
+                    DEBUG["global_search_accepted"] += 1
+                    DEBUG["accepted_classes"][signal["lead_class"]] += 1
+                    DEBUG["languages"][signal["language"]] += 1
+
+            except core.FloodWaitError as exc:
+                errors += 1
+                DEBUG["errors"].append(f"telegram_global_flood_wait:{query}:{exc.seconds}")
+                break
+            except Exception as exc:
+                errors += 1
+                DEBUG["errors"].append(f"telegram_global_search:{query}:{type(exc).__name__}:{exc}")
+            await asyncio.sleep(0.35)
+
         return {
             "status": "completed",
             "groups": DEBUG["groups_relevant"],
@@ -1230,6 +1398,7 @@ def _serializable_debug() -> dict[str, Any]:
         "web_provider_errors": dict(DEBUG["web_provider_errors"]),
         "review_reject_reasons": dict(DEBUG["review_reject_reasons"]),
         "strict_extra_reject_reasons": dict(DEBUG["strict_extra_reject_reasons"]),
+        "global_search_reject_reasons": dict(DEBUG["global_search_reject_reasons"]),
     }
 
 
@@ -1251,17 +1420,18 @@ def save_and_notify_debug() -> None:
     provider_errors = ", ".join(f"{k}:{v}" for k, v in DEBUG["web_provider_errors"].most_common()) or "-"
     web_rejects = ", ".join(f"{k}:{v}" for k, v in DEBUG["web_reject_reasons"].most_common(8)) or "-"
     strict_extra_rejects = ", ".join(f"{k}:{v}" for k, v in DEBUG["strict_extra_reject_reasons"].most_common(6)) or "-"
+    global_search_rejects = ", ".join(f"{k}:{v}" for k, v in DEBUG["global_search_reject_reasons"].most_common(6)) or "-"
     total_errors = len(DEBUG["errors"])
     msg = (
         "🧪 LEAD RADAR DEBUG | SON TARAMA\n\n"
         f"Telegram ana grup: {DEBUG['groups_relevant']}/{DEBUG['groups_total']} | Mesaj: {DEBUG['messages_scanned']}\n"
-        f"Ek sıkı grup: {DEBUG['strict_extra_groups_scanned']} | Mesaj: {DEBUG['strict_extra_messages_scanned']} | NC: {DEBUG['strict_extra_geo_pass']} | Aday: {DEBUG['strict_extra_signal_pass']} | Kabul: {DEBUG['strict_extra_accepted']}\n"
+        f"Ek sıkı grup: {DEBUG['strict_extra_groups_scanned']} | Mesaj: {DEBUG['strict_extra_messages_scanned']} | NC: {DEBUG['strict_extra_geo_pass']} | Aday: {DEBUG['strict_extra_signal_pass']} | Kabul: {DEBUG['strict_extra_accepted']}\n"        f"Global public: sorgu {DEBUG['global_search_queries']} | Ham {DEBUG['global_search_raw']} | Public {DEBUG['global_search_public']} | NC {DEBUG['global_search_geo_pass']} | Aday {DEBUG['global_search_signal_pass']} | Kabul {DEBUG['global_search_accepted']}\n"
         f"Coğrafya geçti: {DEBUG['geography_pass']}\n"
         f"Intent/keyword adayı: {DEBUG['signal_pass']}\n"
         f"Kabul edilen: {DEBUG['accepted']}\n"
         f"REVIEW ön aday: {DEBUG['review_candidates']} | Kaliteli: {DEBUG['review_qualified']} | Kaydedilen: {DEBUG['review_saved']}\n"
         f"REVIEW eleme: {', '.join(f'{k}:{v}' for k, v in DEBUG['review_reject_reasons'].most_common(6)) or '-'}\n"
-        f"Ek sıkı eleme: {strict_extra_rejects}\n"
+        f"Ek sıkı eleme: {strict_extra_rejects}\n"        f"Global public eleme: {global_search_rejects}\n"
         f"Sınıflar: {classes}\n"
         f"Diller: {langs}\n"
         f"Eleme nedenleri: {rejects}\n"
