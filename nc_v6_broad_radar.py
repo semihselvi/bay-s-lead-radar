@@ -17,7 +17,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.4-review-quality-gate"
+VERSION = "6.5-review-debug-clarity"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -633,7 +633,10 @@ DEBUG: dict[str, Any] = {
     "signal_pass": 0,
     "accepted": 0,
     "review_candidates": 0,
+    "review_qualified": 0,
     "review_saved": 0,
+    "review_reject_reasons": Counter(),
+    "review_samples": [],
     "already_notified": 0,
     "reject_reasons": Counter(),
     "accepted_classes": Counter(),
@@ -675,23 +678,25 @@ def _base_candidate(group: str, entity: Any, msg: Any, started: datetime) -> dic
     }
 
 
-def build_review_candidate(candidate: dict[str, Any]) -> dict[str, Any] | None:
+def evaluate_review_candidate(candidate: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
     text = str(candidate.get("message") or "")
     if not text:
-        return None
+        return None, "empty"
 
     # REVIEW is not a second listing bucket. It should contain only ambiguous
     # people who may genuinely be in a purchase/research journey.
     if RENT_DEMAND_RE.search(text):
-        return None
+        return None, "rent_demand"
     if SELLER_DIRECTION_RE.search(text):
-        return None
+        return None, "seller_direction"
     if radar.TG_STRONG_SUPPLY_RE.search(text) or SUPPLY_STRONG_RE.search(text):
-        return None
-    if POST_PURCHASE_OR_INFO_RE.search(text) or DISCUSSION_OR_HYPOTHETICAL_RE.search(text):
-        return None
+        return None, "supply_listing"
+    if POST_PURCHASE_OR_INFO_RE.search(text):
+        return None, "post_purchase_or_info"
+    if DISCUSSION_OR_HYPOTHETICAL_RE.search(text):
+        return None, "discussion_or_hypothetical"
     if COMMERCIAL_PROVIDER_RE.search(text):
-        return None
+        return None, "commercial_provider"
 
     has_property = bool(PROPERTY_RE.search(text))
     demand = bool(DEMAND_RE.search(text))
@@ -705,8 +710,6 @@ def build_review_candidate(candidate: dict[str, Any]) -> dict[str, Any] | None:
     residency = bool(RESIDENCY_RE.search(text))
     agent_client = bool(AGENT_CLIENT_RE.search(text))
 
-    # Typical listing-shaped messages have property specs + asking price but
-    # no first-person demand/research. Do not save these as REVIEW.
     listing_shape = bool(
         has_property
         and not demand
@@ -717,10 +720,8 @@ def build_review_candidate(candidate: dict[str, Any]) -> dict[str, Any] | None:
         )
     )
     if listing_shape:
-        return None
+        return None, "listing_shape"
 
-    # Ambiguous searches such as "Ищу 2+1 для студентов" are usually rentals.
-    # For REVIEW we require a purchase/research clue beyond generic "looking for".
     purchase_context = bool(
         qualifier
         or investor
@@ -733,8 +734,13 @@ def build_review_candidate(candidate: dict[str, Any]) -> dict[str, Any] | None:
             and re.search(r"\\b(?:бюджет|budget|bütçe)\\b", text, re.I)
         )
     )
-    if not (has_property and demand and purchase_context):
-        return None
+
+    if not has_property:
+        return None, "no_property"
+    if not demand:
+        return None, "no_demand"
+    if not purchase_context:
+        return None, "no_purchase_context"
 
     score = 4
     reasons: list[str] = ["property", "demand", "purchase_context"]
@@ -767,8 +773,12 @@ def build_review_candidate(candidate: dict[str, Any]) -> dict[str, Any] | None:
         "estimated_region": region,
         "important_criteria": criteria(text),
         "radar_version": VERSION,
-    }
+    }, "accepted"
 
+
+def build_review_candidate(candidate: dict[str, Any]) -> dict[str, Any] | None:
+    review, _ = evaluate_review_candidate(candidate)
+    return review
 
 async def broad_telegram_scan(db_client, started):
     if not core.TELEGRAM_API_ID or not core.TELEGRAM_API_HASH:
@@ -867,8 +877,11 @@ async def broad_telegram_scan(db_client, started):
                         DEBUG["reject_reasons"][reason] += 1
                         if reason == "no_explicit_purchase_intent":
                             DEBUG["review_candidates"] += 1
-                            review = build_review_candidate(candidate)
-                            if review is not None:
+                            review, review_reason = evaluate_review_candidate(candidate)
+                            if review is None:
+                                DEBUG["review_reject_reasons"][review_reason] += 1
+                            else:
+                                DEBUG["review_qualified"] += 1
                                 stable_id = f"telegram-review|{dialog.id}|{msg.id}"
                                 review_id = hashlib.sha256(stable_id.encode("utf-8")).hexdigest()
                                 review["lead_id"] = review_id
@@ -880,6 +893,17 @@ async def broad_telegram_scan(db_client, started):
                                 except Exception as exc:
                                     DEBUG["errors"].append(f"review_firestore:{type(exc).__name__}:{exc}")
                                 review_pool.append(review)
+                                if len(DEBUG["review_samples"]) < 12:
+                                    DEBUG["review_samples"].append({
+                                        "score": review.get("review_score", 0),
+                                        "author": review.get("author", ""),
+                                        "group": review.get("group", ""),
+                                        "message": review.get("message", "")[:500],
+                                        "url": review.get("url", ""),
+                                        "budget": review.get("estimated_budget", ""),
+                                        "region": review.get("estimated_region", ""),
+                                        "reasons": review.get("review_reasons", []),
+                                    })
                         continue
 
                     stable_id = f"telegram|{dialog.id}|{msg.id}"
@@ -1127,6 +1151,7 @@ def _serializable_debug() -> dict[str, Any]:
         "web_platforms": dict(DEBUG["web_platforms"]),
         "web_reject_reasons": dict(DEBUG["web_reject_reasons"]),
         "web_provider_errors": dict(DEBUG["web_provider_errors"]),
+        "review_reject_reasons": dict(DEBUG["review_reject_reasons"]),
     }
 
 
@@ -1155,7 +1180,8 @@ def save_and_notify_debug() -> None:
         f"Coğrafya geçti: {DEBUG['geography_pass']}\n"
         f"Intent/keyword adayı: {DEBUG['signal_pass']}\n"
         f"Kabul edilen: {DEBUG['accepted']}\n"
-        f"REVIEW adayı: {DEBUG['review_candidates']} | Kaydedilen: {DEBUG['review_saved']}\n"
+        f"REVIEW ön aday: {DEBUG['review_candidates']} | Kaliteli: {DEBUG['review_qualified']} | Kaydedilen: {DEBUG['review_saved']}\n"
+        f"REVIEW eleme: {', '.join(f'{k}:{v}' for k, v in DEBUG['review_reject_reasons'].most_common(6)) or '-'}\n"
         f"Sınıflar: {classes}\n"
         f"Diller: {langs}\n"
         f"Eleme nedenleri: {rejects}\n"
@@ -1168,21 +1194,8 @@ def save_and_notify_debug() -> None:
     )
     core.telegram(msg[:3900])
     try:
-        db = core.db()
-        docs = list(db.collection("bay_s_lead_radar_review").order_by("found_at", direction="DESCENDING").limit(20).stream()) if db else []
-        rows = [doc.to_dict() or {} for doc in docs]
-        rows.sort(key=lambda x: x.get("review_score", 0), reverse=True)
-        for row in rows[:12]:
-            print("LEAD_RADAR_REVIEW", json.dumps({
-                "score": row.get("review_score", 0),
-                "author": row.get("author", ""),
-                "group": row.get("group", ""),
-                "message": row.get("message", "")[:500],
-                "url": row.get("url", ""),
-                "budget": row.get("estimated_budget", ""),
-                "region": row.get("estimated_region", ""),
-                "reasons": row.get("review_reasons", []),
-            }, ensure_ascii=False))
+        for row in sorted(DEBUG["review_samples"], key=lambda x: x.get("score", 0), reverse=True):
+            print("LEAD_RADAR_REVIEW_CURRENT", json.dumps(row, ensure_ascii=False))
     except Exception as exc:
         DEBUG["errors"].append(f"review_debug:{type(exc).__name__}:{exc}")
     print("LEAD_RADAR_DEBUG", json.dumps(_serializable_debug(), ensure_ascii=False))
