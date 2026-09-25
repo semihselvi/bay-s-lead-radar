@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timezone
 
 import russian_public_buyer_radar as r
 
@@ -121,6 +122,46 @@ class RussianPublicBuyerRadarTests(unittest.TestCase):
             "no_property",
         )
 
+
+
+    def test_native_russian_date_parser(self):
+        now = datetime(2026, 9, 25, 12, 0, tzinfo=timezone.utc)
+        self.assertTrue(r._native_published("вчера 15:20", now=now).startswith("2026-09-24"))
+        self.assertTrue(r._native_published("13 окт 2025", now=now).startswith("2025-10-13"))
+
+    def test_native_clock_is_today(self):
+        now = datetime(2026, 9, 25, 12, 0, tzinfo=timezone.utc)
+        self.assertTrue(r._native_published("11:01", now=now).startswith("2026-09-25"))
+
+    def test_native_buyer_still_uses_strict_classifier(self):
+        candidate = {
+            "title": "Хочу купить квартиру",
+            "text": "Я хочу купить квартиру на Северном Кипре, бюджет 120 000 евро.",
+            "url": "https://ok.ru/group/1/topic/2",
+            "platform": "OK",
+            "source": "OK Native Public",
+            "source_type": "public_native_html",
+            "published": datetime.now(timezone.utc).isoformat(),
+            "north_cyprus_context": True,
+        }
+        lead, reason = r.classify_candidate(candidate)
+        self.assertIsNotNone(lead, reason)
+        self.assertEqual("BUYER", lead["intent_type"])
+
+    def test_native_listing_still_rejected(self):
+        candidate = {
+            "title": "Продажа квартиры",
+            "text": "Продаю квартиру на Северном Кипре, цена 120 000 евро. Пишите в личку.",
+            "url": "https://ok.ru/group/1/topic/3",
+            "platform": "OK",
+            "source": "OK Native Public",
+            "source_type": "public_native_html",
+            "published": datetime.now(timezone.utc).isoformat(),
+            "north_cyprus_context": True,
+        }
+        lead, reason = r.classify_candidate(candidate)
+        self.assertIsNone(lead)
+        self.assertEqual("seller_or_listing", reason)
 
 if __name__ == "__main__":
     unittest.main()
