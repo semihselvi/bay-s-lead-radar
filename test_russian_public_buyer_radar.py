@@ -193,5 +193,39 @@ class RussianPublicBuyerRadarTests(unittest.TestCase):
         rows = r._vk_rows_from_html(html, "ru_cyprus", "Русские на Кипре")
         self.assertEqual([], rows)
 
+
+    def test_mailru_relative_date_parser(self):
+        now = datetime(2026, 9, 25, 12, 0, tzinfo=timezone.utc)
+        self.assertTrue(r._native_published("1ч", now=now).startswith("2026-09-25"))
+        self.assertTrue(r._native_published("3д", now=now).startswith("2026-09-22"))
+
+    def test_mailru_question_html_can_feed_strict_buyer_classifier(self):
+        html = """
+        <div class="question-card">
+          <span>1ч</span>
+          <a href="/question/270999999">Хочу купить квартиру на Северном Кипре</a>
+          <p>Я хочу купить квартиру на Северном Кипре, бюджет 130 000 евро. Какой район посоветуете?</p>
+        </div>
+        """
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, "html.parser")
+        anchor = soup.find("a")
+        container = r._best_html_container(anchor)
+        text = r.normalize(container.get_text(" ", strip=True))
+        self.assertTrue(r.has_nc_context(text))
+        candidate = {
+            "title": r.normalize(anchor.get_text(" ", strip=True)),
+            "text": text,
+            "url": "https://otvet.mail.ru/question/270999999",
+            "platform": "MailRu Answers",
+            "source": "MailRu Answers Native Public",
+            "source_type": "public_native_html",
+            "published": r._native_published("1ч", now=datetime.now(timezone.utc)),
+            "north_cyprus_context": True,
+        }
+        lead, reason = r.classify_candidate(candidate)
+        self.assertIsNotNone(lead, reason)
+        self.assertEqual("BUYER", lead["intent_type"])
+
 if __name__ == "__main__":
     unittest.main()
