@@ -15,7 +15,7 @@ from typing import Any
 import requests
 from bs4 import BeautifulSoup
 
-VERSION = "1.3.0-native-vk-ok-pikabu"
+VERSION = "1.4.0-native-mailru-ok-pikabu"
 COLLECTION = os.getenv("FIRESTORE_COLLECTION", "bay_s_leads")
 SCAN_COLLECTION = os.getenv("FIRESTORE_RU_PUBLIC_SCAN_COLLECTION", "bay_s_ru_public_scans")
 DRY_RUN = os.getenv("RADAR_DRY_RUN", "0").strip().lower() not in {"0", "false", "no"}
@@ -97,6 +97,14 @@ PIKABU_NATIVE_TAGS = [
 VK_NATIVE_SEEDS = [
     ("ru_cyprus", "Русские на Кипре"),
     ("rusvecher", "Русские вечера на Кипре"),
+]
+
+MAILRU_NATIVE_QUERIES = [
+    "Северный Кипр",
+    "Северный Кипр недвижимость",
+    "Северный Кипр купить квартиру",
+    "Искеле квартира купить",
+    "Гирне недвижимость купить",
 ]
 
 NC_RE = re.compile(
@@ -715,6 +723,28 @@ def _native_published(text: str, *, now: datetime | None = None) -> str:
     if re.fullmatch(r"\d{1,2}:\d{2}", raw):
         return now.isoformat()
 
+    if "только что" in raw:
+        return now.isoformat()
+
+    relative = re.search(
+        r"\b(\d{1,3})\s*(мин|минут\w*|ч|час\w*|д|дн\w*|мес\w*|г|год\w*|лет)\b",
+        raw,
+        re.I,
+    )
+    if relative:
+        amount = int(relative.group(1))
+        unit = relative.group(2).lower()
+        if unit.startswith("мин"):
+            return (now - timedelta(minutes=amount)).isoformat()
+        if unit == "ч" or unit.startswith("час"):
+            return (now - timedelta(hours=amount)).isoformat()
+        if unit == "д" or unit.startswith("дн"):
+            return (now - timedelta(days=amount)).isoformat()
+        if unit.startswith("мес"):
+            return (now - timedelta(days=amount * 30)).isoformat()
+        if unit == "г" or unit.startswith("год") or unit.startswith("лет"):
+            return (now - timedelta(days=amount * 365)).isoformat()
+
     m = re.search(
         r"\b(\d{1,2})\s+"
         r"(янв\w*|фев\w*|мар\w*|апр\w*|май|мая|июн\w*|июл\w*|авг\w*|сен\w*|окт\w*|ноя\w*|дек\w*)"
@@ -933,6 +963,111 @@ def vk_native_seed_search() -> list[dict[str, Any]]:
             rows.append(row)
 
         NATIVE_DEBUG[f"VK:{seed}:rows"] += len(seed_rows)
+
+    return rows
+
+
+
+def mailru_native_search() -> list[dict[str, Any]]:
+    """Read public Answers Mail search pages without login or paid search APIs."""
+    rows: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; PrimeKibrisRadar/1.4)",
+        "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.6",
+    }
+
+    for query in MAILRU_NATIVE_QUERIES:
+        encoded = urllib.parse.quote(query, safe="")
+        candidates = [
+            f"https://otvet.mail.ru/search/{encoded}/",
+            f"https://otvet.mail.ru/search/{encoded}",
+        ]
+        response = None
+        for url in candidates:
+            try:
+                current = requests.get(
+                    url,
+                    headers=headers,
+                    timeout=min(TIMEOUT, 12),
+                    allow_redirects=True,
+                )
+                NATIVE_DEBUG[f"MailRu:http_{current.status_code}"] += 1
+                if current.status_code == 200:
+                    response = current
+                    break
+            except Exception as exc:
+                NATIVE_DEBUG[f"MailRu:error_{type(exc).__name__}"] += 1
+
+        if response is None:
+            continue
+
+        soup = BeautifulSoup(response.text, "html.parser")
+        found = 0
+        for anchor in soup.find_all("a", href=True):
+            href = str(anchor.get("href") or "")
+            if not re.search(r"/question/\d+", href):
+                continue
+
+            full_url = urllib.parse.urljoin("https://otvet.mail.ru", href)
+            full_url = full_url.split("?")[0].split("#")[0]
+            if full_url in seen_urls:
+                continue
+
+            container = _best_html_container(anchor)
+            text = normalize(container.get_text(" ", strip=True))
+            if len(text) < 40 or not has_nc_context(text):
+                continue
+
+            raw_date = ""
+            time_tag = container.find("time")
+            if time_tag is not None:
+                raw_date = str(
+                    time_tag.get("datetime")
+                    or time_tag.get("title")
+                    or time_tag.get_text(" ", strip=True)
+                    or ""
+                )
+
+            if not raw_date:
+                date_match = re.search(
+                    r"(?:только что|сегодня(?:\s+\d{1,2}:\d{2})?|вчера(?:\s+\d{1,2}:\d{2})?"
+                    r"|\b\d{1,3}\s*(?:мин|минут\w*|ч|час\w*|д|дн\w*|мес\w*|г|год\w*|лет)\b"
+                    r"|\b\d{1,2}\s+(?:янв\w*|фев\w*|мар\w*|апр\w*|май|мая|июн\w*|июл\w*|авг\w*|сен\w*|окт\w*|ноя\w*|дек\w*)(?:\s+\d{4})?)",
+                    text,
+                    re.I,
+                )
+                raw_date = date_match.group(0) if date_match else ""
+
+            parsed = parse_published(raw_date)
+            published = parsed.isoformat() if parsed else _native_published(raw_date)
+            if not published:
+                NATIVE_DEBUG["MailRu:no_date"] += 1
+                continue
+
+            title = normalize(anchor.get_text(" ", strip=True))
+            if len(title) < 8:
+                heading = container.find(["h1", "h2", "h3", "h4"])
+                title = normalize(heading.get_text(" ", strip=True)) if heading else text[:240]
+
+            seen_urls.add(full_url)
+            rows.append({
+                "source": "MailRu Answers Native Public",
+                "platform": "MailRu Answers",
+                "source_type": "public_native_html",
+                "url": full_url,
+                "title": (title or text[:240])[:500],
+                "text": text[:7000],
+                "published": published,
+                "author": "",
+                "search_query": query,
+                "north_cyprus_context": True,
+            })
+            found += 1
+            if found >= 35:
+                break
+
+        NATIVE_DEBUG["MailRu:rows"] += found
 
     return rows
 
@@ -1334,7 +1469,8 @@ def scan() -> dict[str, Any]:
         stats["accepted_by_platform"][f"{platform} comments"] += 1
         leads.append(lead)
 
-    for row in vk_native_seed_search() + ok_native_search() + pikabu_native_search():
+    NATIVE_DEBUG["VK:disabled_login_captcha_wall"] += 1
+    for row in mailru_native_search() + ok_native_search() + pikabu_native_search():
         key = fingerprint(row)
         if key in seen:
             continue
@@ -1362,7 +1498,7 @@ def scan() -> dict[str, Any]:
         leads.append(lead)
 
     for platform, domain in SOURCES.items():
-        if platform in {"VC.ru", "DTF", "VK", "OK", "Pikabu"}:
+        if platform in {"VC.ru", "DTF", "VK", "OK", "Pikabu", "MailRu Answers"}:
             continue
         for query in PUBLIC_DISCOVERY_QUERIES[:QUERY_LIMIT]:
             stats["queries"] += 1
