@@ -13,6 +13,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ru-public-buyer-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test-and-scan:
     runs-on: ubuntu-latest
