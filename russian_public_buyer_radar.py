@@ -48,6 +48,14 @@ QUERIES = [
     '"Гирне" "хочу купить" квартиру',
 ]
 
+PUBLIC_DISCOVERY_QUERIES = [
+    '"Северный Кипр" недвижимость',
+    '"Северный Кипр" квартира',
+    '"Северный Кипр" купить',
+    '"Искеле" недвижимость',
+]
+
+
 QUERY_LIMIT = max(1, min(int(os.getenv("RADAR_RU_PUBLIC_QUERY_LIMIT", str(len(QUERIES))) or str(len(QUERIES))), len(QUERIES)))
 
 CMTT_TERMS = [
@@ -442,6 +450,7 @@ def cmtt_public_search() -> list[dict[str, Any]]:
                     "search_query": term,
                     "api_version": working_version,
                     "entry_id": str(entry_id),
+                    "comments_count": int(entry.get("commentsCount") or 0),
                 })
 
     return rows
@@ -477,6 +486,8 @@ def cmtt_public_comments(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
         blob = normalize(f"{row.get('title', '')} {row.get('text', '')}")
         if not NC_RE.search(blob):
             continue
+        if not PROPERTY_RE.search(blob):
+            continue
         if not row.get("entry_id"):
             continue
         eligible.append(row)
@@ -490,6 +501,14 @@ def cmtt_public_comments(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         seen_entries.add(key)
         unique_entries.append(row)
+
+    unique_entries.sort(
+        key=lambda x: (
+            -int(x.get("comments_count") or 0),
+            str(x.get("platform") or ""),
+            str(x.get("entry_id") or ""),
+        )
+    )
 
     for row in unique_entries[:max(0, CMTT_COMMENT_ENTRY_LIMIT)]:
         platform = str(row.get("platform") or "")
@@ -808,7 +827,7 @@ def scan() -> dict[str, Any]:
     for platform, domain in SOURCES.items():
         if platform in {"VC.ru", "DTF"}:
             continue
-        for query in QUERIES[:QUERY_LIMIT]:
+        for query in PUBLIC_DISCOVERY_QUERIES[:QUERY_LIMIT]:
             stats["queries"] += 1
 
             rows = serper_search(query, domain)
