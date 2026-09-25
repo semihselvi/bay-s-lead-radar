@@ -476,9 +476,13 @@ class BroadIntentTests(unittest.TestCase):
         self.assertEqual(reason, "accepted")
         self.assertIn(lead["lead_class"], {"HOT BUYER", "WARM BUYER"})
 
-    def test_unrelated_group_listing_still_rejected(self):
+    def test_unrelated_group_plain_listing_rejected_by_prefilter(self):
+        text = "North Cyprus apartment for sale, 1+1, £95,000. DM for details."
+        self.assertFalse(v6.strict_extra_candidate_signal(text))
+
+    def test_unrelated_group_marketing_listing_rejected_by_classifier(self):
         with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
-            text = "North Cyprus apartment for sale, 1+1, £95,000. DM for details."
+            text = "Buy now: North Cyprus apartment for sale, 1+1, £95,000. DM for details."
             self.assertTrue(v6.strict_extra_candidate_signal(text))
             lead, reason = v6.classify_text(
                 text,
@@ -486,7 +490,7 @@ class BroadIntentTests(unittest.TestCase):
                 explicit_geo=True,
             )
         self.assertIsNone(lead)
-        self.assertIn(reason, {"supply_or_agent", "no_explicit_purchase_intent"})
+        self.assertEqual(reason, "supply_or_agent")
 
 if __name__ == "__main__":
     unittest.main()
