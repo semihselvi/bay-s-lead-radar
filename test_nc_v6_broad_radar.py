@@ -617,5 +617,19 @@ class BroadIntentTests(unittest.TestCase):
         self.assertIsNone(lead)
         self.assertIn(reason, {"supply_or_agent", "owner_direct_only"})
 
+
+    def test_global_buyer_queries_cover_ru_en_tr_and_ascii_tr(self):
+        joined = " ".join(v6.TELEGRAM_GLOBAL_BUYER_QUERIES)
+        self.assertIn("Северный Кипр хочу купить квартиру", joined)
+        self.assertIn("North Cyprus looking to buy property", joined)
+        self.assertIn("Kuzey Kıbrıs daire almak istiyorum", joined)
+        self.assertIn("Kuzey Kibris ev almak istiyorum", joined)
+
+    def test_global_search_prioritizes_buyer_queries_before_broad_queries(self):
+        self.assertEqual(
+            tuple(v6.TELEGRAM_GLOBAL_SEARCH_QUERIES[:len(v6.TELEGRAM_GLOBAL_BUYER_QUERIES)]),
+            tuple(v6.TELEGRAM_GLOBAL_BUYER_QUERIES),
+        )
+
 if __name__ == "__main__":
     unittest.main()
