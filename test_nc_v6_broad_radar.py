@@ -631,5 +631,27 @@ class BroadIntentTests(unittest.TestCase):
             tuple(v6.TELEGRAM_GLOBAL_BUYER_QUERIES),
         )
 
+
+    def test_live_natali_no_agents_buyer_is_not_actionable(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            lead, reason = v6.classify_text(
+                "Куплю студию или квартиру от собственника. Агентам не беспокоить. "
+                "Недорого. Гирне, Фамагуста, Искеле.",
+                group="СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+            )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "owner_direct_only")
+
+    def test_live_angel_owner_preference_without_agent_ban_is_actionable(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            lead, reason = v6.classify_text(
+                "Куплю квартиру от собственника в Гирне не дорого 3+1 или 2+1. "
+                "В рассрочку, но с предоплатой. Пишите в личку.",
+                group="СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+            )
+        self.assertIsNotNone(lead, reason)
+        self.assertEqual(reason, "accepted")
+        self.assertIn("owner_direct_buyer_preference", lead["lead_reasons"])
+
 if __name__ == "__main__":
     unittest.main()
