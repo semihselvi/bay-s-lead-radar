@@ -15,7 +15,7 @@ from typing import Any
 import requests
 from bs4 import BeautifulSoup
 
-VERSION = "1.2.0-native-ok-pikabu"
+VERSION = "1.3.0-native-vk-ok-pikabu"
 COLLECTION = os.getenv("FIRESTORE_COLLECTION", "bay_s_leads")
 SCAN_COLLECTION = os.getenv("FIRESTORE_RU_PUBLIC_SCAN_COLLECTION", "bay_s_ru_public_scans")
 DRY_RUN = os.getenv("RADAR_DRY_RUN", "0").strip().lower() not in {"0", "false", "no"}
@@ -90,6 +90,13 @@ PIKABU_NATIVE_TAGS = [
     "Кипр,Недвижимость",
     "Фамагуста",
     "Кипр,Эмиграция",
+]
+
+# Verified public Russian-speaking Cyprus communities. These are broad community
+# seeds, not real-estate seller pages; North-Cyprus + buyer filters still apply.
+VK_NATIVE_SEEDS = [
+    ("ru_cyprus", "Русские на Кипре"),
+    ("rusvecher", "Русские вечера на Кипре"),
 ]
 
 NC_RE = re.compile(
@@ -751,6 +758,143 @@ def _best_html_container(anchor: Any) -> Any:
     return best
 
 
+
+def _vk_rows_from_html(html: str, seed: str, label: str) -> list[dict[str, Any]]:
+    soup = BeautifulSoup(html or "", "html.parser")
+    rows: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+
+    posts = list(soup.select(".post"))
+    if not posts:
+        posts = list(soup.select("[data-post-id], [data-post]"))
+
+    for post in posts[:80]:
+        text_node = post.select_one(".wall_post_text")
+        text = normalize(
+            text_node.get_text(" ", strip=True)
+            if text_node is not None
+            else post.get_text(" ", strip=True)
+        )
+        if len(text) < 35 or not has_nc_context(text):
+            continue
+
+        link = ""
+        for selector in (
+            "a.PostHeaderSubtitle__link[href*='wall']",
+            "a[href*='/wall']",
+            "a[href*='wall-']",
+        ):
+            node = post.select_one(selector)
+            if node is not None:
+                href = str(node.get("href") or "")
+                if href:
+                    link = urllib.parse.urljoin("https://vk.com", href)
+                    break
+
+        if not link:
+            post_id = str(post.get("data-post-id") or post.get("data-post") or "")
+            if post_id:
+                post_id = post_id.replace("_", "-") if post_id.count("_") == 1 else post_id
+                link = f"https://vk.com/wall{post_id}" if post_id.startswith("-") else ""
+
+        if not link or link in seen_urls:
+            continue
+
+        raw_date = ""
+        time_tag = post.find("time")
+        if time_tag is not None:
+            raw_date = str(
+                time_tag.get("datetime")
+                or time_tag.get("title")
+                or time_tag.get_text(" ", strip=True)
+                or ""
+            )
+
+        if not raw_date:
+            date_node = post.select_one(
+                ".PostHeaderSubtitle__link, .post_date, .rel_date, .wi_date"
+            )
+            if date_node is not None:
+                raw_date = normalize(date_node.get_text(" ", strip=True))
+
+        parsed = parse_published(raw_date)
+        published = parsed.isoformat() if parsed else _native_published(raw_date)
+        if not published:
+            NATIVE_DEBUG["VK:no_date"] += 1
+            continue
+
+        author = ""
+        author_node = post.select_one(
+            ".PostHeaderTitle__authorName, .author, .post_author, .pi_author"
+        )
+        if author_node is not None:
+            author = normalize(author_node.get_text(" ", strip=True))
+
+        title = text[:240]
+        seen_urls.add(link)
+        rows.append({
+            "source": "VK Native Public",
+            "platform": "VK",
+            "source_type": "public_native_html",
+            "url": link,
+            "title": title,
+            "text": text[:7000],
+            "published": published,
+            "author": author,
+            "search_query": label,
+            "community_seed": seed,
+            "north_cyprus_context": True,
+        })
+
+    return rows
+
+
+def vk_native_seed_search() -> list[dict[str, Any]]:
+    """Read verified public VK community walls without login or VK API token."""
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; PrimeKibrisRadar/1.3)",
+        "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.6",
+    }
+
+    for seed, label in VK_NATIVE_SEEDS:
+        seed_rows: list[dict[str, Any]] = []
+        for base in ("https://vk.com", "https://m.vk.com"):
+            try:
+                response = requests.get(
+                    f"{base}/{seed}",
+                    headers=headers,
+                    timeout=min(TIMEOUT, 12),
+                    allow_redirects=True,
+                )
+                NATIVE_DEBUG[f"VK:{seed}:{base.split('//')[1]}:http_{response.status_code}"] += 1
+                if response.status_code != 200:
+                    continue
+
+                # VK public pages have historically used mixed encodings.
+                if not response.encoding or response.encoding.lower() in {"iso-8859-1", "ascii"}:
+                    response.encoding = response.apparent_encoding or "utf-8"
+
+                parsed_rows = _vk_rows_from_html(response.text, seed, label)
+                if parsed_rows:
+                    seed_rows.extend(parsed_rows)
+                    break
+            except Exception as exc:
+                NATIVE_DEBUG[f"VK:{seed}:error_{type(exc).__name__}"] += 1
+
+        for row in seed_rows:
+            url = str(row.get("url") or "")
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            rows.append(row)
+
+        NATIVE_DEBUG[f"VK:{seed}:rows"] += len(seed_rows)
+
+    return rows
+
+
 def ok_native_search() -> list[dict[str, Any]]:
     """Read OK public search pages without login, token or paid search API."""
     rows: list[dict[str, Any]] = []
@@ -1148,7 +1292,7 @@ def scan() -> dict[str, Any]:
         stats["accepted_by_platform"][f"{platform} comments"] += 1
         leads.append(lead)
 
-    for row in ok_native_search() + pikabu_native_search():
+    for row in vk_native_seed_search() + ok_native_search() + pikabu_native_search():
         key = fingerprint(row)
         if key in seen:
             continue
@@ -1176,7 +1320,7 @@ def scan() -> dict[str, Any]:
         leads.append(lead)
 
     for platform, domain in SOURCES.items():
-        if platform in {"VC.ru", "DTF", "OK", "Pikabu"}:
+        if platform in {"VC.ru", "DTF", "VK", "OK", "Pikabu"}:
             continue
         for query in PUBLIC_DISCOVERY_QUERIES[:QUERY_LIMIT]:
             stats["queries"] += 1
