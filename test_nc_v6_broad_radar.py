@@ -482,7 +482,7 @@ class BroadIntentTests(unittest.TestCase):
 
     def test_unrelated_group_marketing_listing_rejected_by_classifier(self):
         with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
-            text = "Buy now: North Cyprus apartment for sale, 1+1, £95,000. DM for details."
+            text = "Buy an apartment in North Cyprus today: 1+1 for sale, £95,000. DM for details."
             self.assertTrue(v6.strict_extra_candidate_signal(text))
             lead, reason = v6.classify_text(
                 text,
