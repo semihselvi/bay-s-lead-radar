@@ -61,7 +61,7 @@ CMTT_SITES = {
     "DTF": ("https://dtf.ru", "https://api.dtf.ru"),
 }
 
-CMTT_API_VERSIONS = ("v2.6", "v2.31", "v1.9", "v1.6")
+CMTT_API_VERSIONS = ("v2.6", "v2.31")
 CMTT_DEBUG = Counter()
 CMTT_SAMPLES: dict[str, Any] = {}
 
@@ -276,7 +276,7 @@ def _collect_text_values(value: Any, depth: int = 0) -> list[str]:
     if isinstance(value, dict):
         preferred = (
             "title", "intro", "introInFeed", "text", "content", "value",
-            "caption", "description"
+            "caption", "description", "blocks", "data"
         )
         for key in preferred:
             if key in value:
@@ -288,22 +288,48 @@ def _collect_text_values(value: Any, depth: int = 0) -> list[str]:
 
 def _cmtt_entries(payload: Any) -> list[dict[str, Any]]:
     if isinstance(payload, list):
-        return [x for x in payload if isinstance(x, dict)]
+        out: list[dict[str, Any]] = []
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            data = item.get("data")
+            if isinstance(data, dict) and item.get("type") in {"entry", "content", "post"}:
+                out.append(data)
+            else:
+                out.append(item)
+        return out
 
     if not isinstance(payload, dict):
         return []
 
+    # Current VC.ru / DTF search shape:
+    # {"result": {"contents": [{"type": "entry", "data": {...}}, ...]}}
+    contents = payload.get("contents")
+    if isinstance(contents, list):
+        out: list[dict[str, Any]] = []
+        for wrapper in contents:
+            if not isinstance(wrapper, dict):
+                continue
+            data = wrapper.get("data")
+            if isinstance(data, dict):
+                out.append(data)
+            else:
+                out.append(wrapper)
+        if out:
+            return out
+
     for key in ("result", "items", "data", "entries", "content"):
         value = payload.get(key)
         if isinstance(value, list):
-            return [x for x in value if isinstance(x, dict)]
+            rows = _cmtt_entries(value)
+            if rows:
+                return rows
         if isinstance(value, dict):
             nested = _cmtt_entries(value)
             if nested:
                 return nested
 
     return []
-
 
 def cmtt_public_search() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
@@ -692,7 +718,6 @@ def scan() -> dict[str, Any]:
         "reject_reasons": dict(stats["reject_reasons"]),
         "provider_counts": dict(stats["provider_counts"]),
         "cmtt_debug": dict(CMTT_DEBUG),
-        "cmtt_samples": CMTT_SAMPLES,
         "leads": leads[:50],
     }
 
