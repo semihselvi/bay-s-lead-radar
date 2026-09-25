@@ -7,7 +7,7 @@ import re
 import urllib.parse
 import xml.etree.ElementTree as ET
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import requests
@@ -45,6 +45,8 @@ QUERIES = [
     '"Фамагуста" "хочу купить" квартиру',
     '"Гирне" "хочу купить" квартиру',
 ]
+
+QUERY_LIMIT = max(1, min(int(os.getenv("RADAR_RU_PUBLIC_QUERY_LIMIT", str(len(QUERIES))) or str(len(QUERIES))), len(QUERIES)))
 
 NC_RE = re.compile(
     r"(?:северн\w*\s+кипр\w*|искел\w*|лонг\s+бич|фамагуст\w*|гирн\w*|"
@@ -238,6 +240,53 @@ def bing_rss_search(query: str, domain: str) -> list[dict[str, Any]]:
         return []
 
 
+def serper_search(query: str, domain: str) -> list[dict[str, Any]]:
+    key = os.getenv("SERPER_API_KEY", "").strip()
+    if not key:
+        return []
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).date().isoformat()
+    scoped = f"{query} site:{domain} after:{cutoff}"
+
+    try:
+        r = requests.post(
+            "https://google.serper.dev/search",
+            headers={"X-API-KEY": key, "Content-Type": "application/json"},
+            json={
+                "q": scoped,
+                "num": MAX_PER_QUERY,
+                "hl": "ru",
+                "gl": "ru",
+                "tbs": "qdr:m3",
+            },
+            timeout=TIMEOUT,
+        )
+        if r.status_code != 200:
+            return []
+
+        out = []
+        for x in r.json().get("organic", []) or []:
+            link = x.get("link", "")
+            if not link or domain not in link.lower():
+                continue
+
+            out.append({
+                "source": "Serper",
+                "platform": platform_from_url(link),
+                "source_type": "public_search_index",
+                "url": link,
+                "title": normalize(x.get("title", "")),
+                "text": normalize(x.get("snippet", "")),
+                "published": x.get("date", "") or "",
+                "author": "",
+                "search_query": query,
+            })
+
+        return out[:MAX_PER_QUERY]
+    except Exception:
+        return []
+
+
 def exa_search(query: str, domain: str) -> list[dict[str, Any]]:
     api_key = os.getenv("EXA_API_KEY", "").strip()
     if not api_key:
@@ -364,18 +413,22 @@ def scan() -> dict[str, Any]:
         "raw_by_platform": Counter(),
         "accepted_by_platform": Counter(),
         "reject_reasons": Counter(),
+        "provider_counts": Counter(),
         "queries": 0,
     }
 
     for platform, domain in SOURCES.items():
-        for query in QUERIES:
+        for query in QUERIES[:QUERY_LIMIT]:
             stats["queries"] += 1
 
-            rows = exa_search(query, domain)
+            rows = serper_search(query, domain)
+            if not rows:
+                rows = exa_search(query, domain)
             if not rows:
                 rows = bing_rss_search(query, domain)
 
             for row in rows:
+                stats["provider_counts"][str(row.get("source") or "unknown")] += 1
                 key = fingerprint(row)
                 if key in seen:
                     continue
@@ -438,6 +491,7 @@ def scan() -> dict[str, Any]:
             "raw_by_platform": dict(stats["raw_by_platform"]),
             "accepted_by_platform": dict(stats["accepted_by_platform"]),
             "reject_reasons": dict(stats["reject_reasons"]),
+            "provider_counts": dict(stats["provider_counts"]),
             "accepted": len(leads),
             "saved_new": len(saved),
             "queries": stats["queries"],
@@ -451,6 +505,7 @@ def scan() -> dict[str, Any]:
         "raw_by_platform": dict(stats["raw_by_platform"]),
         "accepted_by_platform": dict(stats["accepted_by_platform"]),
         "reject_reasons": dict(stats["reject_reasons"]),
+        "provider_counts": dict(stats["provider_counts"]),
         "leads": leads[:50],
     }
 
