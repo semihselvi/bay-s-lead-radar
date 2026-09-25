@@ -17,7 +17,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.6-provider-circuit-breaker"
+VERSION = "6.7-strict-extra-groups"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -629,6 +629,12 @@ DEBUG: dict[str, Any] = {
     "messages_scanned": 0,
     "groups_total": 0,
     "groups_relevant": 0,
+    "strict_extra_groups_scanned": 0,
+    "strict_extra_messages_scanned": 0,
+    "strict_extra_geo_pass": 0,
+    "strict_extra_signal_pass": 0,
+    "strict_extra_accepted": 0,
+    "strict_extra_reject_reasons": Counter(),
     "geography_pass": 0,
     "signal_pass": 0,
     "accepted": 0,
@@ -656,6 +662,26 @@ def _group_scope(group: str) -> tuple[bool, bool, bool]:
         bool(DIRECT_NORTH_GROUP_RE.search(group or "")),
         bool(GENERIC_CYPRUS_GROUP_RE.search(group or "")),
         bool(THEMATIC_GROUP_RE.search(group or "")),
+    )
+
+
+def strict_extra_candidate_signal(text: str) -> bool:
+    """Very high precision prefilter for groups whose names look unrelated.
+
+    These groups get no market context from their title. A message must carry
+    its own North-Cyprus location, property object and buyer-side signal before
+    the normal sales-only classifier is even called.
+    """
+    own = str(text or "")
+    return bool(
+        has_nc_geo(own)
+        and PROPERTY_RE.search(own)
+        and (
+            BUY_RE.search(own)
+            or DEMAND_RE.search(own)
+            or PURCHASE_QUALIFIER_RE.search(own)
+            or INVESTOR_RE.search(own)
+        )
     )
 
 
@@ -819,12 +845,17 @@ async def broad_telegram_scan(db_client, started):
             entity = dialog.entity
             group = dialog.name or getattr(entity, "username", None) or str(dialog.id)
             direct_north, generic_cyprus, thematic = _group_scope(group)
-            if not any((direct_north, generic_cyprus, thematic)):
-                continue
-            DEBUG["groups_relevant"] += 1
+            strict_extra = not any((direct_north, generic_cyprus, thematic))
+
+            if strict_extra:
+                DEBUG["strict_extra_groups_scanned"] += 1
+                message_limit = min(60, core.TELEGRAM_PER_GROUP_LIMIT)
+            else:
+                DEBUG["groups_relevant"] += 1
+                message_limit = core.TELEGRAM_PER_GROUP_LIMIT
 
             try:
-                async for msg in client.iter_messages(entity, limit=core.TELEGRAM_PER_GROUP_LIMIT):
+                async for msg in client.iter_messages(entity, limit=message_limit):
                     text = str(getattr(msg, "message", "") or "").strip()
                     if not text:
                         continue
@@ -836,74 +867,99 @@ async def broad_telegram_scan(db_client, started):
                     if dt < cutoff:
                         break
 
-                    DEBUG["messages_scanned"] += 1
-                    DEBUG["groups"][group] += 1
+                    if strict_extra:
+                        DEBUG["strict_extra_messages_scanned"] += 1
+                    else:
+                        DEBUG["messages_scanned"] += 1
+                        DEBUG["groups"][group] += 1
 
                     text_key = hashlib.sha256(_norm(text).encode("utf-8", "ignore")).hexdigest()
                     if text_key in seen_text_hashes:
-                        DEBUG["reject_reasons"]["duplicate_text"] += 1
+                        if strict_extra:
+                            DEBUG["strict_extra_reject_reasons"]["duplicate_text"] += 1
+                        else:
+                            DEBUG["reject_reasons"]["duplicate_text"] += 1
                         continue
                     seen_text_hashes.add(text_key)
 
                     explicit_geo = has_nc_geo(text)
 
-                    # Generic Cyprus or thematic groups need message-level North
-                    # Cyprus evidence. Direct North-Cyprus groups provide context.
-                    if not direct_north and not explicit_geo:
-                        DEBUG["reject_reasons"]["no_north_context"] += 1
-                        continue
-                    if generic_cyprus and SOUTH_ONLY_RE.search(text) and not explicit_geo:
-                        DEBUG["reject_reasons"]["south_only"] += 1
-                        continue
-                    DEBUG["geography_pass"] += 1
+                    if strict_extra:
+                        if not explicit_geo:
+                            DEBUG["strict_extra_reject_reasons"]["no_north_context"] += 1
+                            continue
+                        DEBUG["strict_extra_geo_pass"] += 1
 
-                    if not candidate_signal(text):
-                        DEBUG["reject_reasons"]["no_candidate_signal"] += 1
-                        continue
-                    DEBUG["signal_pass"] += 1
+                        if not strict_extra_candidate_signal(text):
+                            if not PROPERTY_RE.search(text):
+                                DEBUG["strict_extra_reject_reasons"]["no_property"] += 1
+                            else:
+                                DEBUG["strict_extra_reject_reasons"]["no_buyer_signal"] += 1
+                            continue
+                        DEBUG["strict_extra_signal_pass"] += 1
+                    else:
+                        # Generic Cyprus or thematic groups need message-level North
+                        # Cyprus evidence. Direct North-Cyprus groups provide context.
+                        if not direct_north and not explicit_geo:
+                            DEBUG["reject_reasons"]["no_north_context"] += 1
+                            continue
+                        if generic_cyprus and SOUTH_ONLY_RE.search(text) and not explicit_geo:
+                            DEBUG["reject_reasons"]["south_only"] += 1
+                            continue
+                        DEBUG["geography_pass"] += 1
+
+                        if not candidate_signal(text):
+                            DEBUG["reject_reasons"]["no_candidate_signal"] += 1
+                            continue
+                        DEBUG["signal_pass"] += 1
 
                     try:
                         await msg.get_sender()
                     except Exception:
                         pass
                     candidate = _base_candidate(group, entity, msg, started)
+                    if strict_extra:
+                        candidate["source_type"] = "joined_group_strict_extra"
                     signal, reason = classify_text(
                         text,
-                        group=group,
+                        group="" if strict_extra else group,
                         author=candidate.get("author", ""),
                         explicit_geo=explicit_geo,
                     )
                     if signal is None:
-                        DEBUG["reject_reasons"][reason] += 1
-                        if reason == "no_explicit_purchase_intent":
-                            DEBUG["review_candidates"] += 1
-                            review, review_reason = evaluate_review_candidate(candidate)
-                            if review is None:
-                                DEBUG["review_reject_reasons"][review_reason] += 1
-                            else:
-                                DEBUG["review_qualified"] += 1
-                                stable_id = f"telegram-review|{dialog.id}|{msg.id}"
-                                review_id = hashlib.sha256(stable_id.encode("utf-8")).hexdigest()
-                                review["lead_id"] = review_id
-                                review["review_reason"] = reason
-                                review["buyer_signal"] = "review_purchase_possible"
-                                try:
-                                    db_client.collection("bay_s_lead_radar_review").document(review_id).set(review, merge=True)
-                                    DEBUG["review_saved"] += 1
-                                except Exception as exc:
-                                    DEBUG["errors"].append(f"review_firestore:{type(exc).__name__}:{exc}")
-                                review_pool.append(review)
-                                if len(DEBUG["review_samples"]) < 12:
-                                    DEBUG["review_samples"].append({
-                                        "score": review.get("review_score", 0),
-                                        "author": review.get("author", ""),
-                                        "group": review.get("group", ""),
-                                        "message": review.get("message", "")[:500],
-                                        "url": review.get("url", ""),
-                                        "budget": review.get("estimated_budget", ""),
-                                        "region": review.get("estimated_region", ""),
-                                        "reasons": review.get("review_reasons", []),
-                                    })
+                        if strict_extra:
+                            DEBUG["strict_extra_reject_reasons"][reason] += 1
+                        else:
+                            DEBUG["reject_reasons"][reason] += 1
+                            if reason == "no_explicit_purchase_intent":
+                                DEBUG["review_candidates"] += 1
+                                review, review_reason = evaluate_review_candidate(candidate)
+                                if review is None:
+                                    DEBUG["review_reject_reasons"][review_reason] += 1
+                                else:
+                                    DEBUG["review_qualified"] += 1
+                                    stable_id = f"telegram-review|{dialog.id}|{msg.id}"
+                                    review_id = hashlib.sha256(stable_id.encode("utf-8")).hexdigest()
+                                    review["lead_id"] = review_id
+                                    review["review_reason"] = reason
+                                    review["buyer_signal"] = "review_purchase_possible"
+                                    try:
+                                        db_client.collection("bay_s_lead_radar_review").document(review_id).set(review, merge=True)
+                                        DEBUG["review_saved"] += 1
+                                    except Exception as exc:
+                                        DEBUG["errors"].append(f"review_firestore:{type(exc).__name__}:{exc}")
+                                    review_pool.append(review)
+                                    if len(DEBUG["review_samples"]) < 12:
+                                        DEBUG["review_samples"].append({
+                                            "score": review.get("review_score", 0),
+                                            "author": review.get("author", ""),
+                                            "group": review.get("group", ""),
+                                            "message": review.get("message", "")[:500],
+                                            "url": review.get("url", ""),
+                                            "budget": review.get("estimated_budget", ""),
+                                            "region": review.get("estimated_region", ""),
+                                            "reasons": review.get("review_reasons", []),
+                                        })
                         continue
 
                     stable_id = f"telegram|{dialog.id}|{msg.id}"
@@ -927,14 +983,18 @@ async def broad_telegram_scan(db_client, started):
                     accepted.append(lead)
 
                     DEBUG["accepted"] += 1
+                    if strict_extra:
+                        DEBUG["strict_extra_accepted"] += 1
                     DEBUG["accepted_classes"][signal["lead_class"]] += 1
                     DEBUG["languages"][signal["language"]] += 1
             except core.FloodWaitError as exc:
                 errors += 1
-                DEBUG["errors"].append(f"telegram_flood_wait:{group}:{exc.seconds}")
+                scope = "strict_extra" if strict_extra else "primary"
+                DEBUG["errors"].append(f"telegram_flood_wait:{scope}:{group}:{exc.seconds}")
             except Exception as exc:
                 errors += 1
-                DEBUG["errors"].append(f"telegram_group:{group}:{type(exc).__name__}:{exc}")
+                scope = "strict_extra" if strict_extra else "primary"
+                DEBUG["errors"].append(f"telegram_group:{scope}:{group}:{type(exc).__name__}:{exc}")
             await asyncio.sleep(0.20)
 
         return {
@@ -1157,6 +1217,7 @@ def _serializable_debug() -> dict[str, Any]:
         "web_reject_reasons": dict(DEBUG["web_reject_reasons"]),
         "web_provider_errors": dict(DEBUG["web_provider_errors"]),
         "review_reject_reasons": dict(DEBUG["review_reject_reasons"]),
+        "strict_extra_reject_reasons": dict(DEBUG["strict_extra_reject_reasons"]),
     }
 
 
@@ -1177,16 +1238,18 @@ def save_and_notify_debug() -> None:
     platforms = ", ".join(f"{k}:{v}" for k, v in DEBUG["web_platforms"].most_common()) or "-"
     provider_errors = ", ".join(f"{k}:{v}" for k, v in DEBUG["web_provider_errors"].most_common()) or "-"
     web_rejects = ", ".join(f"{k}:{v}" for k, v in DEBUG["web_reject_reasons"].most_common(8)) or "-"
+    strict_extra_rejects = ", ".join(f"{k}:{v}" for k, v in DEBUG["strict_extra_reject_reasons"].most_common(6)) or "-"
     total_errors = len(DEBUG["errors"])
     msg = (
         "🧪 LEAD RADAR DEBUG | SON TARAMA\n\n"
-        f"Telegram grup: {DEBUG['groups_relevant']}/{DEBUG['groups_total']}\n"
-        f"Telegram mesaj: {DEBUG['messages_scanned']}\n"
+        f"Telegram ana grup: {DEBUG['groups_relevant']}/{DEBUG['groups_total']} | Mesaj: {DEBUG['messages_scanned']}\n"
+        f"Ek sıkı grup: {DEBUG['strict_extra_groups_scanned']} | Mesaj: {DEBUG['strict_extra_messages_scanned']} | NC: {DEBUG['strict_extra_geo_pass']} | Aday: {DEBUG['strict_extra_signal_pass']} | Kabul: {DEBUG['strict_extra_accepted']}\n"
         f"Coğrafya geçti: {DEBUG['geography_pass']}\n"
         f"Intent/keyword adayı: {DEBUG['signal_pass']}\n"
         f"Kabul edilen: {DEBUG['accepted']}\n"
         f"REVIEW ön aday: {DEBUG['review_candidates']} | Kaliteli: {DEBUG['review_qualified']} | Kaydedilen: {DEBUG['review_saved']}\n"
         f"REVIEW eleme: {', '.join(f'{k}:{v}' for k, v in DEBUG['review_reject_reasons'].most_common(6)) or '-'}\n"
+        f"Ek sıkı eleme: {strict_extra_rejects}\n"
         f"Sınıflar: {classes}\n"
         f"Diller: {langs}\n"
         f"Eleme nedenleri: {rejects}\n"
