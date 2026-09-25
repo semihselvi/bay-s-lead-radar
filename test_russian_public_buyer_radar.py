@@ -163,5 +163,35 @@ class RussianPublicBuyerRadarTests(unittest.TestCase):
         self.assertIsNone(lead)
         self.assertEqual("seller_or_listing", reason)
 
+
+    def test_vk_html_parser_extracts_north_cyprus_buyer(self):
+        html = """
+        <div class="post">
+          <a class="PostHeaderSubtitle__link" href="/wall-123_456">сегодня в 11:20</a>
+          <div class="wall_post_text">
+            Я хочу купить квартиру на Северном Кипре, бюджет 120 000 евро. Подскажите район.
+          </div>
+        </div>
+        """
+        rows = r._vk_rows_from_html(html, "ru_cyprus", "Русские на Кипре")
+        self.assertEqual(1, len(rows))
+        self.assertEqual("VK", rows[0]["platform"])
+        self.assertIn("wall-123_456", rows[0]["url"])
+        lead, reason = r.classify_candidate(rows[0])
+        self.assertIsNotNone(lead, reason)
+        self.assertEqual("BUYER", lead["intent_type"])
+
+    def test_vk_html_parser_drops_south_cyprus_only_post(self):
+        html = """
+        <div class="post">
+          <a class="PostHeaderSubtitle__link" href="/wall-123_457">сегодня в 11:25</a>
+          <div class="wall_post_text">
+            Я хочу купить квартиру в Лимассоле на Кипре, бюджет 300 000 евро.
+          </div>
+        </div>
+        """
+        rows = r._vk_rows_from_html(html, "ru_cyprus", "Русские на Кипре")
+        self.assertEqual([], rows)
+
 if __name__ == "__main__":
     unittest.main()
