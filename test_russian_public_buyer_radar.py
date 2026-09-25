@@ -1,44 +1,125 @@
 import unittest
 
-import russian_public_buyer_radar as ru
+import russian_public_buyer_radar as r
+
+
+def item(text, url="https://vk.com/wall-1_1"):
+    return {
+        "title": text,
+        "text": "",
+        "url": url,
+        "platform": r.platform_from_url(url),
+        "source": "test",
+    }
 
 
 class RussianPublicBuyerRadarTests(unittest.TestCase):
-    def item(self, text, url="https://vk.com/wall-1_1"):
-        return {"title": "", "text": text, "url": url, "published": "", "author": ""}
-
-    def test_accepts_explicit_buyer(self):
-        lead, reason = ru.classify_item(
-            self.item("Северный Кипр, хочу купить квартиру в Искеле. Бюджет 120000 евро. Что посоветуете?")
-        )
+    def assertAccepted(self, text):
+        lead, reason = r.classify_candidate(item(text))
         self.assertIsNotNone(lead, reason)
-        self.assertIn(lead["intent_type"], {"BUYER", "INVESTOR"})
+        self.assertEqual("BUYER", lead["intent_type"])
+        return lead
 
-    def test_rejects_rental_only(self):
-        lead, reason = ru.classify_item(
-            self.item("Северный Кипр. Ищу квартиру в аренду в Искеле на 6 месяцев.")
-        )
+    def assertRejected(self, text, reason):
+        lead, got = r.classify_candidate(item(text))
         self.assertIsNone(lead)
-        self.assertEqual(reason, "rental_only")
+        self.assertEqual(reason, got)
 
-    def test_rejects_seller(self):
-        lead, reason = ru.classify_item(
-            self.item("Северный Кипр. Продаю квартиру в Искеле, пишите в личку.")
+    def test_explicit_buyer(self):
+        lead = self.assertAccepted(
+            "Я хочу купить квартиру на Северном Кипре, бюджет 120 000 евро. Подскажите район."
         )
-        self.assertIsNone(lead)
+        self.assertEqual("HOT", lead["classification"])
 
-    def test_rejects_without_north_cyprus(self):
-        lead, reason = ru.classify_item(
-            self.item("Хочу купить квартиру в Москве, бюджет 150000 евро.")
+    def test_planning_buyer(self):
+        self.assertAccepted(
+            "Мы планируем купить виллу в Гирне в следующем месяце. Что посоветуете?"
         )
-        self.assertIsNone(lead)
-        self.assertEqual(reason, "no_north_cyprus_context")
 
-    def test_accepts_research_with_purchase_intent(self):
-        lead, reason = ru.classify_item(
-            self.item("Северный Кипр: стоит ли покупать недвижимость в Гирне для инвестиции?")
+    def test_investor_buyer(self):
+        self.assertAccepted(
+            "Я рассматриваю покупку квартиры в Искеле для инвестиций. Бюджет €150000."
         )
+
+    def test_tenant_rejected(self):
+        self.assertRejected(
+            "Ищу квартиру на Северном Кипре, хочу снять на год.",
+            "tenant",
+        )
+
+    def test_seller_rejected(self):
+        self.assertRejected(
+            "Продаю квартиру на Северном Кипре. Отличная цена, пишите в лс.",
+            "seller_or_listing",
+        )
+
+    def test_company_rental_article_is_not_buyer(self):
+        self.assertRejected(
+            "Северный Кипр. Если вы рассматриваете варианты аренды жилья, компания Alliance-Estate "
+            "ваш идеальный партнер. Мы специализируемся на аренде и продаже недвижимости. "
+            "Звоните нам или посетите наш сайт.",
+            "provider_or_agent",
+        )
+
+    def test_agent_rejected(self):
+        self.assertRejected(
+            "Агентство недвижимости Северного Кипра предлагает квартиры. Свяжитесь с нами.",
+            "provider_or_agent",
+        )
+
+    def test_completed_buyer_rejected(self):
+        self.assertRejected(
+            "Я уже купил квартиру на Северном Кипре и теперь делюсь опытом.",
+            "completed_or_cancelled",
+        )
+
+    def test_generic_article_rejected(self):
+        self.assertRejected(
+            "Недвижимость Северного Кипра: обзор рынка и цены на квартиры.",
+            "no_explicit_purchase_intent",
+        )
+
+    def test_long_beach_racing_is_not_north_cyprus(self):
+        self.assertFalse(
+            r.has_nc_context("Long Beach drift yarışları ve motorsporları takvimi")
+        )
+
+    def test_long_beach_with_cyprus_context_is_north_cyprus(self):
+        self.assertTrue(
+            r.has_nc_context("Северный Кипр, Лонг Бич, Искеле")
+        )
+
+    def test_old_native_post_is_stale(self):
+        candidate = item("Я хочу купить квартиру на Северном Кипре.")
+        candidate["source_type"] = "public_platform_api"
+        candidate["published"] = "1704067200"
+        self.assertFalse(r.is_recent_enough(candidate, 90))
+
+    def test_south_cyprus_not_accepted(self):
+        self.assertRejected(
+            "Я хочу купить квартиру в Лимассоле на Кипре.",
+            "no_north_cyprus_context",
+        )
+
+    def test_comment_buyer_with_parent_context(self):
+        candidate = item("Хочу купить квартиру, бюджет 130 000 евро. Что посоветуете?")
+        candidate["north_cyprus_context"] = True
+        lead, reason = r.classify_candidate(candidate)
         self.assertIsNotNone(lead, reason)
+        self.assertEqual("BUYER", lead["intent_type"])
+
+    def test_comment_without_buyer_intent_rejected(self):
+        candidate = item("Спасибо, очень интересная статья.")
+        candidate["north_cyprus_context"] = True
+        lead, reason = r.classify_candidate(candidate)
+        self.assertIsNone(lead)
+        self.assertIn(reason, {"no_property", "no_explicit_purchase_intent"})
+
+    def test_no_property_rejected(self):
+        self.assertRejected(
+            "Я хочу купить автомобиль на Северном Кипре.",
+            "no_property",
+        )
 
 
 if __name__ == "__main__":
