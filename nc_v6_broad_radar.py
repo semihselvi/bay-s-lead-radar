@@ -17,7 +17,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.3-live-precision-rental-routing"
+VERSION = "6.4-review-quality-gate"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -680,6 +680,19 @@ def build_review_candidate(candidate: dict[str, Any]) -> dict[str, Any] | None:
     if not text:
         return None
 
+    # REVIEW is not a second listing bucket. It should contain only ambiguous
+    # people who may genuinely be in a purchase/research journey.
+    if RENT_DEMAND_RE.search(text):
+        return None
+    if SELLER_DIRECTION_RE.search(text):
+        return None
+    if radar.TG_STRONG_SUPPLY_RE.search(text) or SUPPLY_STRONG_RE.search(text):
+        return None
+    if POST_PURCHASE_OR_INFO_RE.search(text) or DISCUSSION_OR_HYPOTHETICAL_RE.search(text):
+        return None
+    if COMMERCIAL_PROVIDER_RE.search(text):
+        return None
+
     has_property = bool(PROPERTY_RE.search(text))
     demand = bool(DEMAND_RE.search(text))
     budget = extract_budget(text)
@@ -688,16 +701,45 @@ def build_review_candidate(candidate: dict[str, Any]) -> dict[str, Any] | None:
     region = extract_region(text)
     qualifier = bool(PURCHASE_QUALIFIER_RE.search(text))
     investor = bool(INVESTOR_RE.search(text))
+    research = bool(RESEARCH_RE.search(text))
+    residency = bool(RESIDENCY_RE.search(text))
     agent_client = bool(AGENT_CLIENT_RE.search(text))
 
-    score = 0
-    reasons: list[str] = []
-    if has_property:
-        score += 2; reasons.append("property")
-    if demand:
-        score += 2; reasons.append("demand")
+    # Typical listing-shaped messages have property specs + asking price but
+    # no first-person demand/research. Do not save these as REVIEW.
+    listing_shape = bool(
+        has_property
+        and not demand
+        and (
+            re.search(r"\\b(?:цена|price|fiyat)\\b", text, re.I)
+            or re.search(r"\\b\\d{2,4}(?:[.,]\\d+)?\\s*(?:m2|m²|м2|м²)\\b", text, re.I)
+            or re.search(r"\\b(?:этаж|площадь|налоги|трафо|балкон|терраса|парковка)\\b", text, re.I)
+        )
+    )
+    if listing_shape:
+        return None
+
+    # Ambiguous searches such as "Ищу 2+1 для студентов" are usually rentals.
+    # For REVIEW we require a purchase/research clue beyond generic "looking for".
+    purchase_context = bool(
+        qualifier
+        or investor
+        or research
+        or residency
+        or agent_client
+        or (
+            purchase_budget
+            and demand
+            and re.search(r"\\b(?:бюджет|budget|bütçe)\\b", text, re.I)
+        )
+    )
+    if not (has_property and demand and purchase_context):
+        return None
+
+    score = 4
+    reasons: list[str] = ["property", "demand", "purchase_context"]
     if purchase_budget:
-        score += 4; reasons.append("purchase_sized_budget")
+        score += 3; reasons.append("purchase_sized_budget")
     elif budget:
         score += 1; reasons.append("budget")
     if room:
@@ -707,13 +749,13 @@ def build_review_candidate(candidate: dict[str, Any]) -> dict[str, Any] | None:
     if qualifier:
         score += 2; reasons.append("purchase_qualifier")
     if investor:
-        score += 1; reasons.append("investment")
+        score += 2; reasons.append("investment")
+    if research:
+        score += 2; reasons.append("research")
+    if residency:
+        score += 1; reasons.append("residency")
     if agent_client:
         score += 2; reasons.append("agent_client")
-
-    # Review is only useful for cases that have multiple commercial signals.
-    if score < 4:
-        return None
 
     return {
         **candidate,

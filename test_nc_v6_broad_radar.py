@@ -339,5 +339,40 @@ class BroadIntentTests(unittest.TestCase):
             )
         self.assertIsNone(lead)
 
+
+    def test_review_rejects_listing_shaped_sale(self):
+        review = v6.build_review_candidate({
+            "message": "Новый дюплекс 2+1 в Алсанджаке. Площадь 110 м². Цена 115.000 GBP. Обменный титул.",
+            "group": "СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+            "author": "@seller",
+        })
+        self.assertIsNone(review)
+
+    def test_review_rejects_ambiguous_student_search(self):
+        review = v6.build_review_candidate({
+            "message": "Ищу для двух парней студентов 2+1 или студию, Гирне",
+            "group": "СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+            "author": "@person",
+        })
+        self.assertIsNone(review)
+
+    def test_review_rejects_rental_listing(self):
+        review = v6.build_review_candidate({
+            "message": "Аренда Гирне. Вилла 3+1, 1600£, 2 депозита и комиссия.",
+            "group": "СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+            "author": "@agent",
+        })
+        self.assertIsNone(review)
+
+    def test_review_keeps_plausible_purchase_research(self):
+        review = v6.build_review_candidate({
+            "message": "Ищу квартиру в Искеле. Какой район лучше для инвестиции и какие сейчас цены?",
+            "group": "СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+            "author": "@person",
+        })
+        self.assertIsNotNone(review)
+        self.assertEqual(review["classification"], "REVIEW")
+        self.assertIn("purchase_context", review["review_reasons"])
+
 if __name__ == "__main__":
     unittest.main()
