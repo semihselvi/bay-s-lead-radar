@@ -15,7 +15,7 @@ from typing import Any
 import requests
 from bs4 import BeautifulSoup
 
-VERSION = "1.4.0-native-mailru-ok-pikabu"
+VERSION = "1.4.1-fast-mailru-bing"
 COLLECTION = os.getenv("FIRESTORE_COLLECTION", "bay_s_leads")
 SCAN_COLLECTION = os.getenv("FIRESTORE_RU_PUBLIC_SCAN_COLLECTION", "bay_s_ru_public_scans")
 DRY_RUN = os.getenv("RADAR_DRY_RUN", "0").strip().lower() not in {"0", "false", "no"}
@@ -354,7 +354,8 @@ def classify_candidate(item: dict[str, Any]) -> tuple[dict[str, Any] | None, str
 
 
 def bing_rss_search(query: str, domain: str) -> list[dict[str, Any]]:
-    scoped = f"{query} site:{domain}"
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=MAX_AGE_DAYS)).date().isoformat()
+    scoped = f"{query} site:{domain} after:{cutoff}"
     url = "https://www.bing.com/search?format=rss&q=" + urllib.parse.quote_plus(scoped)
     try:
         r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=TIMEOUT)
@@ -1470,7 +1471,8 @@ def scan() -> dict[str, Any]:
         leads.append(lead)
 
     NATIVE_DEBUG["VK:disabled_login_captcha_wall"] += 1
-    for row in mailru_native_search() + ok_native_search() + pikabu_native_search():
+    NATIVE_DEBUG["MailRu:native_disabled_timeout"] += 1
+    for row in ok_native_search() + pikabu_native_search():
         key = fingerprint(row)
         if key in seen:
             continue
@@ -1498,16 +1500,23 @@ def scan() -> dict[str, Any]:
         leads.append(lead)
 
     for platform, domain in SOURCES.items():
-        if platform in {"VC.ru", "DTF", "VK", "OK", "Pikabu", "MailRu Answers"}:
+        if platform in {"VC.ru", "DTF", "VK", "OK", "Pikabu"}:
             continue
         for query in PUBLIC_DISCOVERY_QUERIES[:QUERY_LIMIT]:
             stats["queries"] += 1
 
-            rows = serper_search(query, domain)
-            if not rows:
-                rows = exa_search(query, domain)
-            if not rows:
+            if platform == "MailRu Answers":
+                # MailRu native endpoints time out from GitHub-hosted runners.
+                # Keep this source free and fast through date-bounded Bing RSS only.
                 rows = bing_rss_search(query, domain)
+                NATIVE_DEBUG["MailRu:BingRSS_queries"] += 1
+                NATIVE_DEBUG["MailRu:BingRSS_rows"] += len(rows)
+            else:
+                rows = serper_search(query, domain)
+                if not rows:
+                    rows = exa_search(query, domain)
+                if not rows:
+                    rows = bing_rss_search(query, domain)
 
             for row in rows:
                 stats["provider_counts"][str(row.get("source") or "unknown")] += 1
