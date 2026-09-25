@@ -576,5 +576,46 @@ class BroadIntentTests(unittest.TestCase):
     def test_public_peer_discovery_api_is_available(self):
         self.assertTrue(hasattr(v6.tg_functions.contacts, "SearchRequest"))
 
+
+    def test_owner_direct_russian_purchase_is_buyer(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            lead, reason = v6.classify_text(
+                "Куплю от собственника 1+1 или 2+1 в Искеле. Бюджет £120000.",
+                group="СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+            )
+        self.assertIsNotNone(lead, reason)
+        self.assertEqual(reason, "accepted")
+        self.assertIn(lead["lead_class"], {"HOT BUYER", "WARM BUYER"})
+        self.assertIn("owner_direct_buyer_preference", lead["lead_reasons"])
+
+    def test_owner_direct_turkish_purchase_is_buyer(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            lead, reason = v6.classify_text(
+                "İskele'de sahibinden 2+1 daire almak istiyorum, bütçem £130000.",
+                group="Kuzey Kıbrıs Gayrimenkul",
+            )
+        self.assertIsNotNone(lead, reason)
+        self.assertEqual(reason, "accepted")
+
+    def test_owner_direct_english_purchase_is_buyer(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            lead, reason = v6.classify_text(
+                "Looking to buy a 2 bedroom apartment in North Cyprus direct from owner. Budget £150,000.",
+                group="",
+                explicit_geo=True,
+            )
+        self.assertIsNotNone(lead, reason)
+        self.assertEqual(reason, "accepted")
+
+    def test_owner_direct_sale_listing_still_rejected(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            lead, reason = v6.classify_text(
+                "North Cyprus apartment for sale direct from owner, £120000, WhatsApp for details.",
+                group="",
+                explicit_geo=True,
+            )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "supply_or_agent")
+
 if __name__ == "__main__":
     unittest.main()
