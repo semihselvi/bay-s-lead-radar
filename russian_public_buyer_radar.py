@@ -151,26 +151,6 @@ def normalize(text: str) -> str:
 
 def platform_from_url(url: str) -> str:
     low = (url or "").lower()
-    for row in cmtt_public_search():
-        key = fingerprint(row)
-        if key in seen:
-            continue
-
-        seen.add(key)
-        platform = str(row.get("platform") or "CMTT")
-        stats["raw_by_platform"][platform] += 1
-        stats["provider_counts"][str(row.get("source") or "CMTT API")] += 1
-
-        lead, reason = classify_candidate(row)
-        if not lead:
-            stats["reject_reasons"][reason] += 1
-            continue
-
-        lead["lead_id"] = key
-        lead["found_at"] = started.isoformat()
-        stats["accepted_by_platform"][platform] += 1
-        leads.append(lead)
-
     for platform, domain in SOURCES.items():
         if domain in low:
             return platform
@@ -585,6 +565,26 @@ def scan() -> dict[str, Any]:
         "provider_counts": Counter(),
         "queries": 0,
     }
+
+    for row in cmtt_public_search():
+        key = fingerprint(row)
+        if key in seen:
+            continue
+
+        seen.add(key)
+        platform = str(row.get("platform") or "CMTT")
+        stats["raw_by_platform"][platform] += 1
+        stats["provider_counts"][str(row.get("source") or "CMTT API")] += 1
+
+        lead, reason = classify_candidate(row)
+        if not lead:
+            stats["reject_reasons"][reason] += 1
+            continue
+
+        lead["lead_id"] = key
+        lead["found_at"] = started.isoformat()
+        stats["accepted_by_platform"][platform] += 1
+        leads.append(lead)
 
     for platform, domain in SOURCES.items():
         if platform in {"VC.ru", "DTF"}:
