@@ -557,5 +557,24 @@ class BroadIntentTests(unittest.TestCase):
         self.assertTrue(any("North Cyprus apartment" == q for q in queries))
         self.assertTrue(any("Kuzey Kıbrıs daire" == q for q in queries))
 
+
+    def test_global_public_rejects_our_own_radar_feedback(self):
+        text = (
+            "🟡 LEAD RADAR | WARM BUYER [NEW] "
+            "Северный Кипр квартира, хочу купить 2+1"
+        )
+        self.assertFalse(v6.global_public_candidate_signal(text, "@radar_bot"))
+
+    def test_public_peer_queries_cover_core_markets(self):
+        joined = " ".join(v6.TELEGRAM_PUBLIC_PEER_QUERIES)
+        self.assertIn("North Cyprus", joined)
+        self.assertIn("Северный Кипр", joined)
+        self.assertIn("Kuzey Kıbrıs", joined)
+        self.assertIn("Iskele", joined)
+        self.assertIn("Girne", joined)
+
+    def test_public_peer_discovery_api_is_available(self):
+        self.assertTrue(hasattr(v6.tg_functions.contacts, "SearchRequest"))
+
 if __name__ == "__main__":
     unittest.main()
