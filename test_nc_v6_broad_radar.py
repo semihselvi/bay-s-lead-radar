@@ -516,5 +516,39 @@ class BroadIntentTests(unittest.TestCase):
         self.assertIsNone(lead)
         self.assertEqual(reason, "nonproperty_goods")
 
+
+    def test_global_public_candidate_requires_own_nc_context(self):
+        self.assertTrue(v6.global_public_candidate_signal(
+            "Looking to buy a 2+1 apartment in North Cyprus, budget £120,000."
+        ))
+        self.assertFalse(v6.global_public_candidate_signal(
+            "Looking to buy a 2+1 apartment, budget £120,000."
+        ))
+
+    def test_global_public_candidate_rejects_nonproperty_goods(self):
+        text = (
+            "Куплю моющий робот пылесос для большой квартиры. "
+            "Искеле - Фамагуста. Цена 1 тл для бота"
+        )
+        self.assertTrue(v6.has_nc_geo(text))
+        self.assertFalse(v6.global_public_candidate_signal(text))
+
+    def test_public_chat_username_only_accepts_public_handles(self):
+        class Chat:
+            username = "northcyprus_public"
+        class PrivateChat:
+            username = None
+        class BadChat:
+            username = "not valid!"
+        self.assertEqual(v6._public_chat_username(Chat()), "northcyprus_public")
+        self.assertEqual(v6._public_chat_username(PrivateChat()), "")
+        self.assertEqual(v6._public_chat_username(BadChat()), "")
+
+    def test_global_public_queries_cover_three_languages(self):
+        joined = " ".join(v6.TELEGRAM_GLOBAL_PUBLIC_QUERIES)
+        self.assertIn("Северный Кипр", joined)
+        self.assertIn("North Cyprus", joined)
+        self.assertIn("Kuzey Kıbrıs", joined)
+
 if __name__ == "__main__":
     unittest.main()
