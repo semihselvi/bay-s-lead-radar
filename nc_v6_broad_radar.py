@@ -18,7 +18,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.13-telegram-intent-search-30d"
+VERSION = "6.14-no-agent-phrase-guard"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -199,9 +199,13 @@ OWNER_NO_AGENT_RE = re.compile(
     r"(?:"
     r"\bsadece\s+(?:mal\s+)?sahibinden\b|\byaln[ıi]zca\s+(?:mal\s+)?sahibinden\b|"
     r"\barac[ıi]s[ıi]z\b|\bemlak[çc][ıi]\s+istemiyorum\b|\bemlak[çc][ıi]lar?\s+yazmas[ıi]n\b|"
-    r"\bno\s+(?:agents?|brokers?)\b|\bonly\s+(?:direct\s+)?from\s+(?:the\s+)?owner\b|"
+    r"\bemlak[çc][ıi]lar?\s+aramas[ıi]n\b|\bacenteler?\s+(?:yazmas[ıi]n|aramas[ıi]n)\b|"
+    r"\bno\s+(?:agents?|brokers?)\b|\b(?:agents?|brokers?)\s+(?:do\s+not|don't)\s+(?:contact|message|call)\b|"
+    r"\bonly\s+(?:direct\s+)?from\s+(?:the\s+)?owner\b|"
     r"\bтолько\s+(?:от\s+)?собственник\w*\b|\bбез\s+посредник\w*\b|"
-    r"\bагент\w*\s+не\s+писать\b|\bриелтор\w*\s+не\s+писать\b|\bриэлтор\w*\s+не\s+писать\b"
+    r"\b(?:агент\w*|риелтор\w*|риэлтор\w*)\s+не\s+(?:писать|звонить|беспокоить)\b|"
+    r"\b(?:агентам|риелторам|риэлторам)\s+не\s+(?:писать|звонить|беспокоить)\b|"
+    r"\bне\s+беспокоить\s+(?:агент\w*|риелтор\w*|риэлтор\w*)\b"
     r")",
     re.I,
 )
