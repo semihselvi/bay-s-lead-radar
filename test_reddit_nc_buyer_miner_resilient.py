@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timedelta, timezone
 
 import reddit_nc_buyer_miner_resilient as miner
 
@@ -67,6 +68,39 @@ class RedditIndexFallbackTests(unittest.TestCase):
         self.assertIsNone(signal)
         self.assertEqual(reason, "not_reddit_thread")
 
+
+
+    def test_feed_date_recent_guard(self):
+        fresh = datetime.now(timezone.utc).isoformat()
+        old = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
+        self.assertTrue(miner._recent_enough(fresh))
+        self.assertFalse(miner._recent_enough(old))
+
+    def test_free_discovery_combines_reddit_and_bing_without_serper(self):
+        old_rss = miner._reddit_rss_rows
+        old_bing = miner._bing_rss
+        try:
+            miner._reddit_rss_rows = lambda label, url: [{
+                "title": "Buying property in North Cyprus",
+                "snippet": "I am planning to buy an apartment.",
+                "link": "https://www.reddit.com/r/NorthCyprus/comments/abc123/test/",
+                "_query": label,
+                "_source": "Reddit Native RSS",
+            }]
+            miner._bing_rss = lambda query: [{
+                "title": "Can foreigners buy property in North Cyprus?",
+                "snippet": "Researching title deeds.",
+                "link": "https://www.reddit.com/r/NorthCyprus/comments/def456/test/",
+                "_query": query,
+                "_source": "Bing RSS",
+            }]
+            rows = miner._free_discovery_rows(["one query"])
+            self.assertGreaterEqual(len(rows), len(miner.REDDIT_RSS_FEEDS) + 1)
+            self.assertTrue(any(r.get("_source") == "Reddit Native RSS" for r in rows))
+            self.assertTrue(any(r.get("_source") == "Bing RSS" for r in rows))
+        finally:
+            miner._reddit_rss_rows = old_rss
+            miner._bing_rss = old_bing
 
 if __name__ == "__main__":
     unittest.main()
