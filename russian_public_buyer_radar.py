@@ -7,6 +7,7 @@ import re
 import time
 import urllib.parse
 import xml.etree.ElementTree as ET
+from email.utils import parsedate_to_datetime
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -21,6 +22,7 @@ DRY_RUN = os.getenv("RADAR_DRY_RUN", "1").strip().lower() not in {"0", "false", 
 TIMEOUT = int(os.getenv("RADAR_HTTP_TIMEOUT", "20"))
 MAX_PER_QUERY = int(os.getenv("RADAR_RU_PUBLIC_MAX_PER_QUERY", "10"))
 CMTT_COMMENT_ENTRY_LIMIT = int(os.getenv("RADAR_CMTT_COMMENT_ENTRY_LIMIT", "20"))
+MAX_AGE_DAYS = int(os.getenv("RADAR_RU_PUBLIC_MAX_AGE_DAYS", "90"))
 
 SOURCES = {
     "VK": "vk.com",
@@ -81,6 +83,74 @@ NC_RE = re.compile(
     r"гюзельюрт|north(?:ern)?\s+cyprus|iskele|long\s+beach|famagust\w*|kyrenia|girne)",
     re.I,
 )
+
+NC_STRONG_RE = re.compile(
+    r"(?:северн\w*\s+кипр\w*|искел\w*|фамагуст\w*|гирн\w*|кирен\w*|"
+    r"алсанджак|лапт\w*|эсентеп\w*|татлысу|бафр\w*|боаз\w*|гюзельюрт|"
+    r"north(?:ern)?\s+cyprus|iskele|famagust\w*|kyrenia|girne)",
+    re.I,
+)
+
+AMBIGUOUS_LONG_BEACH_RE = re.compile(r"(?:лонг\s+бич|long\s+beach)", re.I)
+CYPRUS_CONTEXT_RE = re.compile(r"(?:кипр\w*|cyprus|k[ıi]br[ıi]s|искел\w*|iskele|trnc|kktc)", re.I)
+
+
+def has_nc_context(text: str) -> bool:
+    text = text or ""
+    if NC_STRONG_RE.search(text):
+        return True
+    if AMBIGUOUS_LONG_BEACH_RE.search(text) and CYPRUS_CONTEXT_RE.search(text):
+        return True
+    return False
+
+
+def parse_published(value: Any) -> datetime | None:
+    raw = normalize(str(value or ""))
+    if not raw:
+        return None
+
+    if re.fullmatch(r"\d{9,13}", raw):
+        try:
+            stamp = int(raw)
+            if stamp > 10_000_000_000:
+                stamp = stamp / 1000
+            return datetime.fromtimestamp(stamp, tz=timezone.utc)
+        except Exception:
+            return None
+
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        pass
+
+    try:
+        dt = parsedate_to_datetime(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        pass
+
+    for fmt in ("%b %d, %Y", "%d %b %Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
+        except Exception:
+            continue
+
+    return None
+
+
+def is_recent_enough(item: dict[str, Any], days: int = MAX_AGE_DAYS) -> bool:
+    dt = parse_published(item.get("published"))
+    if dt is None:
+        # Search-index providers are already constrained by a recent-date query;
+        # native platform API rows must carry an actual timestamp.
+        return item.get("source_type") == "public_search_index"
+    return dt >= datetime.now(timezone.utc) - timedelta(days=days)
+
 
 BUY_RE = re.compile(
     r"(?:"
@@ -199,7 +269,7 @@ def classify_candidate(item: dict[str, Any]) -> tuple[dict[str, Any] | None, str
     blob = normalize(f"{item.get('title', '')} {item.get('text', '')}")
     if not blob:
         return None, "empty"
-    if not (NC_RE.search(blob) or bool(item.get("north_cyprus_context"))):
+    if not (has_nc_context(blob) or bool(item.get("north_cyprus_context"))):
         return None, "no_north_cyprus_context"
     if TENANT_RE.search(blob):
         return None, "tenant"
@@ -484,7 +554,7 @@ def cmtt_public_comments(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     for row in entries:
         blob = normalize(f"{row.get('title', '')} {row.get('text', '')}")
-        if not NC_RE.search(blob):
+        if not has_nc_context(blob):
             continue
         if not PROPERTY_RE.search(blob):
             continue
@@ -791,6 +861,11 @@ def scan() -> dict[str, Any]:
         stats["raw_by_platform"][platform] += 1
         stats["provider_counts"][str(row.get("source") or "CMTT API")] += 1
 
+        if not is_recent_enough(row):
+            stats["reject_reasons"]["stale"] += 1
+            remember_reject("stale", row)
+            continue
+
         lead, reason = classify_candidate(row)
         if not lead:
             stats["reject_reasons"][reason] += 1
@@ -811,6 +886,11 @@ def scan() -> dict[str, Any]:
         platform = str(row.get("platform") or "CMTT")
         stats["raw_by_platform"][f"{platform} comments"] += 1
         stats["provider_counts"][str(row.get("source") or "CMTT Comments API")] += 1
+
+        if not is_recent_enough(row):
+            stats["reject_reasons"]["comment:stale"] += 1
+            remember_reject("comment:stale", row)
+            continue
 
         lead, reason = classify_candidate(row)
         if not lead:
@@ -844,6 +924,11 @@ def scan() -> dict[str, Any]:
 
                 seen.add(key)
                 stats["raw_by_platform"][platform] += 1
+
+                if not is_recent_enough(row):
+                    stats["reject_reasons"]["indexed:stale"] += 1
+                    remember_reject("indexed:stale", row)
+                    continue
 
                 snippet = normalize(f"{row.get('title', '')} {row.get('text', '')}")
                 if NC_RE.search(snippet) and (BUY_RE.search(snippet) or PROPERTY_RE.search(snippet)):
