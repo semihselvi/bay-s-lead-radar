@@ -254,6 +254,16 @@ SELLER_DIRECTION_RE = re.compile(
     re.I,
 )
 
+IMPERATIVE_SALE_AD_RE = re.compile(
+    r"(?:"
+    r"^\W*buy\b.{0,140}\b(?:property|apartment|flat|house|villa|studio|land)\b.{0,180}"
+    r"\b(?:for\s+sale|from\s*[£€$]|[£€$]\s?\d|dm\s+(?:me\s+)?for\s+details|contact\s+(?:me|us)|whatsapp)\b|"
+    r"^\W*(?:sat[ıi]n\s+al[ıi]n|hemen\s+al[ıi]n)\b.{0,180}\b(?:daire|ev|villa|arsa|gayrimenkul|konut)\b|"
+    r"^\W*купите\b.{0,180}\b(?:квартир\w*|апартамент\w*|вилл\w*|дом\w*|недвижимост\w*)\b"
+    r")",
+    re.I | re.S,
+)
+
 SUPPLY_STRONG_RE = re.compile(
     r"(?:"
     r"\bfor\s+sale\b.{0,150}\b(?:price|bedroom|sqm|m2|contact|whatsapp)\b|"
@@ -441,6 +451,8 @@ def _hard_reject(text: str, author: str = "") -> str:
         return "discussion_or_hypothetical"
     if COMMERCIAL_PROVIDER_RE.search(text):
         return "commercial_provider"
+    if IMPERATIVE_SALE_AD_RE.search(text):
+        return "supply_or_agent"
     if SELLER_DIRECTION_RE.search(text) and PROPERTY_RE.search(text):
         return "supply_or_agent"
     if radar.TG_SERVICE_REQUEST_RE.search(text) or SERVICE_PROVIDER_REQUEST_RE.search(text):

@@ -492,5 +492,18 @@ class BroadIntentTests(unittest.TestCase):
         self.assertIsNone(lead)
         self.assertEqual(reason, "supply_or_agent")
 
+
+    def test_first_person_buyer_with_for_sale_phrase_is_not_blocked(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            text = "I want to buy an apartment for sale in North Cyprus, budget £95,000."
+            lead, reason = v6.classify_text(
+                text,
+                group="Random International Chat",
+                explicit_geo=True,
+            )
+        self.assertIsNotNone(lead)
+        self.assertEqual(reason, "accepted")
+        self.assertIn(lead["lead_class"], {"HOT BUYER", "WARM BUYER"})
+
 if __name__ == "__main__":
     unittest.main()
