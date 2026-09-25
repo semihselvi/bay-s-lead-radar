@@ -18,7 +18,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.14-no-agent-phrase-guard"
+VERSION = "6.15-telegram-self-author-guard"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -706,6 +706,7 @@ DEBUG: dict[str, Any] = {
     "review_reject_reasons": Counter(),
     "review_samples": [],
     "already_notified": 0,
+    "self_author_skipped": 0,
     "reject_reasons": Counter(),
     "accepted_classes": Counter(),
     "languages": Counter(),
@@ -815,6 +816,21 @@ def _public_chat_username(chat: Any) -> str:
     if not re.fullmatch(r"[A-Za-z0-9_]{4,64}", username):
         return ""
     return username
+
+
+def _is_self_telegram_message(
+    msg: Any,
+    self_user_id: int = 0,
+    self_username: str = "",
+    author: str = "",
+) -> bool:
+    sender_id = int(getattr(msg, "sender_id", 0) or 0)
+    if self_user_id and sender_id and sender_id == self_user_id:
+        return True
+
+    own = str(self_username or "").strip().lstrip("@").casefold()
+    seen_author = str(author or "").strip().lstrip("@").casefold()
+    return bool(own and seen_author and own == seen_author)
 
 
 def _base_candidate(group: str, entity: Any, msg: Any, started: datetime) -> dict[str, Any]:
@@ -957,6 +973,13 @@ async def broad_telegram_scan(db_client, started):
             DEBUG["errors"].append("telegram_session_unauthorized")
             return {"status": "skipped_unauthorized", "groups": 0, "messages": 0, "hot_warm": 0, "errors": 0, "new_leads": []}
 
+        try:
+            me = await client.get_me()
+        except Exception:
+            me = None
+        self_user_id = int(getattr(me, "id", 0) or 0)
+        self_username = str(getattr(me, "username", "") or "").strip()
+
         dialogs = []
         async for dialog in client.iter_dialogs():
             if getattr(dialog, "is_group", False):
@@ -1054,6 +1077,14 @@ async def broad_telegram_scan(db_client, started):
                         await msg.get_sender()
                     except Exception:
                         pass
+                    joined_author = core.tg_sender(msg)
+                    if _is_self_telegram_message(msg, self_user_id, self_username, joined_author):
+                        DEBUG["self_author_skipped"] += 1
+                        if strict_extra:
+                            DEBUG["strict_extra_reject_reasons"]["self_author"] += 1
+                        else:
+                            DEBUG["reject_reasons"]["self_author"] += 1
+                        continue
                     candidate = _base_candidate(group, entity, msg, started)
                     if strict_extra:
                         candidate["source_type"] = "joined_group_strict_extra"
@@ -1210,6 +1241,10 @@ async def broad_telegram_scan(db_client, started):
                     except Exception:
                         pass
                     author = core.tg_sender(msg)
+                    if _is_self_telegram_message(msg, self_user_id, self_username, author):
+                        DEBUG["self_author_skipped"] += 1
+                        DEBUG["global_search_reject_reasons"]["self_author"] += 1
+                        continue
 
                     if not global_public_candidate_signal(text, author):
                         if RADAR_SELF_FEEDBACK_RE.search(text):
@@ -1372,6 +1407,10 @@ async def broad_telegram_scan(db_client, started):
                     except Exception:
                         pass
                     author = core.tg_sender(msg)
+                    if _is_self_telegram_message(msg, self_user_id, self_username, author):
+                        DEBUG["self_author_skipped"] += 1
+                        DEBUG["peer_discovery_reject_reasons"]["self_author"] += 1
+                        continue
                     hard = _hard_reject(text, author)
                     if hard:
                         DEBUG["peer_discovery_reject_reasons"][hard] += 1
@@ -1704,7 +1743,7 @@ def save_and_notify_debug() -> None:
         f"Coğrafya geçti: {DEBUG['geography_pass']}\n"
         f"Intent/keyword adayı: {DEBUG['signal_pass']}\n"
         f"Kabul edilen: {DEBUG['accepted']}\n"
-        f"REVIEW ön aday: {DEBUG['review_candidates']} | Kaliteli: {DEBUG['review_qualified']} | Kaydedilen: {DEBUG['review_saved']}\n"
+        f"REVIEW ön aday: {DEBUG['review_candidates']} | Kaliteli: {DEBUG['review_qualified']} | Kaydedilen: {DEBUG['review_saved']}\n"        f"Kendi Telegram mesajı atlandı: {DEBUG['self_author_skipped']}\n"
         f"REVIEW eleme: {', '.join(f'{k}:{v}' for k, v in DEBUG['review_reject_reasons'].most_common(6)) or '-'}\n"
         f"Ek sıkı eleme: {strict_extra_rejects}\n"        f"Global public eleme: {global_search_rejects}\n"        f"Public keşif eleme: {peer_discovery_rejects}\n"
         f"Sınıflar: {classes}\n"
