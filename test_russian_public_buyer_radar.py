@@ -53,6 +53,14 @@ class RussianPublicBuyerRadarTests(unittest.TestCase):
             "seller_or_listing",
         )
 
+    def test_company_rental_article_is_not_buyer(self):
+        self.assertRejected(
+            "Северный Кипр. Если вы рассматриваете варианты аренды жилья, компания Alliance-Estate "
+            "ваш идеальный партнер. Мы специализируемся на аренде и продаже недвижимости. "
+            "Звоните нам или посетите наш сайт.",
+            "provider_or_agent",
+        )
+
     def test_agent_rejected(self):
         self.assertRejected(
             "Агентство недвижимости Северного Кипра предлагает квартиры. Свяжитесь с нами.",
