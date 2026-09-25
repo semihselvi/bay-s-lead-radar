@@ -77,6 +77,20 @@ class RussianPublicBuyerRadarTests(unittest.TestCase):
             "no_north_cyprus_context",
         )
 
+    def test_comment_buyer_with_parent_context(self):
+        candidate = item("Хочу купить квартиру, бюджет 130 000 евро. Что посоветуете?")
+        candidate["north_cyprus_context"] = True
+        lead, reason = r.classify_candidate(candidate)
+        self.assertIsNotNone(lead, reason)
+        self.assertEqual("BUYER", lead["intent_type"])
+
+    def test_comment_without_buyer_intent_rejected(self):
+        candidate = item("Спасибо, очень интересная статья.")
+        candidate["north_cyprus_context"] = True
+        lead, reason = r.classify_candidate(candidate)
+        self.assertIsNone(lead)
+        self.assertIn(reason, {"no_property", "no_explicit_purchase_intent"})
+
     def test_no_property_rejected(self):
         self.assertRejected(
             "Я хочу купить автомобиль на Северном Кипре.",
