@@ -374,5 +374,33 @@ class BroadIntentTests(unittest.TestCase):
         self.assertEqual(review["classification"], "REVIEW")
         self.assertIn("purchase_context", review["review_reasons"])
 
+
+    def test_review_evaluator_explains_ambiguous_student_search(self):
+        review, reason = v6.evaluate_review_candidate({
+            "message": "Ищу для двух парней студентов 2+1 или студию, Гирне",
+            "group": "СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+            "author": "@person",
+        })
+        self.assertIsNone(review)
+        self.assertEqual(reason, "no_purchase_context")
+
+    def test_review_evaluator_explains_supply_listing(self):
+        review, reason = v6.evaluate_review_candidate({
+            "message": "Студия Caesar Blue, вид на море, всё оплачено, 52.000£",
+            "group": "СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+            "author": "@seller",
+        })
+        self.assertIsNone(review)
+        self.assertIn(reason, {"supply_listing", "no_demand", "listing_shape"})
+
+    def test_review_evaluator_marks_real_review_accepted(self):
+        review, reason = v6.evaluate_review_candidate({
+            "message": "Ищу квартиру в Искеле. Какой район лучше для инвестиции и какие сейчас цены?",
+            "group": "СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+            "author": "@person",
+        })
+        self.assertIsNotNone(review)
+        self.assertEqual(reason, "accepted")
+
 if __name__ == "__main__":
     unittest.main()
