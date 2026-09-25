@@ -718,7 +718,10 @@ TELEGRAM_GLOBAL_PUBLIC_QUERIES = (
 
 def global_public_candidate_signal(text: str) -> bool:
     """No group-title context is trusted for global search results."""
-    return strict_extra_candidate_signal(text)
+    own = str(text or "")
+    if _hard_reject(own):
+        return False
+    return strict_extra_candidate_signal(own)
 
 
 def _public_chat_username(chat: Any) -> str:
