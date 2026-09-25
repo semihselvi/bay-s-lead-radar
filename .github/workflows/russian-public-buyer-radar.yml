@@ -1,0 +1,41 @@
+name: RU Public Buyer Radar - DRY RUN
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install lightweight dependencies
+        run: pip install 'requests>=2.34,<3' 'beautifulsoup4>=4.15,<5'
+
+      - name: Run classifier regression tests
+        run: python -m unittest -v test_russian_public_buyer_radar.py
+
+      - name: Run public-source scan in dry-run mode
+        env:
+          RADAR_DRY_RUN: '1'
+          RADAR_RU_PUBLIC_MAX_PER_QUERY: '5'
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+        run: python russian_public_buyer_radar.py | tee russian-public-radar-result.json
+
+      - name: Upload dry-run result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: russian-public-buyer-radar-dry-run
+          path: russian-public-radar-result.json
+          if-no-files-found: warn
