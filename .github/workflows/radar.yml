@@ -1,5 +1,5 @@
 name: NC - North Cyprus Buyer Radar
-# production classifier: v6.4-review-quality-gate + direct-cmtt + native-ok-pikabu + free-reddit-rss-bing + native-vk
+# production classifier: v6.4-review-quality-gate + direct-cmtt + native-ok-pikabu + free-reddit-rss-bing + native-vk + vk-html-diag
 
 "on":
   workflow_dispatch:
