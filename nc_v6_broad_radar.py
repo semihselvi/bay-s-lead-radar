@@ -18,7 +18,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.12-owner-direct-buyer-fix"
+VERSION = "6.13-telegram-intent-search-30d"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -674,6 +674,8 @@ DEBUG: dict[str, Any] = {
     "strict_extra_accepted": 0,
     "strict_extra_reject_reasons": Counter(),
     "global_search_queries": 0,
+    "global_search_buyer_queries": 0,
+    "global_search_broad_queries": 0,
     "global_search_raw": 0,
     "global_search_public": 0,
     "global_search_geo_pass": 0,
@@ -752,6 +754,28 @@ TELEGRAM_GLOBAL_PUBLIC_QUERIES = (
     "Kuzey Kıbrıs gayrimenkul",
     "İskele daire",
     "Girne daire",
+)
+
+
+TELEGRAM_GLOBAL_BUYER_QUERIES = (
+    "Северный Кипр куплю квартиру",
+    "Северный Кипр хочу купить квартиру",
+    "Северный Кипр ищу квартиру для покупки",
+    "Северный Кипр планирую купить недвижимость",
+    "Искеле куплю квартиру",
+    "Гирне куплю квартиру",
+    "North Cyprus looking to buy property",
+    "North Cyprus want to buy apartment",
+    "North Cyprus considering buying property",
+    "Kuzey Kıbrıs daire almak istiyorum",
+    "Kuzey Kibris ev almak istiyorum",
+    "İskele daire almak istiyorum",
+    "Girne ev almak istiyorum",
+)
+
+TELEGRAM_GLOBAL_SEARCH_QUERIES = (
+    *TELEGRAM_GLOBAL_BUYER_QUERIES,
+    *TELEGRAM_GLOBAL_PUBLIC_QUERIES,
 )
 
 
@@ -1113,8 +1137,12 @@ async def broad_telegram_scan(db_client, started):
         global_cutoff = datetime.now(timezone.utc) - timedelta(days=global_days)
         global_seen: set[tuple[str, int]] = set()
 
-        for query in TELEGRAM_GLOBAL_PUBLIC_QUERIES:
+        for query in TELEGRAM_GLOBAL_SEARCH_QUERIES:
             DEBUG["global_search_queries"] += 1
+            if query in TELEGRAM_GLOBAL_BUYER_QUERIES:
+                DEBUG["global_search_buyer_queries"] += 1
+            else:
+                DEBUG["global_search_broad_queries"] += 1
             try:
                 async for msg in client.iter_messages(None, search=query, limit=80):
                     DEBUG["global_search_raw"] += 1
@@ -1668,7 +1696,7 @@ def save_and_notify_debug() -> None:
     msg = (
         "🧪 LEAD RADAR DEBUG | SON TARAMA\n\n"
         f"Telegram ana grup: {DEBUG['groups_relevant']}/{DEBUG['groups_total']} | Mesaj: {DEBUG['messages_scanned']}\n"
-        f"Ek sıkı grup: {DEBUG['strict_extra_groups_scanned']} | Mesaj: {DEBUG['strict_extra_messages_scanned']} | NC: {DEBUG['strict_extra_geo_pass']} | Aday: {DEBUG['strict_extra_signal_pass']} | Kabul: {DEBUG['strict_extra_accepted']}\n"        f"Global public 30g: sorgu {DEBUG['global_search_queries']} | Ham {DEBUG['global_search_raw']} | Public {DEBUG['global_search_public']} | NC {DEBUG['global_search_geo_pass']} | Aday {DEBUG['global_search_signal_pass']} | Kabul {DEBUG['global_search_accepted']}\n"        f"Public keşif: sorgu {DEBUG['peer_discovery_queries']} | Bulunan {DEBUG['peer_discovery_found']} | Taranan {DEBUG['peer_discovery_scanned']} | Mesaj {DEBUG['peer_discovery_messages']} | NC {DEBUG['peer_discovery_geo_pass']} | Aday {DEBUG['peer_discovery_signal_pass']} | Kabul {DEBUG['peer_discovery_accepted']}\n"
+        f"Ek sıkı grup: {DEBUG['strict_extra_groups_scanned']} | Mesaj: {DEBUG['strict_extra_messages_scanned']} | NC: {DEBUG['strict_extra_geo_pass']} | Aday: {DEBUG['strict_extra_signal_pass']} | Kabul: {DEBUG['strict_extra_accepted']}\n"        f"Global public 30g: sorgu {DEBUG['global_search_queries']} (buyer {DEBUG['global_search_buyer_queries']} + broad {DEBUG['global_search_broad_queries']}) | Ham {DEBUG['global_search_raw']} | Public {DEBUG['global_search_public']} | NC {DEBUG['global_search_geo_pass']} | Aday {DEBUG['global_search_signal_pass']} | Kabul {DEBUG['global_search_accepted']}\n"        f"Public keşif: sorgu {DEBUG['peer_discovery_queries']} | Bulunan {DEBUG['peer_discovery_found']} | Taranan {DEBUG['peer_discovery_scanned']} | Mesaj {DEBUG['peer_discovery_messages']} | NC {DEBUG['peer_discovery_geo_pass']} | Aday {DEBUG['peer_discovery_signal_pass']} | Kabul {DEBUG['peer_discovery_accepted']}\n"
         f"Coğrafya geçti: {DEBUG['geography_pass']}\n"
         f"Intent/keyword adayı: {DEBUG['signal_pass']}\n"
         f"Kabul edilen: {DEBUG['accepted']}\n"
