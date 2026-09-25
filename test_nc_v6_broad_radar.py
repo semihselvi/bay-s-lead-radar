@@ -550,5 +550,12 @@ class BroadIntentTests(unittest.TestCase):
         self.assertIn("North Cyprus", joined)
         self.assertIn("Kuzey Kıbrıs", joined)
 
+
+    def test_global_queries_do_not_require_buy_word(self):
+        queries = v6.TELEGRAM_GLOBAL_PUBLIC_QUERIES
+        self.assertTrue(any("Северный Кипр квартира" == q for q in queries))
+        self.assertTrue(any("North Cyprus apartment" == q for q in queries))
+        self.assertTrue(any("Kuzey Kıbrıs daire" == q for q in queries))
+
 if __name__ == "__main__":
     unittest.main()
