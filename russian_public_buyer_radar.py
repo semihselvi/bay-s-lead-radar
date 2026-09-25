@@ -759,6 +759,41 @@ def _best_html_container(anchor: Any) -> Any:
 
 
 
+
+def _record_vk_html_shape(html: str, seed: str, endpoint: str, final_url: str = "") -> None:
+    """Record structural counters only; never persist raw VK page content."""
+    raw = html or ""
+    low = raw.casefold()
+    soup = BeautifulSoup(raw, "html.parser")
+
+    NATIVE_DEBUG[f"VK:{seed}:{endpoint}:bytes_bucket_kb"] += min(len(raw) // 1024, 999)
+    NATIVE_DEBUG[f"VK:{seed}:{endpoint}:scripts"] += len(soup.find_all("script"))
+    NATIVE_DEBUG[f"VK:{seed}:{endpoint}:post_nodes"] += len(soup.select(".post"))
+    NATIVE_DEBUG[f"VK:{seed}:{endpoint}:data_post_nodes"] += len(soup.select("[data-post-id], [data-post]"))
+    NATIVE_DEBUG[f"VK:{seed}:{endpoint}:wall_links"] += len(soup.select("a[href*='wall']"))
+
+    for name, needle in (
+        ("wall_post_text", "wall_post_text"),
+        ("apiPrefetchCache", "apiprefetchcache"),
+        ("wall.get", "wall.get"),
+        ("wallGet", "wallget"),
+        ("login", "login"),
+        ("auth", "auth"),
+        ("captcha", "captcha"),
+        ("blocked", "blocked"),
+        ("group", "group"),
+    ):
+        if needle in low:
+            NATIVE_DEBUG[f"VK:{seed}:{endpoint}:has_{name}"] += 1
+
+    try:
+        final_path = urllib.parse.urlparse(final_url or "").path.casefold()
+        if "login" in final_path or "join" in final_path:
+            NATIVE_DEBUG[f"VK:{seed}:{endpoint}:redirected_to_auth"] += 1
+    except Exception:
+        pass
+
+
 def _vk_rows_from_html(html: str, seed: str, label: str) -> list[dict[str, Any]]:
     soup = BeautifulSoup(html or "", "html.parser")
     rows: list[dict[str, Any]] = []
@@ -876,6 +911,13 @@ def vk_native_seed_search() -> list[dict[str, Any]]:
                 if not response.encoding or response.encoding.lower() in {"iso-8859-1", "ascii"}:
                     response.encoding = response.apparent_encoding or "utf-8"
 
+                endpoint = base.split("//")[1]
+                _record_vk_html_shape(
+                    response.text,
+                    seed,
+                    endpoint,
+                    str(response.url or ""),
+                )
                 parsed_rows = _vk_rows_from_html(response.text, seed, label)
                 if parsed_rows:
                     seed_rows.extend(parsed_rows)
