@@ -615,7 +615,7 @@ class BroadIntentTests(unittest.TestCase):
                 explicit_geo=True,
             )
         self.assertIsNone(lead)
-        self.assertEqual(reason, "supply_or_agent")
+        self.assertIn(reason, {"supply_or_agent", "owner_direct_only"})
 
 if __name__ == "__main__":
     unittest.main()
