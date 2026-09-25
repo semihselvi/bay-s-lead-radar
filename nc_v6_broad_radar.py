@@ -186,13 +186,30 @@ AGENT_CLIENT_RE = re.compile(
     re.I,
 )
 
-OWNER_DIRECT_ONLY_RE = re.compile(
+OWNER_DIRECT_PREFERENCE_RE = re.compile(
     r"(?:"
-    r"\bsahibinden\b|\bmal\s+sahibinden\b|\barac[ıi]s[ıi]z\b|\bemlak[çc][ıi]\s+istemiyorum\b|"
-    r"\bdirect\s+from\s+(?:the\s+)?owner\b|\bowner\s+direct\b|\bno\s+(?:agents?|brokers?)\b|"
-    r"\bот\s+собственник\w*\b|\bтолько\s+собственник\w*\b|\bбез\s+посредник\w*\b|"
+    r"\bsahibinden\b|\bmal\s+sahibinden\b|"
+    r"\bdirect\s+from\s+(?:the\s+)?owner\b|\bowner\s+direct\b|"
+    r"\bот\s+собственник\w*\b"
+    r")",
+    re.I,
+)
+
+OWNER_NO_AGENT_RE = re.compile(
+    r"(?:"
+    r"\bsadece\s+(?:mal\s+)?sahibinden\b|\byaln[ıi]zca\s+(?:mal\s+)?sahibinden\b|"
+    r"\barac[ıi]s[ıi]z\b|\bemlak[çc][ıi]\s+istemiyorum\b|\bemlak[çc][ıi]lar?\s+yazmas[ıi]n\b|"
+    r"\bno\s+(?:agents?|brokers?)\b|\bonly\s+(?:direct\s+)?from\s+(?:the\s+)?owner\b|"
+    r"\bтолько\s+(?:от\s+)?собственник\w*\b|\bбез\s+посредник\w*\b|"
     r"\bагент\w*\s+не\s+писать\b|\bриелтор\w*\s+не\s+писать\b|\bриэлтор\w*\s+не\s+писать\b"
     r")",
+    re.I,
+)
+
+# Backward-compatible name for review/debug helpers that still refer to the
+# broader owner-direct vocabulary.
+OWNER_DIRECT_ONLY_RE = re.compile(
+    rf"(?:{OWNER_DIRECT_PREFERENCE_RE.pattern}|{OWNER_NO_AGENT_RE.pattern})",
     re.I,
 )
 
@@ -440,9 +457,14 @@ def _hard_reject(text: str, author: str = "") -> str:
         return "financial_or_goods"
     if POST_PURCHASE_OR_INFO_RE.search(text):
         return "post_purchase_or_info"
-    # "Sahibinden / direct from owner / от собственника" is NOT a negative
-    # signal by itself. A real buyer may explicitly prefer buying from an owner.
-    # Seller/listing language is rejected below by the supply guards.
+    if OWNER_NO_AGENT_RE.search(text):
+        return "owner_direct_only"
+    # A soft owner-direct preference is useful for a real purchase request,
+    # but not for rentals/ambiguous demand. Explicit sale listings are rejected
+    # by the supply guards below.
+    if OWNER_DIRECT_PREFERENCE_RE.search(text):
+        if RENT_DEMAND_RE.search(text) or not (BUY_RE.search(text) and PROPERTY_RE.search(text)):
+            return "owner_direct_only"
     if JOB_POST_RE.search(text):
         return "job_post"
     if VEHICLE_RE.search(text):
@@ -603,7 +625,7 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
         reasons.append("investment_secondary")
     if residency:
         reasons.append("residency_signal")
-    if OWNER_DIRECT_ONLY_RE.search(own) and buy and has_property:
+    if OWNER_DIRECT_PREFERENCE_RE.search(own) and buy and has_property:
         reasons.append("owner_direct_buyer_preference")
     if extract_budget(own):
         reasons.append("budget_present")
