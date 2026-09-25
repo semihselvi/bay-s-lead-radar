@@ -62,6 +62,7 @@ CMTT_SITES = {
 }
 
 CMTT_API_VERSIONS = ("v2.6", "v2.31", "v1.9", "v1.6")
+CMTT_DEBUG = Counter()
 
 NC_RE = re.compile(
     r"(?:северн\w*\s+кипр\w*|искел\w*|лонг\s+бич|фамагуст\w*|гирн\w*|"
@@ -332,8 +333,9 @@ def cmtt_public_search() -> list[dict[str, Any]]:
                     response = session.get(
                         f"{api_base}/{version}/search",
                         params={"query": term, "orderBy": "date", "page": 1},
-                        timeout=TIMEOUT,
+                        timeout=min(TIMEOUT, 8),
                     )
+                    CMTT_DEBUG[f"{platform}:{version}:http_{response.status_code}"] += 1
                     if response.status_code != 200:
                         continue
 
@@ -342,6 +344,7 @@ def cmtt_public_search() -> list[dict[str, Any]]:
                     if entries or isinstance(candidate, dict):
                         payload = candidate
                         working_version = version
+                        CMTT_DEBUG[f"{platform}:{version}:usable"] += 1
                         break
                 except Exception:
                     continue
@@ -677,6 +680,7 @@ def scan() -> dict[str, Any]:
         "accepted_by_platform": dict(stats["accepted_by_platform"]),
         "reject_reasons": dict(stats["reject_reasons"]),
         "provider_counts": dict(stats["provider_counts"]),
+        "cmtt_debug": dict(CMTT_DEBUG),
         "leads": leads[:50],
     }
 
