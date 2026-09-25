@@ -18,7 +18,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.15-telegram-self-author-guard"
+VERSION = "6.16-visible-valid-buyers"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -684,6 +684,8 @@ DEBUG: dict[str, Any] = {
     "global_search_public": 0,
     "global_search_geo_pass": 0,
     "global_search_signal_pass": 0,
+    "global_search_valid_matches": 0,
+    "global_search_known_matches": 0,
     "global_search_accepted": 0,
     "global_search_reject_reasons": Counter(),
     "global_search_age_buckets": Counter(),
@@ -694,6 +696,8 @@ DEBUG: dict[str, Any] = {
     "peer_discovery_messages": 0,
     "peer_discovery_geo_pass": 0,
     "peer_discovery_signal_pass": 0,
+    "peer_discovery_valid_matches": 0,
+    "peer_discovery_known_matches": 0,
     "peer_discovery_accepted": 0,
     "peer_discovery_reject_reasons": Counter(),
     "peer_discovery_samples": [],
@@ -1296,6 +1300,7 @@ async def broad_telegram_scan(db_client, started):
                         DEBUG["global_search_reject_reasons"][reason] += 1
                         continue
 
+                    DEBUG["global_search_valid_matches"] += 1
                     stable_id = f"telegram-global|{username.casefold()}|{msg_id}"
                     lead_id = hashlib.sha256(stable_id.encode("utf-8")).hexdigest()
                     ref = db_client.collection(core.COLLECTION).document(lead_id)
@@ -1304,6 +1309,7 @@ async def broad_telegram_scan(db_client, started):
                         previous = snap.to_dict() or {}
                         if previous.get("v5_notified_at") or previous.get("v6_notified_at"):
                             DEBUG["already_notified"] += 1
+                            DEBUG["global_search_known_matches"] += 1
                             DEBUG["global_search_reject_reasons"]["already_notified"] += 1
                             continue
 
@@ -1427,6 +1433,7 @@ async def broad_telegram_scan(db_client, started):
                         DEBUG["peer_discovery_reject_reasons"][reason] += 1
                         continue
 
+                    DEBUG["peer_discovery_valid_matches"] += 1
                     msg_id = int(getattr(msg, "id", 0) or 0)
                     candidate = {
                         "source": "Telegram",
@@ -1452,6 +1459,7 @@ async def broad_telegram_scan(db_client, started):
                         previous = snap.to_dict() or {}
                         if previous.get("v5_notified_at") or previous.get("v6_notified_at"):
                             DEBUG["already_notified"] += 1
+                            DEBUG["peer_discovery_known_matches"] += 1
                             DEBUG["peer_discovery_reject_reasons"]["already_notified"] += 1
                             continue
 
@@ -1739,10 +1747,10 @@ def save_and_notify_debug() -> None:
     msg = (
         "🧪 LEAD RADAR DEBUG | SON TARAMA\n\n"
         f"Telegram ana grup: {DEBUG['groups_relevant']}/{DEBUG['groups_total']} | Mesaj: {DEBUG['messages_scanned']}\n"
-        f"Ek sıkı grup: {DEBUG['strict_extra_groups_scanned']} | Mesaj: {DEBUG['strict_extra_messages_scanned']} | NC: {DEBUG['strict_extra_geo_pass']} | Aday: {DEBUG['strict_extra_signal_pass']} | Kabul: {DEBUG['strict_extra_accepted']}\n"        f"Global public 30g: sorgu {DEBUG['global_search_queries']} (buyer {DEBUG['global_search_buyer_queries']} + broad {DEBUG['global_search_broad_queries']}) | Ham {DEBUG['global_search_raw']} | Public {DEBUG['global_search_public']} | NC {DEBUG['global_search_geo_pass']} | Aday {DEBUG['global_search_signal_pass']} | Kabul {DEBUG['global_search_accepted']}\n"        f"Public keşif: sorgu {DEBUG['peer_discovery_queries']} | Bulunan {DEBUG['peer_discovery_found']} | Taranan {DEBUG['peer_discovery_scanned']} | Mesaj {DEBUG['peer_discovery_messages']} | NC {DEBUG['peer_discovery_geo_pass']} | Aday {DEBUG['peer_discovery_signal_pass']} | Kabul {DEBUG['peer_discovery_accepted']}\n"
+        f"Ek sıkı grup: {DEBUG['strict_extra_groups_scanned']} | Mesaj: {DEBUG['strict_extra_messages_scanned']} | NC: {DEBUG['strict_extra_geo_pass']} | Aday: {DEBUG['strict_extra_signal_pass']} | Kabul: {DEBUG['strict_extra_accepted']}\n"        f"Global public 30g: sorgu {DEBUG['global_search_queries']} (buyer {DEBUG['global_search_buyer_queries']} + broad {DEBUG['global_search_broad_queries']}) | Ham {DEBUG['global_search_raw']} | Public {DEBUG['global_search_public']} | NC {DEBUG['global_search_geo_pass']} | Aday {DEBUG['global_search_signal_pass']} | Geçerli BUYER {DEBUG['global_search_valid_matches']} | Yeni {DEBUG['global_search_accepted']} | Bilinen {DEBUG['global_search_known_matches']}\n"        f"Public keşif: sorgu {DEBUG['peer_discovery_queries']} | Bulunan {DEBUG['peer_discovery_found']} | Taranan {DEBUG['peer_discovery_scanned']} | Mesaj {DEBUG['peer_discovery_messages']} | NC {DEBUG['peer_discovery_geo_pass']} | Aday {DEBUG['peer_discovery_signal_pass']} | Geçerli BUYER {DEBUG['peer_discovery_valid_matches']} | Yeni {DEBUG['peer_discovery_accepted']} | Bilinen {DEBUG['peer_discovery_known_matches']}\n"
         f"Coğrafya geçti: {DEBUG['geography_pass']}\n"
         f"Intent/keyword adayı: {DEBUG['signal_pass']}\n"
-        f"Kabul edilen: {DEBUG['accepted']}\n"
+        f"Yeni kabul edilen: {DEBUG['accepted']}\n"
         f"REVIEW ön aday: {DEBUG['review_candidates']} | Kaliteli: {DEBUG['review_qualified']} | Kaydedilen: {DEBUG['review_saved']}\n"        f"Kendi Telegram mesajı atlandı: {DEBUG['self_author_skipped']}\n"
         f"REVIEW eleme: {', '.join(f'{k}:{v}' for k, v in DEBUG['review_reject_reasons'].most_common(6)) or '-'}\n"
         f"Ek sıkı eleme: {strict_extra_rejects}\n"        f"Global public eleme: {global_search_rejects}\n"        f"Public keşif eleme: {peer_discovery_rejects}\n"
