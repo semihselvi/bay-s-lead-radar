@@ -63,6 +63,7 @@ CMTT_SITES = {
 
 CMTT_API_VERSIONS = ("v2.6", "v2.31", "v1.9", "v1.6")
 CMTT_DEBUG = Counter()
+CMTT_SAMPLES: dict[str, Any] = {}
 
 NC_RE = re.compile(
     r"(?:северн\w*\s+кипр\w*|искел\w*|лонг\s+бич|фамагуст\w*|гирн\w*|"
@@ -341,11 +342,21 @@ def cmtt_public_search() -> list[dict[str, Any]]:
 
                     candidate = response.json()
                     entries = _cmtt_entries(candidate)
-                    if entries or isinstance(candidate, dict):
+                    if entries:
                         payload = candidate
                         working_version = version
                         CMTT_DEBUG[f"{platform}:{version}:usable"] += 1
                         break
+
+                    sample_key = f"{platform}:{version}"
+                    if sample_key not in CMTT_SAMPLES:
+                        raw = normalize(response.text)
+                        CMTT_SAMPLES[sample_key] = {
+                            "top_keys": list(candidate.keys())[:30] if isinstance(candidate, dict) else [],
+                            "result_type": type(candidate.get("result")).__name__ if isinstance(candidate, dict) else type(candidate).__name__,
+                            "raw_prefix": raw[:1400],
+                        }
+                    CMTT_DEBUG[f"{platform}:{version}:empty_or_unparsed"] += 1
                 except Exception:
                     continue
 
@@ -681,6 +692,7 @@ def scan() -> dict[str, Any]:
         "reject_reasons": dict(stats["reject_reasons"]),
         "provider_counts": dict(stats["provider_counts"]),
         "cmtt_debug": dict(CMTT_DEBUG),
+        "cmtt_samples": CMTT_SAMPLES,
         "leads": leads[:50],
     }
 
