@@ -17,7 +17,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.9-telegram-global-public-search"
+VERSION = "6.10-telegram-global-recall-30d"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -654,6 +654,8 @@ DEBUG: dict[str, Any] = {
     "global_search_signal_pass": 0,
     "global_search_accepted": 0,
     "global_search_reject_reasons": Counter(),
+    "global_search_age_buckets": Counter(),
+    "global_search_candidate_samples": [],
     "geography_pass": 0,
     "signal_pass": 0,
     "accepted": 0,
@@ -705,14 +707,16 @@ def strict_extra_candidate_signal(text: str) -> bool:
 
 
 TELEGRAM_GLOBAL_PUBLIC_QUERIES = (
-    "Северный Кипр купить квартиру",
-    "Северный Кипр хочу купить",
-    "Искеле купить квартиру",
-    "Гирне купить квартиру",
-    "North Cyprus buy apartment",
-    "North Cyprus looking to buy",
-    "Kuzey Kıbrıs ev almak",
-    "Kuzey Kıbrıs daire almak",
+    "Северный Кипр квартира",
+    "Северный Кипр недвижимость",
+    "Искеле квартира",
+    "Гирне квартира",
+    "North Cyprus apartment",
+    "North Cyprus property",
+    "Kuzey Kıbrıs daire",
+    "Kuzey Kıbrıs gayrimenkul",
+    "İskele daire",
+    "Girne daire",
 )
 
 
@@ -1048,7 +1052,8 @@ async def broad_telegram_scan(db_client, started):
         # Second discovery surface: Telegram global public message search.
         # We only retain messages from public username-addressable chats/channels.
         # No private chats, no private groups and no group-name context are trusted.
-        global_cutoff = datetime.now(timezone.utc) - timedelta(hours=min(core.TELEGRAM_HOURS, 72))
+        global_days = max(3, min(60, int(os.getenv("RADAR_GLOBAL_TELEGRAM_DAYS", "30") or "30")))
+        global_cutoff = datetime.now(timezone.utc) - timedelta(days=global_days)
         global_seen: set[tuple[str, int]] = set()
 
         for query in TELEGRAM_GLOBAL_PUBLIC_QUERIES:
@@ -1063,6 +1068,17 @@ async def broad_telegram_scan(db_client, started):
                         continue
                     if dt.tzinfo is None:
                         dt = dt.replace(tzinfo=timezone.utc)
+
+                    age_days = max(0, int((datetime.now(timezone.utc) - dt).total_seconds() // 86400))
+                    if age_days <= 3:
+                        DEBUG["global_search_age_buckets"]["0_3d"] += 1
+                    elif age_days <= 7:
+                        DEBUG["global_search_age_buckets"]["4_7d"] += 1
+                    elif age_days <= 30:
+                        DEBUG["global_search_age_buckets"]["8_30d"] += 1
+                    else:
+                        DEBUG["global_search_age_buckets"]["gt_30d"] += 1
+
                     if dt < global_cutoff:
                         DEBUG["global_search_reject_reasons"]["stale"] += 1
                         continue
@@ -1107,6 +1123,12 @@ async def broad_telegram_scan(db_client, started):
                             DEBUG["global_search_reject_reasons"]["no_buyer_signal"] += 1
                         continue
                     DEBUG["global_search_signal_pass"] += 1
+                    if len(DEBUG["global_search_candidate_samples"]) < 12:
+                        DEBUG["global_search_candidate_samples"].append({
+                            "query": query,
+                            "message": text[:500],
+                            "message_time": dt.isoformat(timespec="seconds"),
+                        })
 
                     try:
                         await msg.get_sender()
@@ -1402,6 +1424,8 @@ def _serializable_debug() -> dict[str, Any]:
         "review_reject_reasons": dict(DEBUG["review_reject_reasons"]),
         "strict_extra_reject_reasons": dict(DEBUG["strict_extra_reject_reasons"]),
         "global_search_reject_reasons": dict(DEBUG["global_search_reject_reasons"]),
+        "global_search_age_buckets": dict(DEBUG["global_search_age_buckets"]),
+        "global_search_candidate_samples": DEBUG["global_search_candidate_samples"],
     }
 
 
@@ -1428,7 +1452,7 @@ def save_and_notify_debug() -> None:
     msg = (
         "🧪 LEAD RADAR DEBUG | SON TARAMA\n\n"
         f"Telegram ana grup: {DEBUG['groups_relevant']}/{DEBUG['groups_total']} | Mesaj: {DEBUG['messages_scanned']}\n"
-        f"Ek sıkı grup: {DEBUG['strict_extra_groups_scanned']} | Mesaj: {DEBUG['strict_extra_messages_scanned']} | NC: {DEBUG['strict_extra_geo_pass']} | Aday: {DEBUG['strict_extra_signal_pass']} | Kabul: {DEBUG['strict_extra_accepted']}\n"        f"Global public: sorgu {DEBUG['global_search_queries']} | Ham {DEBUG['global_search_raw']} | Public {DEBUG['global_search_public']} | NC {DEBUG['global_search_geo_pass']} | Aday {DEBUG['global_search_signal_pass']} | Kabul {DEBUG['global_search_accepted']}\n"
+        f"Ek sıkı grup: {DEBUG['strict_extra_groups_scanned']} | Mesaj: {DEBUG['strict_extra_messages_scanned']} | NC: {DEBUG['strict_extra_geo_pass']} | Aday: {DEBUG['strict_extra_signal_pass']} | Kabul: {DEBUG['strict_extra_accepted']}\n"        f"Global public 30g: sorgu {DEBUG['global_search_queries']} | Ham {DEBUG['global_search_raw']} | Public {DEBUG['global_search_public']} | NC {DEBUG['global_search_geo_pass']} | Aday {DEBUG['global_search_signal_pass']} | Kabul {DEBUG['global_search_accepted']}\n"
         f"Coğrafya geçti: {DEBUG['geography_pass']}\n"
         f"Intent/keyword adayı: {DEBUG['signal_pass']}\n"
         f"Kabul edilen: {DEBUG['accepted']}\n"
