@@ -36,6 +36,8 @@ jobs:
         env:
           RADAR_DRY_RUN: '1'
           RADAR_RU_PUBLIC_MAX_PER_QUERY: '5'
+          RADAR_RU_PUBLIC_QUERY_LIMIT: '4'
+          SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
         run: python russian_public_buyer_radar.py | tee russian-public-radar-result.json
 
