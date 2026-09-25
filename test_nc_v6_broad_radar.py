@@ -402,5 +402,50 @@ class BroadIntentTests(unittest.TestCase):
         self.assertIsNotNone(review)
         self.assertEqual(reason, "accepted")
 
+
+    def test_serper_credit_exhaustion_disables_rest_of_run(self):
+        module = v6.radar.v53
+        module._SERPER_DISABLED_FOR_RUN = False
+
+        class FakeResponse:
+            status_code = 400
+            text = "Not enough credits"
+            def json(self):
+                return {"message": "Not enough credits", "statusCode": 400}
+
+        calls = {"n": 0}
+
+        def fake_post(*args, **kwargs):
+            calls["n"] += 1
+            return FakeResponse()
+
+        try:
+            with patch.dict("os.environ", {"SERPER_API_KEY": "test-key"}):
+                with patch.object(module.core.requests, "post", side_effect=fake_post):
+                    self.assertEqual(module._serper_search("first query"), [])
+                    self.assertEqual(module._serper_search("second query"), [])
+            self.assertTrue(module._SERPER_DISABLED_FOR_RUN)
+            self.assertEqual(calls["n"], 1)
+        finally:
+            module._SERPER_DISABLED_FOR_RUN = False
+
+    def test_search_debug_reports_disabled_paid_search_once(self):
+        module = v6.radar.v53
+        old_exa = module._EXA_DISABLED_FOR_RUN
+        old_serper = module._SERPER_DISABLED_FOR_RUN
+        try:
+            module._EXA_DISABLED_FOR_RUN = True
+            module._SERPER_DISABLED_FOR_RUN = True
+            with patch.object(v6, "_existing_search", return_value=[]), patch.object(v6, "_bing_rss_search", return_value=[]):
+                v6.DEBUG["web_provider_errors"].clear()
+                v6.search_debug("North Cyprus buyer")
+                v6.search_debug("North Cyprus buyer 2")
+            self.assertEqual(v6.DEBUG["web_provider_errors"]["paid_search_disabled_for_run"], 1)
+            self.assertEqual(v6.DEBUG["web_provider_errors"].get("exa_serper_empty_or_quota", 0), 0)
+        finally:
+            module._EXA_DISABLED_FOR_RUN = old_exa
+            module._SERPER_DISABLED_FOR_RUN = old_serper
+            v6.DEBUG["web_provider_errors"].clear()
+
 if __name__ == "__main__":
     unittest.main()
