@@ -15,7 +15,7 @@ from typing import Any
 import requests
 from bs4 import BeautifulSoup
 
-VERSION = "1.1.0-direct-cmtt-production"
+VERSION = "1.2.0-native-ok-pikabu"
 COLLECTION = os.getenv("FIRESTORE_COLLECTION", "bay_s_leads")
 SCAN_COLLECTION = os.getenv("FIRESTORE_RU_PUBLIC_SCAN_COLLECTION", "bay_s_ru_public_scans")
 DRY_RUN = os.getenv("RADAR_DRY_RUN", "0").strip().lower() not in {"0", "false", "no"}
@@ -75,7 +75,22 @@ CMTT_SITES = {
 
 CMTT_API_VERSIONS = ("v2.6", "v2.31")
 CMTT_DEBUG = Counter()
+NATIVE_DEBUG = Counter()
 CMTT_SAMPLES: dict[str, Any] = {}
+
+OK_NATIVE_SEARCHES = [
+    ("severnyj-kipr", "Северный Кипр"),
+    ("pereezd-na-severnyj-kipr", "переезд на Северный Кипр"),
+    ("nedvizhimost-na-severnom-kipre", "недвижимость на Северном Кипре"),
+    ("kupit-kvartiru-na-severnom-kipre", "купить квартиру на Северном Кипре"),
+]
+
+PIKABU_NATIVE_TAGS = [
+    "Кипр,Переезд",
+    "Кипр,Недвижимость",
+    "Фамагуста",
+    "Кипр,Эмиграция",
+]
 
 NC_RE = re.compile(
     r"(?:северн\w*\s+кипр\w*|искел\w*|лонг\s+бич|фамагуст\w*|гирн\w*|"
@@ -660,6 +675,235 @@ def cmtt_public_comments(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+
+_RU_MONTHS = {
+    "янв": 1, "январ": 1,
+    "фев": 2, "феврал": 2,
+    "мар": 3,
+    "апр": 4, "апрел": 4,
+    "май": 5, "мая": 5,
+    "июн": 6,
+    "июл": 7,
+    "авг": 8,
+    "сен": 9, "сент": 9,
+    "окт": 10,
+    "ноя": 11, "нояб": 11,
+    "дек": 12, "декаб": 12,
+}
+
+
+def _native_published(text: str, *, now: datetime | None = None) -> str:
+    """Extract a conservative publication timestamp from public HTML text."""
+    now = now or datetime.now(timezone.utc)
+    raw = normalize(text).lower()
+    if not raw:
+        return ""
+
+    if "сегодня" in raw:
+        return now.isoformat()
+    if "вчера" in raw:
+        return (now - timedelta(days=1)).isoformat()
+
+    # OK often shows only a clock time for today's posts.
+    if re.fullmatch(r"\d{1,2}:\d{2}", raw):
+        return now.isoformat()
+
+    m = re.search(
+        r"\b(\d{1,2})\s+"
+        r"(янв\w*|фев\w*|мар\w*|апр\w*|май|мая|июн\w*|июл\w*|авг\w*|сен\w*|окт\w*|ноя\w*|дек\w*)"
+        r"(?:\s+(\d{4}))?\b",
+        raw,
+        re.I,
+    )
+    if not m:
+        return ""
+
+    day = int(m.group(1))
+    token = m.group(2).lower()
+    month = next((value for key, value in _RU_MONTHS.items() if token.startswith(key)), 0)
+    if not month:
+        return ""
+
+    year = int(m.group(3)) if m.group(3) else now.year
+    try:
+        dt = datetime(year, month, day, 12, 0, tzinfo=timezone.utc)
+    except ValueError:
+        return ""
+
+    # A date without a year that would be far in the future belongs to last year.
+    if not m.group(3) and dt > now + timedelta(days=7):
+        dt = dt.replace(year=year - 1)
+    return dt.isoformat()
+
+
+def _best_html_container(anchor: Any) -> Any:
+    node = anchor
+    best = anchor
+    for _ in range(6):
+        node = getattr(node, "parent", None)
+        if node is None:
+            break
+        text = normalize(node.get_text(" ", strip=True))
+        if 80 <= len(text) <= 7000:
+            best = node
+        if len(text) > 7000:
+            break
+    return best
+
+
+def ok_native_search() -> list[dict[str, Any]]:
+    """Read OK public search pages without login, token or paid search API."""
+    rows: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; PrimeKibrisRadar/1.2)",
+        "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.6",
+    }
+
+    for slug, label in OK_NATIVE_SEARCHES:
+        url = f"https://ok.ru/search/content/{slug}"
+        try:
+            response = requests.get(url, headers=headers, timeout=min(TIMEOUT, 12))
+            NATIVE_DEBUG[f"OK:http_{response.status_code}"] += 1
+            if response.status_code != 200:
+                continue
+
+            soup = BeautifulSoup(response.text, "html.parser")
+            found = 0
+            for anchor in soup.find_all("a", href=True):
+                href = str(anchor.get("href") or "")
+                if not any(part in href for part in ("/topic/", "/statuses/")):
+                    continue
+
+                full_url = urllib.parse.urljoin("https://ok.ru", href)
+                if full_url in seen_urls:
+                    continue
+
+                container = _best_html_container(anchor)
+                text = normalize(container.get_text(" ", strip=True))
+                if len(text) < 45 or not has_nc_context(text):
+                    continue
+
+                time_tag = container.find("time")
+                date_text = ""
+                if time_tag is not None:
+                    date_text = str(time_tag.get("datetime") or time_tag.get_text(" ", strip=True) or "")
+                if not date_text:
+                    date_match = re.search(
+                        r"(?:сегодня|вчера)(?:\s+\d{1,2}:\d{2})?"
+                        r"|\b\d{1,2}\s+(?:янв\w*|фев\w*|мар\w*|апр\w*|май|мая|июн\w*|июл\w*|авг\w*|сен\w*|окт\w*|ноя\w*|дек\w*)(?:\s+\d{4})?"
+                        r"|\b\d{1,2}:\d{2}\b",
+                        text,
+                        re.I,
+                    )
+                    date_text = date_match.group(0) if date_match else ""
+
+                published = (
+                    parse_published(date_text).isoformat()
+                    if parse_published(date_text)
+                    else _native_published(date_text)
+                )
+                if not published:
+                    NATIVE_DEBUG["OK:no_date"] += 1
+                    continue
+
+                title = normalize(anchor.get_text(" ", strip=True))
+                if len(title) < 8:
+                    heading = container.find(["h1", "h2", "h3", "h4"])
+                    title = normalize(heading.get_text(" ", strip=True)) if heading else text[:240]
+
+                seen_urls.add(full_url)
+                rows.append({
+                    "source": "OK Native Public",
+                    "platform": "OK",
+                    "source_type": "public_native_html",
+                    "url": full_url,
+                    "title": title[:500],
+                    "text": text[:7000],
+                    "published": published,
+                    "author": "",
+                    "search_query": label,
+                    "north_cyprus_context": True,
+                })
+                found += 1
+                if found >= 30:
+                    break
+
+            NATIVE_DEBUG["OK:rows"] += found
+        except Exception as exc:
+            NATIVE_DEBUG[f"OK:error_{type(exc).__name__}"] += 1
+
+    return rows
+
+
+def pikabu_native_search() -> list[dict[str, Any]]:
+    """Read public Pikabu tag streams directly; no account or paid search API."""
+    rows: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; PrimeKibrisRadar/1.2)",
+        "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.6",
+    }
+
+    for tag in PIKABU_NATIVE_TAGS:
+        url = "https://pikabu.ru/tag/" + urllib.parse.quote(tag, safe="")
+        try:
+            response = requests.get(url, headers=headers, timeout=min(TIMEOUT, 12))
+            NATIVE_DEBUG[f"Pikabu:http_{response.status_code}"] += 1
+            if response.status_code != 200:
+                continue
+
+            soup = BeautifulSoup(response.text, "html.parser")
+            found = 0
+            for article in soup.find_all("article"):
+                link = article.find("a", href=re.compile(r"/story/"))
+                if link is None:
+                    continue
+                full_url = urllib.parse.urljoin("https://pikabu.ru", str(link.get("href") or ""))
+                if not full_url or full_url in seen_urls:
+                    continue
+
+                text = normalize(article.get_text(" ", strip=True))
+                if len(text) < 45 or not has_nc_context(text):
+                    continue
+
+                time_tag = article.find("time")
+                published = ""
+                if time_tag is not None:
+                    raw_date = str(time_tag.get("datetime") or time_tag.get("title") or time_tag.get_text(" ", strip=True) or "")
+                    parsed = parse_published(raw_date)
+                    published = parsed.isoformat() if parsed else _native_published(raw_date)
+
+                if not published:
+                    NATIVE_DEBUG["Pikabu:no_date"] += 1
+                    continue
+
+                title_node = article.find(class_=re.compile(r"story__title"))
+                title = normalize(title_node.get_text(" ", strip=True)) if title_node else normalize(link.get_text(" ", strip=True))
+                seen_urls.add(full_url)
+                rows.append({
+                    "source": "Pikabu Native Public",
+                    "platform": "Pikabu",
+                    "source_type": "public_native_html",
+                    "url": full_url,
+                    "title": (title or text[:240])[:500],
+                    "text": text[:7000],
+                    "published": published,
+                    "author": "",
+                    "search_query": tag,
+                    "north_cyprus_context": True,
+                })
+                found += 1
+                if found >= 30:
+                    break
+
+            NATIVE_DEBUG["Pikabu:rows"] += found
+        except Exception as exc:
+            NATIVE_DEBUG[f"Pikabu:error_{type(exc).__name__}"] += 1
+
+    return rows
+
+
 def serper_search(query: str, domain: str) -> list[dict[str, Any]]:
     key = os.getenv("SERPER_API_KEY", "").strip()
     if not key:
@@ -904,8 +1148,35 @@ def scan() -> dict[str, Any]:
         stats["accepted_by_platform"][f"{platform} comments"] += 1
         leads.append(lead)
 
+    for row in ok_native_search() + pikabu_native_search():
+        key = fingerprint(row)
+        if key in seen:
+            continue
+
+        seen.add(key)
+        platform = str(row.get("platform") or "Native Public")
+        stats["raw_by_platform"][platform] += 1
+        stats["provider_counts"][str(row.get("source") or "Native Public")] += 1
+
+        if not is_recent_enough(row):
+            stats["reject_reasons"]["native:stale"] += 1
+            remember_reject("native:stale", row)
+            continue
+
+        lead, reason = classify_candidate(row)
+        if not lead:
+            native_reason = f"native:{reason}"
+            stats["reject_reasons"][native_reason] += 1
+            remember_reject(native_reason, row)
+            continue
+
+        lead["lead_id"] = key
+        lead["found_at"] = started.isoformat()
+        stats["accepted_by_platform"][platform] += 1
+        leads.append(lead)
+
     for platform, domain in SOURCES.items():
-        if platform in {"VC.ru", "DTF"}:
+        if platform in {"VC.ru", "DTF", "OK", "Pikabu"}:
             continue
         for query in PUBLIC_DISCOVERY_QUERIES[:QUERY_LIMIT]:
             stats["queries"] += 1
@@ -1001,6 +1272,7 @@ def scan() -> dict[str, Any]:
         "reject_reasons": dict(stats["reject_reasons"]),
         "provider_counts": dict(stats["provider_counts"]),
         "cmtt_debug": dict(CMTT_DEBUG),
+        "native_debug": dict(NATIVE_DEBUG),
         "reject_samples": stats["reject_samples"],
         "comment_candidates": sum(v for k, v in stats["raw_by_platform"].items() if k.endswith(" comments")),
         "leads": leads[:50],
