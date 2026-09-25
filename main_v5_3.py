@@ -40,6 +40,7 @@ gate.v5.REDDIT_QUERIES = []
 # ---------------------------------------------------------------------------
 
 _EXA_DISABLED_FOR_RUN = False
+_SERPER_DISABLED_FOR_RUN = False
 
 
 def _site_query(query: str, domains: list[str] | None) -> str:
@@ -50,6 +51,12 @@ def _site_query(query: str, domains: list[str] | None) -> str:
 
 
 def _serper_search(query: str, include_domains: list[str] | None = None) -> list[dict[str, Any]]:
+    global _SERPER_DISABLED_FOR_RUN
+
+    if _SERPER_DISABLED_FOR_RUN:
+        print("SERPER_DISABLED_FOR_RUN")
+        return []
+
     key = os.getenv("SERPER_API_KEY", "").strip()
     if not key:
         print("SERPER_NOT_CONFIGURED")
@@ -75,7 +82,18 @@ def _serper_search(query: str, include_domains: list[str] | None = None) -> list
                 detail = r.json()
             except Exception:
                 detail = r.text[:400]
-            print(f"SERPER_HTTP_{r.status_code}: {detail}")
+
+            detail_text = str(detail).casefold()
+            if (
+                r.status_code == 402
+                or "not enough credits" in detail_text
+                or "insufficient credit" in detail_text
+                or "quota" in detail_text
+            ):
+                _SERPER_DISABLED_FOR_RUN = True
+                print(f"SERPER_DISABLED_FOR_RUN: HTTP_{r.status_code} {detail}")
+            else:
+                print(f"SERPER_HTTP_{r.status_code}: {detail}")
             return []
 
         data = r.json()

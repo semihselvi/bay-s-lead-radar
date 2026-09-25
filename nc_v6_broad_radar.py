@@ -17,7 +17,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.5-review-debug-clarity"
+VERSION = "6.6-provider-circuit-breaker"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -1018,7 +1018,12 @@ def _bing_rss_search(query: str, include_domains: list[str] | None = None) -> li
 def search_debug(query: str, include_domains: list[str] | None = None):
     rows = _existing_search(query, include_domains)
     if not rows:
-        DEBUG["web_provider_errors"]["exa_serper_empty_or_quota"] += 1
+        exa_disabled = bool(getattr(radar.v53, "_EXA_DISABLED_FOR_RUN", False))
+        serper_disabled = bool(getattr(radar.v53, "_SERPER_DISABLED_FOR_RUN", False))
+        if exa_disabled and serper_disabled:
+            DEBUG["web_provider_errors"]["paid_search_disabled_for_run"] = 1
+        else:
+            DEBUG["web_provider_errors"]["exa_serper_empty_or_quota"] += 1
         rows = _bing_rss_search(query, include_domains)
 
     filtered = []
