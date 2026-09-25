@@ -55,9 +55,64 @@ TG_DIRECT_PROPERTY_PURCHASE_RE = re.compile(
 )
 
 
+TG_PURCHASE_VERB_RE = re.compile(
+    r"(?:"
+    r"\bкуплю\b|\bкупить\b|\bпокупк\w*\b|"
+    r"\b(?:buy|buying|purchase|purchasing)\b|"
+    r"\b(?:sat[ıi]n\s+almak|almak|alacağım|alacagim|almak\s+istiyorum)\b"
+    r")",
+    re.I,
+)
+
+TG_PROPERTY_OBJECT_RE = re.compile(
+    rf"(?:{_RU_PROPERTY_OBJECT}|"
+    r"\b(?:property|apartment|flat|house|villa|studio|land|plot)\b|"
+    r"\b(?:daire|ev|villa|arsa|gayrimenkul|konut|st[üu]dyo)\b"
+    r")",
+    re.I,
+)
+
+
+def _goods_is_purchase_target(text: str) -> bool:
+    own = str(text or "")
+    goods = TG_NON_PROPERTY_GOODS_RE.search(own)
+    if not goods:
+        return False
+
+    verb = TG_PURCHASE_VERB_RE.search(own)
+    if not verb:
+        return False
+
+    prop = TG_PROPERTY_OBJECT_RE.search(own)
+
+    # Compare which object is linguistically closest to the purchase verb.
+    # This fixes phrases such as:
+    # "Куплю моющий робот пылесос для большой квартиры" where квартира is
+    # merely usage context, not the thing being purchased.
+    verb_center = (verb.start() + verb.end()) / 2
+    goods_center = (goods.start() + goods.end()) / 2
+    goods_distance = abs(goods_center - verb_center)
+
+    if prop is None:
+        return goods_distance <= 140
+
+    prop_center = (prop.start() + prop.end()) / 2
+    prop_distance = abs(prop_center - verb_center)
+
+    return goods_distance + 4 < prop_distance
+
+
 def is_nonproperty_goods_request(text: str) -> bool:
     own = " ".join(str(text or "").split())
-    return bool(TG_NON_PROPERTY_GOODS_RE.search(own) and not TG_DIRECT_PROPERTY_PURCHASE_RE.search(own))
+    if not TG_NON_PROPERTY_GOODS_RE.search(own):
+        return False
+
+    # If the goods noun is the actual target of the purchase verb, incidental
+    # housing words ("for a large apartment", "at home") must not override it.
+    if _goods_is_purchase_target(own):
+        return True
+
+    return not TG_DIRECT_PROPERTY_PURCHASE_RE.search(own)
 
 
 _base_refine = radar.v53.gate.refine_telegram_property_buyer

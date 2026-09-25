@@ -505,5 +505,16 @@ class BroadIntentTests(unittest.TestCase):
         self.assertEqual(reason, "accepted")
         self.assertIn(lead["lead_class"], {"HOT BUYER", "WARM BUYER"})
 
+
+    def test_live_robot_vacuum_message_is_not_property_buyer(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            lead, reason = v6.classify_text(
+                "Куплю моющий робот пылесос для большой квартиры. "
+                "В хорошем состоянии Искеле -Фамагуста и др. Цена 1 тл для бота",
+                group="СЕВЕРНЫЙ КИПР | БАРАХОЛКА",
+            )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "nonproperty_goods")
+
 if __name__ == "__main__":
     unittest.main()
