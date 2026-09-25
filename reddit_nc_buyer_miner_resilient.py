@@ -5,15 +5,19 @@ import json
 import os
 import re
 import time
+import urllib.parse
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone, timedelta
+from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
 
 import requests
+from bs4 import BeautifulSoup
 
 import main
 import reddit_nc_buyer_miner as base
 
-VERSION = "1.2-reddit-resilient-rental-guard"
+VERSION = "1.3-reddit-free-rss-bing"
 INDEX_LOOKBACK_DAYS = int(os.getenv("NC_REDDIT_INDEX_LOOKBACK_DAYS", "30"))
 INDEX_QUERY_LIMIT = int(os.getenv("NC_REDDIT_INDEX_QUERY_LIMIT", "12"))
 INDEX_COLLECTION = "bay_s_nc_reddit_index_notified"
@@ -24,6 +28,13 @@ SESSION.headers.update({
     "User-Agent": "Mozilla/5.0 (compatible; BAY-S-NC-Reddit-Index-Miner/1.2)",
     "Accept-Language": "en-US,en;q=0.9",
 })
+
+REDDIT_RSS_FEEDS = [
+    ("NorthCyprus new", "https://www.reddit.com/r/NorthCyprus/new/.rss"),
+    ("NorthCyprus property search", "https://www.reddit.com/r/NorthCyprus/search.rss?q=property&restrict_sr=1&sort=new&t=month"),
+    ("Cyprus North property search", "https://www.reddit.com/r/cyprus/search.rss?q=%22north%20cyprus%22%20property&restrict_sr=1&sort=new&t=month"),
+    ("Expats North Cyprus search", "https://www.reddit.com/r/expats/search.rss?q=%22north%20cyprus%22&restrict_sr=1&sort=new&t=month"),
+]
 
 INDEX_QUERIES = [
     'site:reddit.com/r/NorthCyprus "buying property"',
@@ -190,8 +201,148 @@ def classify_index_result(row: dict, query: str):
         "intent_score": min(97, intent),
         "credibility_score": 84,
         "market_fit_score": 100,
-        "buyer_signal": "reddit_serper_index_direct" if stage == "DIRECT" else "reddit_serper_index_research",
+        "buyer_signal": "reddit_public_discovery_direct" if stage == "DIRECT" else "reddit_public_discovery_research",
     }, "accepted"
+
+
+
+def _parse_feed_date(raw: str) -> datetime | None:
+    raw = clean(raw)
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        pass
+    try:
+        dt = parsedate_to_datetime(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _recent_enough(raw: str) -> bool:
+    dt = _parse_feed_date(raw)
+    if dt is None:
+        return False
+    return dt >= datetime.now(timezone.utc) - timedelta(days=INDEX_LOOKBACK_DAYS)
+
+
+def _reddit_rss_rows(label: str, url: str) -> list[dict]:
+    try:
+        r = SESSION.get(url, timeout=20, allow_redirects=True)
+        print("NC_REDDIT_RSS_HTTP", label, r.status_code)
+        if r.status_code != 200:
+            return []
+
+        root = ET.fromstring(r.content)
+        ns = {"a": "http://www.w3.org/2005/Atom"}
+        rows: list[dict] = []
+
+        for entry in root.findall(".//a:entry", ns):
+            title = clean(entry.findtext("a:title", default="", namespaces=ns))
+            published = clean(
+                entry.findtext("a:published", default="", namespaces=ns)
+                or entry.findtext("a:updated", default="", namespaces=ns)
+            )
+            if not _recent_enough(published):
+                continue
+
+            link = ""
+            for link_node in entry.findall("a:link", ns):
+                href = str(link_node.attrib.get("href") or "")
+                if "/comments/" in href:
+                    link = href
+                    break
+                if not link and href:
+                    link = href
+
+            content_html = entry.findtext("a:content", default="", namespaces=ns) or ""
+            snippet = clean(BeautifulSoup(content_html, "html.parser").get_text(" ", strip=True))
+
+            if link and title:
+                rows.append({
+                    "title": title,
+                    "snippet": snippet,
+                    "link": link,
+                    "date": published,
+                    "_query": label,
+                    "_source": "Reddit Native RSS",
+                })
+
+        print("NC_REDDIT_RSS_OK", label, "results=", len(rows))
+        return rows
+    except Exception as exc:
+        print("NC_REDDIT_RSS_ERROR", label, type(exc).__name__, exc)
+        return []
+
+
+def _bing_rss(query: str) -> list[dict]:
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=INDEX_LOOKBACK_DAYS)).date().isoformat()
+    scoped = f"{query} after:{cutoff}"
+    url = "https://www.bing.com/search?format=rss&q=" + urllib.parse.quote_plus(scoped)
+    try:
+        r = SESSION.get(url, timeout=20)
+        if r.status_code != 200:
+            print("NC_REDDIT_BING_RSS_ERROR", r.status_code, query)
+            return []
+
+        root = ET.fromstring(r.content)
+        rows: list[dict] = []
+        for item in root.findall(".//item"):
+            link = clean(item.findtext("link") or "")
+            if not _reddit_thread_url(link):
+                continue
+
+            title = clean(item.findtext("title") or "")
+            snippet = clean(BeautifulSoup(item.findtext("description") or "", "html.parser").get_text(" ", strip=True))
+            pub = clean(item.findtext("pubDate") or "")
+            # Bing can omit/lag dates; the query itself is date-bounded, so keep
+            # undated rows but reject explicitly stale dated rows.
+            if pub:
+                parsed = _parse_feed_date(pub)
+                if parsed and parsed < datetime.now(timezone.utc) - timedelta(days=INDEX_LOOKBACK_DAYS):
+                    continue
+
+            rows.append({
+                "title": title,
+                "snippet": snippet,
+                "link": link,
+                "date": pub,
+                "_query": query,
+                "_source": "Bing RSS",
+            })
+
+        print("NC_REDDIT_BING_RSS_OK", len(rows), query)
+        return rows
+    except Exception as exc:
+        print("NC_REDDIT_BING_RSS_EXCEPTION", type(exc).__name__, exc)
+        return []
+
+
+def _free_discovery_rows(queries: list[str]) -> list[dict]:
+    rows: list[dict] = []
+    for label, url in REDDIT_RSS_FEEDS:
+        rows.extend(_reddit_rss_rows(label, url))
+
+    for query in queries:
+        rows.extend(_bing_rss(query))
+        time.sleep(0.05)
+
+    print(
+        "NC_REDDIT_FREE_DISCOVERY",
+        json.dumps({
+            "raw": len(rows),
+            "reddit_rss": sum(1 for x in rows if x.get("_source") == "Reddit Native RSS"),
+            "bing_rss": sum(1 for x in rows if x.get("_source") == "Bing RSS"),
+        }, ensure_ascii=False),
+    )
+    return rows
 
 
 def _serper(query: str) -> list[dict]:
@@ -234,21 +385,44 @@ def _run_index_fallback():
     started = datetime.now(timezone.utc)
     db = main.db()
     queries = INDEX_QUERIES[:max(1, min(INDEX_QUERY_LIMIT, len(INDEX_QUERIES)))]
-    stats = {"queries": len(queries), "raw": 0, "unique": 0, "accepted": 0, "new": 0}
+    stats = {
+        "queries": len(queries),
+        "raw": 0,
+        "unique": 0,
+        "accepted": 0,
+        "new": 0,
+        "providers": {},
+    }
     reasons: dict[str, int] = {}
     candidates: dict[str, dict] = {}
 
-    for query in queries:
-        for row in _serper(query):
-            stats["raw"] += 1
-            url = str(row.get("link") or "")
-            if not url:
-                continue
-            key = url.split("?")[0].rstrip("/")
-            candidates.setdefault(key, {**row, "_query": query})
-        time.sleep(0.1)
+    free_rows = _free_discovery_rows(queries)
+    for row in free_rows:
+        stats["raw"] += 1
+        url = str(row.get("link") or "")
+        if not url:
+            continue
+        key = url.split("?")[0].rstrip("/")
+        candidates.setdefault(key, row)
+
+    # Paid/index fallback is now last-resort only. Normal operation should stay
+    # alive on Reddit public RSS and Bing RSS even when Serper has zero credits.
+    if not candidates:
+        print("NC_REDDIT_FREE_DISCOVERY_EMPTY -> SERPER_LAST_RESORT")
+        for query in queries:
+            for row in _serper(query):
+                stats["raw"] += 1
+                url = str(row.get("link") or "")
+                if not url:
+                    continue
+                key = url.split("?")[0].rstrip("/")
+                candidates.setdefault(key, {**row, "_query": query, "_source": "Serper Index"})
+            time.sleep(0.1)
 
     stats["unique"] = len(candidates)
+    for row in candidates.values():
+        provider = str(row.get("_source") or "unknown")
+        stats["providers"][provider] = stats["providers"].get(provider, 0) + 1
     leads = []
     for url_key, row in candidates.items():
         signal, reason = classify_index_result(row, str(row.get("_query") or ""))
@@ -271,7 +445,7 @@ def _run_index_fallback():
 
         lead = {
             **signal,
-            "source": "Reddit via Serper Index",
+            "source": str(row.get("_source") or "Reddit Public Discovery"),
             "market": "north_cyprus",
             "route_to": "Prime Kıbrıs",
             "title": title,
@@ -327,7 +501,7 @@ def run():
     if _probe_direct_reddit():
         print("NC_REDDIT_MODE direct_comment_fetch")
         return base.run()
-    print("NC_REDDIT_MODE serper_index_fallback")
+    print("NC_REDDIT_MODE free_rss_bing_discovery")
     return _run_index_fallback()
 
 
