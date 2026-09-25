@@ -653,5 +653,19 @@ class BroadIntentTests(unittest.TestCase):
         self.assertEqual(reason, "accepted")
         self.assertIn("owner_direct_buyer_preference", lead["lead_reasons"])
 
+
+    def test_self_telegram_sender_id_is_rejected(self):
+        class Msg:
+            sender_id = 12345
+        self.assertTrue(v6._is_self_telegram_message(Msg(), 12345, "owner", "@someone"))
+        self.assertFalse(v6._is_self_telegram_message(Msg(), 99999, "owner", "@someone"))
+
+    def test_self_telegram_username_is_rejected_as_fallback(self):
+        class Msg:
+            sender_id = 0
+        self.assertTrue(v6._is_self_telegram_message(Msg(), 0, "my_username", "@my_username"))
+        self.assertTrue(v6._is_self_telegram_message(Msg(), 0, "@my_username", "my_username"))
+        self.assertFalse(v6._is_self_telegram_message(Msg(), 0, "my_username", "@other_user"))
+
 if __name__ == "__main__":
     unittest.main()
