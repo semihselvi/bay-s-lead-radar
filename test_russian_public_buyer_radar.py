@@ -79,6 +79,22 @@ class RussianPublicBuyerRadarTests(unittest.TestCase):
             "no_explicit_purchase_intent",
         )
 
+    def test_long_beach_racing_is_not_north_cyprus(self):
+        self.assertFalse(
+            r.has_nc_context("Long Beach drift yarışları ve motorsporları takvimi")
+        )
+
+    def test_long_beach_with_cyprus_context_is_north_cyprus(self):
+        self.assertTrue(
+            r.has_nc_context("Северный Кипр, Лонг Бич, Искеле")
+        )
+
+    def test_old_native_post_is_stale(self):
+        candidate = item("Я хочу купить квартиру на Северном Кипре.")
+        candidate["source_type"] = "public_platform_api"
+        candidate["published"] = "1704067200"
+        self.assertFalse(r.is_recent_enough(candidate, 90))
+
     def test_south_cyprus_not_accepted(self):
         self.assertRejected(
             "Я хочу купить квартиру в Лимассоле на Кипре.",
