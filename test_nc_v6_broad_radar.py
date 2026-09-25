@@ -447,5 +447,46 @@ class BroadIntentTests(unittest.TestCase):
             module._SERPER_DISABLED_FOR_RUN = old_serper
             v6.DEBUG["web_provider_errors"].clear()
 
+
+    def test_strict_extra_prefilter_accepts_explicit_nc_buyer(self):
+        self.assertTrue(v6.strict_extra_candidate_signal(
+            "I want to buy a 2+1 apartment in North Cyprus, budget £120,000."
+        ))
+
+    def test_strict_extra_prefilter_rejects_non_nc_buyer(self):
+        self.assertFalse(v6.strict_extra_candidate_signal(
+            "I want to buy a 2+1 apartment in Marbella, budget €120,000."
+        ))
+
+    def test_strict_extra_prefilter_rejects_nc_nonproperty_chatter(self):
+        self.assertFalse(v6.strict_extra_candidate_signal(
+            "We are visiting North Cyprus next week. Which restaurant is best?"
+        ))
+
+    def test_unrelated_group_can_still_accept_explicit_nc_buyer(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            text = "Looking to buy a 1+1 apartment in North Cyprus. Budget £95,000."
+            self.assertTrue(v6.strict_extra_candidate_signal(text))
+            lead, reason = v6.classify_text(
+                text,
+                group="Random International Chat",
+                explicit_geo=True,
+            )
+        self.assertIsNotNone(lead)
+        self.assertEqual(reason, "accepted")
+        self.assertIn(lead["lead_class"], {"HOT BUYER", "WARM BUYER"})
+
+    def test_unrelated_group_listing_still_rejected(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            text = "North Cyprus apartment for sale, 1+1, £95,000. DM for details."
+            self.assertTrue(v6.strict_extra_candidate_signal(text))
+            lead, reason = v6.classify_text(
+                text,
+                group="Random International Chat",
+                explicit_geo=True,
+            )
+        self.assertIsNone(lead)
+        self.assertIn(reason, {"supply_or_agent", "no_explicit_purchase_intent"})
+
 if __name__ == "__main__":
     unittest.main()
