@@ -18,7 +18,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.11-telegram-public-peer-discovery"
+VERSION = "6.12-owner-direct-buyer-fix"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -440,8 +440,9 @@ def _hard_reject(text: str, author: str = "") -> str:
         return "financial_or_goods"
     if POST_PURCHASE_OR_INFO_RE.search(text):
         return "post_purchase_or_info"
-    if OWNER_DIRECT_ONLY_RE.search(text):
-        return "owner_direct_only"
+    # "Sahibinden / direct from owner / от собственника" is NOT a negative
+    # signal by itself. A real buyer may explicitly prefer buying from an owner.
+    # Seller/listing language is rejected below by the supply guards.
     if JOB_POST_RE.search(text):
         return "job_post"
     if VEHICLE_RE.search(text):
@@ -602,6 +603,8 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
         reasons.append("investment_secondary")
     if residency:
         reasons.append("residency_signal")
+    if OWNER_DIRECT_ONLY_RE.search(own) and buy and has_property:
+        reasons.append("owner_direct_buyer_preference")
     if extract_budget(own):
         reasons.append("budget_present")
     if extract_region(own):
