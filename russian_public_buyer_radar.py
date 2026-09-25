@@ -77,7 +77,7 @@ NC_RE = re.compile(
 BUY_RE = re.compile(
     r"(?:"
     r"\bхочу\s+купить\b|\bхотим\s+купить\b|\bпланир\w*\s+купить\b|"
-    r"\bрассматрива\w*\s+(?:покупк\w*|вариант\w*)\b|\bсобира\w*\s+купить\b|"
+    r"\bрассматрива\w*\s+(?:покупк\w*|вариант\w*.{0,80}(?:покупк\w*|приобрет\w*))\b|\bсобира\w*\s+купить\b|"
     r"\bкуплю\b|\bищу\b.{0,100}\b(?:для\s+покупк\w*|купить)\b|"
     r"\bгде\s+(?:лучше\s+)?купить\b|\bстоит\s+ли\s+покупать\b|"
     r"\bкакую\s+(?:квартир\w*|недвижимост\w*|вилл\w*|дом\w*)\s+купить\b|"
@@ -94,9 +94,12 @@ PROPERTY_RE = re.compile(
 )
 
 PERSONAL_RE = re.compile(
-    r"(?:\bя\b|\bмы\b|\bмне\b|\bнам\b|\bмой\b|\bмоя\b|\bнаш\b|\bхочу\b|\bхотим\b|"
-    r"\bищу\b|\bищем\b|\bпланир\w*\b|\bсобира\w*\b|\bподскажите\b|\bпосоветуйте\b|"
-    r"\bкто\s+покупал\b|\bi\b|\bwe\b|\bmy\b|\bour\b)",
+    r"(?:"
+    r"\b(?:я|мы)\s+(?:хочу|хотим|планир\w*|собира\w*|рассматрива\w*)\b|"
+    r"\b(?:мне|нам)\s+нужн\w*\b|\b(?:я|мы)\s+ищ\w*\b|"
+    r"\bподскажите\b|\bпосоветуйте\b|\bкто\s+покупал\b|"
+    r"\b(?:i|we)\s+(?:want|plan|are\s+planning|am\s+looking|are\s+looking)\b"
+    r")",
     re.I,
 )
 
@@ -120,6 +123,18 @@ PROVIDER_RE = re.compile(
     r"\bкомисси\w*\b|\bпишите\s+(?:в\s+лс|мне)\b|\bwhatsapp\b|"
     r"\btelegram\b.{0,30}\b(?:менеджер|отдел\s+продаж)\b|"
     r"\breal\s+estate\s+agency\b|\brealtor\b|\bdeveloper\b|\bcontact\s+us\b)",
+    re.I | re.S,
+)
+
+COMMERCIAL_BRAND_RE = re.compile(
+    r"(?:"
+    r"\bкомпан(?:ия|ии|ию)\b.{0,120}\b(?:недвижимост|аренд|продаж|услуг)\w*\b|"
+    r"\bмы\s+специализиру\w*\b|\bмы\s+предлага\w*\b|\bу\s+нас\s+есть\b|"
+    r"\bнаши\s+(?:объект\w*|клиент\w*|услуг\w*|предложен\w*)\b|"
+    r"\bзвоните\s+нам\b|\bпосетите\s+наш\s+сайт\b|\bоставьте\s+заявк\w*\b|"
+    r"\bcompany\b.{0,100}\b(?:property|real\s+estate|rent|sale|services?)\b|"
+    r"\bwe\s+(?:speciali[sz]e|offer|provide|manage)\b"
+    r")",
     re.I | re.S,
 )
 
@@ -183,7 +198,7 @@ def classify_candidate(item: dict[str, Any]) -> tuple[dict[str, Any] | None, str
         return None, "completed_or_cancelled"
     if SELLER_RE.search(blob):
         return None, "seller_or_listing"
-    if PROVIDER_RE.search(blob):
+    if PROVIDER_RE.search(blob) or COMMERCIAL_BRAND_RE.search(blob):
         return None, "provider_or_agent"
     if not PROPERTY_RE.search(blob):
         return None, "no_property"
@@ -729,8 +744,20 @@ def scan() -> dict[str, Any]:
         "accepted_by_platform": Counter(),
         "reject_reasons": Counter(),
         "provider_counts": Counter(),
+        "reject_samples": {},
         "queries": 0,
     }
+
+    def remember_reject(reason: str, row: dict[str, Any]) -> None:
+        bucket = stats["reject_samples"].setdefault(reason, [])
+        if len(bucket) >= 3:
+            return
+        bucket.append({
+            "platform": row.get("platform", ""),
+            "title": normalize(str(row.get("title") or ""))[:240],
+            "text": normalize(str(row.get("text") or ""))[:420],
+            "url": row.get("url", ""),
+        })
 
     cmtt_rows = cmtt_public_search()
 
@@ -747,6 +774,7 @@ def scan() -> dict[str, Any]:
         lead, reason = classify_candidate(row)
         if not lead:
             stats["reject_reasons"][reason] += 1
+            remember_reject(reason, row)
             continue
 
         lead["lead_id"] = key
@@ -766,7 +794,9 @@ def scan() -> dict[str, Any]:
 
         lead, reason = classify_candidate(row)
         if not lead:
-            stats["reject_reasons"][f"comment:{reason}"] += 1
+            comment_reason = f"comment:{reason}"
+            stats["reject_reasons"][comment_reason] += 1
+            remember_reject(comment_reason, row)
             continue
 
         lead["lead_id"] = key
@@ -866,6 +896,7 @@ def scan() -> dict[str, Any]:
         "reject_reasons": dict(stats["reject_reasons"]),
         "provider_counts": dict(stats["provider_counts"]),
         "cmtt_debug": dict(CMTT_DEBUG),
+        "reject_samples": stats["reject_samples"],
         "comment_candidates": sum(v for k, v in stats["raw_by_platform"].items() if k.endswith(" comments")),
         "leads": leads[:50],
     }
