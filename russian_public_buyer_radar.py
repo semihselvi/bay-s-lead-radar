@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import time
 import urllib.parse
 import xml.etree.ElementTree as ET
 from collections import Counter
@@ -19,6 +20,7 @@ SCAN_COLLECTION = os.getenv("FIRESTORE_RU_PUBLIC_SCAN_COLLECTION", "bay_s_ru_pub
 DRY_RUN = os.getenv("RADAR_DRY_RUN", "1").strip().lower() not in {"0", "false", "no"}
 TIMEOUT = int(os.getenv("RADAR_HTTP_TIMEOUT", "20"))
 MAX_PER_QUERY = int(os.getenv("RADAR_RU_PUBLIC_MAX_PER_QUERY", "10"))
+CMTT_COMMENT_ENTRY_LIMIT = int(os.getenv("RADAR_CMTT_COMMENT_ENTRY_LIMIT", "20"))
 
 SOURCES = {
     "VK": "vk.com",
@@ -173,7 +175,7 @@ def classify_candidate(item: dict[str, Any]) -> tuple[dict[str, Any] | None, str
     blob = normalize(f"{item.get('title', '')} {item.get('text', '')}")
     if not blob:
         return None, "empty"
-    if not NC_RE.search(blob):
+    if not (NC_RE.search(blob) or bool(item.get("north_cyprus_context"))):
         return None, "no_north_cyprus_context"
     if TENANT_RE.search(blob):
         return None, "tenant"
@@ -429,6 +431,130 @@ def cmtt_public_search() -> list[dict[str, Any]]:
     return rows
 
 
+def _cmtt_comment_items(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [x for x in payload if isinstance(x, dict)]
+    if not isinstance(payload, dict):
+        return []
+
+    for key in ("items", "comments"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [x for x in value if isinstance(x, dict)]
+
+    for key in ("result", "data"):
+        value = payload.get(key)
+        if isinstance(value, dict):
+            nested = _cmtt_comment_items(value)
+            if nested:
+                return nested
+
+    return []
+
+
+def cmtt_public_comments(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Fetch public comments only for North-Cyprus-context search entries."""
+    out: list[dict[str, Any]] = []
+    eligible = []
+
+    for row in entries:
+        blob = normalize(f"{row.get('title', '')} {row.get('text', '')}")
+        if not NC_RE.search(blob):
+            continue
+        if not row.get("entry_id"):
+            continue
+        eligible.append(row)
+
+    # De-duplicate entries returned by multiple search terms before requesting comments.
+    unique_entries: list[dict[str, Any]] = []
+    seen_entries: set[tuple[str, str]] = set()
+    for row in eligible:
+        key = (str(row.get("platform") or ""), str(row.get("entry_id") or ""))
+        if key in seen_entries:
+            continue
+        seen_entries.add(key)
+        unique_entries.append(row)
+
+    for row in unique_entries[:max(0, CMTT_COMMENT_ENTRY_LIMIT)]:
+        platform = str(row.get("platform") or "")
+        site = CMTT_SITES.get(platform)
+        if not site:
+            continue
+        site_base, api_base = site
+        entry_id = str(row.get("entry_id") or "")
+        if not entry_id:
+            continue
+
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": f"{platform.lower().replace('.', '')}-app/2.2.0; release "
+            "(GitHubActions; Linux/1; ru_RU; 1080x1920)",
+            "Accept": "application/json,text/plain,*/*",
+            "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.7",
+        })
+
+        try:
+            response = session.get(
+                f"{api_base}/v2.6/comments",
+                params={"contentId": entry_id, "sorting": "date"},
+                timeout=min(TIMEOUT, 8),
+            )
+            CMTT_DEBUG[f"{platform}:comments:http_{response.status_code}"] += 1
+            if response.status_code != 200:
+                continue
+
+            payload = response.json()
+            comments = _cmtt_comment_items(payload)
+            CMTT_DEBUG[f"{platform}:comments:items"] += len(comments)
+
+            for comment in comments[:100]:
+                cid = comment.get("id") or comment.get("commentId") or ""
+                text_parts = _collect_text_values(comment)
+                comment_text = normalize(" ".join(text_parts))
+                if not comment_text:
+                    continue
+
+                author_obj = comment.get("author") or comment.get("user") or {}
+                author = ""
+                if isinstance(author_obj, dict):
+                    author = normalize(str(
+                        author_obj.get("name")
+                        or author_obj.get("title")
+                        or author_obj.get("username")
+                        or ""
+                    ))
+
+                url = str(row.get("url") or "")
+                if not url and entry_id:
+                    url = f"{site_base}/{entry_id}"
+                if cid and url:
+                    separator = "&" if "?" in url else "?"
+                    url = f"{url}{separator}comment={cid}"
+
+                out.append({
+                    "source": f"{platform} Comments API",
+                    "platform": platform,
+                    "source_type": "public_comment",
+                    "url": url,
+                    "title": normalize(str(row.get("title") or "")),
+                    "text": comment_text[:6000],
+                    "published": str(comment.get("dateRFC") or comment.get("date") or ""),
+                    "author": author,
+                    "search_query": str(row.get("search_query") or ""),
+                    "entry_id": entry_id,
+                    "comment_id": str(cid),
+                    "north_cyprus_context": True,
+                    "parent_entry_title": normalize(str(row.get("title") or "")),
+                })
+        except Exception as exc:
+            CMTT_DEBUG[f"{platform}:comments:error_{type(exc).__name__}"] += 1
+
+        # Public API documentation asks clients to stay below 3 requests/sec.
+        time.sleep(0.36)
+
+    return out
+
+
 def serper_search(query: str, domain: str) -> list[dict[str, Any]]:
     key = os.getenv("SERPER_API_KEY", "").strip()
     if not key:
@@ -606,7 +732,9 @@ def scan() -> dict[str, Any]:
         "queries": 0,
     }
 
-    for row in cmtt_public_search():
+    cmtt_rows = cmtt_public_search()
+
+    for row in cmtt_rows:
         key = fingerprint(row)
         if key in seen:
             continue
@@ -624,6 +752,26 @@ def scan() -> dict[str, Any]:
         lead["lead_id"] = key
         lead["found_at"] = started.isoformat()
         stats["accepted_by_platform"][platform] += 1
+        leads.append(lead)
+
+    for row in cmtt_public_comments(cmtt_rows):
+        key = fingerprint(row)
+        if key in seen:
+            continue
+
+        seen.add(key)
+        platform = str(row.get("platform") or "CMTT")
+        stats["raw_by_platform"][f"{platform} comments"] += 1
+        stats["provider_counts"][str(row.get("source") or "CMTT Comments API")] += 1
+
+        lead, reason = classify_candidate(row)
+        if not lead:
+            stats["reject_reasons"][f"comment:{reason}"] += 1
+            continue
+
+        lead["lead_id"] = key
+        lead["found_at"] = started.isoformat()
+        stats["accepted_by_platform"][f"{platform} comments"] += 1
         leads.append(lead)
 
     for platform, domain in SOURCES.items():
@@ -718,6 +866,7 @@ def scan() -> dict[str, Any]:
         "reject_reasons": dict(stats["reject_reasons"]),
         "provider_counts": dict(stats["provider_counts"]),
         "cmtt_debug": dict(CMTT_DEBUG),
+        "comment_candidates": sum(v for k, v in stats["raw_by_platform"].items() if k.endswith(" comments")),
         "leads": leads[:50],
     }
 
