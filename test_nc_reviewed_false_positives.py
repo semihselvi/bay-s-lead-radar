@@ -190,5 +190,24 @@ class ReviewedFalsePositiveTests(unittest.TestCase):
         self.assertIn(signal.get("buyer_stage"), {"DIRECT", "RESEARCH"})
 
 
+
+    def test_rejects_exact_robot_vacuum_false_positive_from_live_run(self):
+        text = (
+            "Куплю моющий робот пылесос для большой квартиры. "
+            "В хорошем состоянии Искеле -Фамагуста и др. Цена 1 тл для бота"
+        )
+        self.assertTrue(batch_guard.TG_NON_PROPERTY_GOODS_RE.search(text))
+        self.assertTrue(batch_guard._goods_is_purchase_target(text))
+        self.assertTrue(batch_guard.is_nonproperty_goods_request(text))
+
+    def test_property_purchase_remains_primary_when_goods_are_incidental_afterward(self):
+        text = (
+            "Куплю квартиру 2+1 в Искеле, бюджет £120000. "
+            "Если в квартире уже есть робот пылесос, это плюс."
+        )
+        self.assertTrue(batch_guard.TG_NON_PROPERTY_GOODS_RE.search(text))
+        self.assertFalse(batch_guard._goods_is_purchase_target(text))
+        self.assertFalse(batch_guard.is_nonproperty_goods_request(text))
+
 if __name__ == "__main__":
     unittest.main()
