@@ -48,6 +48,21 @@ QUERIES = [
 
 QUERY_LIMIT = max(1, min(int(os.getenv("RADAR_RU_PUBLIC_QUERY_LIMIT", str(len(QUERIES))) or str(len(QUERIES))), len(QUERIES)))
 
+CMTT_TERMS = [
+    "Северный Кипр",
+    "Искеле",
+    "Лонг Бич",
+    "Гирне",
+    "Фамагуста",
+]
+
+CMTT_SITES = {
+    "VC.ru": ("https://vc.ru", "https://api.vc.ru"),
+    "DTF": ("https://dtf.ru", "https://api.dtf.ru"),
+}
+
+CMTT_API_VERSIONS = ("v2.6", "v2.31", "v1.9", "v1.6")
+
 NC_RE = re.compile(
     r"(?:северн\w*\s+кипр\w*|искел\w*|лонг\s+бич|фамагуст\w*|гирн\w*|"
     r"кирен\w*|алсанджак|лапт\w*|эсентеп\w*|татлысу|бафр\w*|боаз\w*|"
@@ -136,6 +151,26 @@ def normalize(text: str) -> str:
 
 def platform_from_url(url: str) -> str:
     low = (url or "").lower()
+    for row in cmtt_public_search():
+        key = fingerprint(row)
+        if key in seen:
+            continue
+
+        seen.add(key)
+        platform = str(row.get("platform") or "CMTT")
+        stats["raw_by_platform"][platform] += 1
+        stats["provider_counts"][str(row.get("source") or "CMTT API")] += 1
+
+        lead, reason = classify_candidate(row)
+        if not lead:
+            stats["reject_reasons"][reason] += 1
+            continue
+
+        lead["lead_id"] = key
+        lead["found_at"] = started.isoformat()
+        stats["accepted_by_platform"][platform] += 1
+        leads.append(lead)
+
     for platform, domain in SOURCES.items():
         if domain in low:
             return platform
@@ -238,6 +273,140 @@ def bing_rss_search(query: str, domain: str) -> list[dict[str, Any]]:
         return out
     except Exception:
         return []
+
+
+def _collect_text_values(value: Any, depth: int = 0) -> list[str]:
+    if depth > 5:
+        return []
+
+    out: list[str] = []
+    if isinstance(value, str):
+        text = normalize(value)
+        if text and not text.startswith(("http://", "https://")):
+            out.append(text)
+        return out
+
+    if isinstance(value, list):
+        for child in value[:80]:
+            out.extend(_collect_text_values(child, depth + 1))
+        return out
+
+    if isinstance(value, dict):
+        preferred = (
+            "title", "intro", "introInFeed", "text", "content", "value",
+            "caption", "description"
+        )
+        for key in preferred:
+            if key in value:
+                out.extend(_collect_text_values(value.get(key), depth + 1))
+        return out
+
+    return out
+
+
+def _cmtt_entries(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [x for x in payload if isinstance(x, dict)]
+
+    if not isinstance(payload, dict):
+        return []
+
+    for key in ("result", "items", "data", "entries", "content"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [x for x in value if isinstance(x, dict)]
+        if isinstance(value, dict):
+            nested = _cmtt_entries(value)
+            if nested:
+                return nested
+
+    return []
+
+
+def cmtt_public_search() -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+
+    for platform, (site_base, api_base) in CMTT_SITES.items():
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": f"{platform.lower().replace('.', '')}-app/2.2.0; release "
+            "(GitHubActions; Linux/1; ru_RU; 1080x1920)",
+            "Accept": "application/json,text/plain,*/*",
+            "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.7",
+        })
+
+        try:
+            session.get(site_base + "/", timeout=min(TIMEOUT, 10))
+        except Exception:
+            pass
+
+        working_version = ""
+        for term in CMTT_TERMS:
+            payload = None
+
+            versions = (working_version,) if working_version else CMTT_API_VERSIONS
+            for version in versions:
+                if not version:
+                    continue
+                try:
+                    response = session.get(
+                        f"{api_base}/{version}/search",
+                        params={"query": term, "orderBy": "date", "page": 1},
+                        timeout=TIMEOUT,
+                    )
+                    if response.status_code != 200:
+                        continue
+
+                    candidate = response.json()
+                    entries = _cmtt_entries(candidate)
+                    if entries or isinstance(candidate, dict):
+                        payload = candidate
+                        working_version = version
+                        break
+                except Exception:
+                    continue
+
+            if payload is None:
+                continue
+
+            for entry in _cmtt_entries(payload)[:25]:
+                entry_id = entry.get("id") or entry.get("entryId") or entry.get("contentId") or ""
+                title = normalize(str(entry.get("title") or ""))
+                pieces = _collect_text_values(entry)
+                text = normalize(" ".join(pieces))
+
+                if not title and not text:
+                    continue
+
+                author_obj = entry.get("author") or {}
+                author = ""
+                if isinstance(author_obj, dict):
+                    author = normalize(str(
+                        author_obj.get("name")
+                        or author_obj.get("title")
+                        or author_obj.get("username")
+                        or ""
+                    ))
+
+                url = str(entry.get("webviewUrl") or entry.get("url") or "")
+                if not url and entry_id:
+                    url = f"{site_base}/{entry_id}"
+
+                rows.append({
+                    "source": f"{platform} API",
+                    "platform": platform,
+                    "source_type": "public_platform_api",
+                    "url": url,
+                    "title": title,
+                    "text": text[:9000],
+                    "published": str(entry.get("dateRFC") or entry.get("date") or ""),
+                    "author": author,
+                    "search_query": term,
+                    "api_version": working_version,
+                    "entry_id": str(entry_id),
+                })
+
+    return rows
 
 
 def serper_search(query: str, domain: str) -> list[dict[str, Any]]:
@@ -418,6 +587,8 @@ def scan() -> dict[str, Any]:
     }
 
     for platform, domain in SOURCES.items():
+        if platform in {"VC.ru", "DTF"}:
+            continue
         for query in QUERIES[:QUERY_LIMIT]:
             stats["queries"] += 1
 
