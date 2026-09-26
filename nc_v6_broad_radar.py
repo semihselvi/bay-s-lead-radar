@@ -325,28 +325,28 @@ FURNISHED_RE = re.compile(r"(?:furnished|e[şs]yal[ıi]|меблирован\w*|
 
 # Web search expansion: broad intent families instead of purchase-only wording.
 v5.EXA_QUERIES = [
-    ("North Cyprus moving relocation housing apartment family area", None),
+    ("North Cyprus buying apartment villa family area", None),
     ("North Cyprus property prices budget 100000 150000 200000 pounds what can I buy", None),
-    ("North Cyprus rental yield investment payment plan property", None),
-    ("North Cyprus looking for apartment villa near sea", None),
-    ("North Cyprus looking to rent apartment villa moving", None),
-    ("Iskele Long Beach property prices investment rental yield", None),
+    ("North Cyprus investment property payment plan buy apartment", None),
+    ("North Cyprus looking to buy apartment villa near sea", None),
+    ("North Cyprus want to buy apartment villa payment plan", None),
+    ("Iskele Long Beach property prices investment apartment buy", None),
     ("Iskele Long Beach apartment budget payment plan ready to move", None),
-    ("Kyrenia Girne apartment villa looking for moving rent buy", None),
-    ("Famagusta Gazimagusa Magusa apartment rent buy student", None),
-    ("Kuzey Kıbrıs taşınmayı düşünüyorum ev daire hangi bölge", None),
+    ("Kyrenia Girne apartment villa looking to buy property", None),
+    ("Famagusta Gazimagusa Magusa apartment buy property investment", None),
+    ("Kuzey Kıbrıs ev satın almak hangi bölge", None),
     ("Kuzey Kıbrıs ev fiyatları bütçe ne alınır koçan taksit hazır teslim", None),
-    ("Kuzey Kıbrıs yatırım kira getirisi oturma izni ev", None),
+    ("Kuzey Kıbrıs yatırım için ev satın almak oturma izni", None),
     ("İskele Long Beach yatırım daire denize yakın bütçe", None),
-    ("Mağusa kiralık daire öğrenci arıyorum", None),
-    ("Северный Кипр переехать квартира аренда купить район", None),
+    ("Mağusa satılık daire satın almak yatırım", None),
+    ("Северный Кипр купить квартиру район рассрочка", None),
     ("Северный Кипр квартира бюджет фунтов рассрочка готовая квартира", None),
-    ("Северный Кипр инвестиции доход от аренды цены недвижимость", None),
+    ("Северный Кипр купить недвижимость инвестиции цены", None),
     ("Искеле Long Beach квартира у моря сколько стоит где лучше купить", None),
     ("Северный Кипр ВНЖ через недвижимость квартира", None),
-    ('site:facebook.com/groups "North Cyprus" ("looking for" OR "moving" OR "investment" OR "rent")', None),
-    ('site:facebook.com/groups "Kuzey Kıbrıs" ("arıyorum" OR "taşın" OR "yatırım" OR "kiralık")', None),
-    ('site:facebook.com/groups "Северный Кипр" ("ищу" OR "переезд" OR "инвест" OR "аренда")', None),
+    ('site:facebook.com/groups "North Cyprus" ("looking to buy" OR "buy property" OR "investment property")', None),
+    ('site:facebook.com/groups "Kuzey Kıbrıs" ("satın almak" OR "satılık daire" OR "yatırım için ev")', None),
+    ('site:facebook.com/groups "Северный Кипр" ("хочу купить" OR "куплю квартиру" OR "инвестиции недвижимость")', None),
 ]
 
 # Expand the legacy North-Cyprus regex used by the web path.
@@ -539,6 +539,10 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
     implicit_layout_property = bool(explicit_geo and UNIT_LAYOUT_RE.search(own) and (buy or demand))
     has_property = bool(PROPERTY_RE.search(own) or implicit_layout_property)
     rent = bool(RENT_DEMAND_RE.search(own))
+    # Prime Kibris buyer radar is purchase-only. Rental demand must never be
+    # stored, recovered or notified, regardless of environment flags.
+    if rent:
+        return None, "rental_hard_excluded"
     relocation = bool(RELOCATION_RE.search(own))
     investor = bool(INVESTOR_RE.search(own))
     research = bool(RESEARCH_RE.search(own))
@@ -2304,7 +2308,10 @@ def notify_lead(lead: dict[str, Any], prefix: str = "NEW") -> bool:
     if str(lead.get("market") or "") != "north_cyprus":
         return False
     lead_class = str(lead.get("lead_class") or "WATCH")
-    emoji = "🔥" if lead_class in {"HOT BUYER", "HOT TENANT"} else "🟡" if lead_class in {"WARM BUYER", "INVESTOR", "RELOCATION"} else "👀"
+    message_text = str(lead.get("message") or lead.get("text") or "")
+    if str(lead.get("intent_type") or "").upper() == "TENANT" or RENT_DEMAND_RE.search(message_text):
+        return False
+    emoji = "🔥" if lead_class == "HOT BUYER" else "🟡" if lead_class in {"WARM BUYER", "INVESTOR", "RELOCATION"} else "👀"
     criteria_text = ", ".join(lead.get("important_criteria") or []) or "-"
     reasons = ", ".join(lead.get("lead_reasons") or []) or "-"
     msg = (
