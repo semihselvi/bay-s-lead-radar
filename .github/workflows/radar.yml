@@ -4,6 +4,7 @@ name: NC - Lead Radar V6 Branch Quality
   push:
     branches:
       - feature/radar-v5-buyer-expansion
+      - feature/demand-language-loop-v626
     paths:
       - "*.py"
       - ".github/workflows/radar.yml"
@@ -30,7 +31,7 @@ jobs:
 
       - name: Compile V6
         run: |
-          python -m py_compile main.py main_v5.py main_v5_1.py main_v5_2.py main_v5_3.py main_v5_4.py main_v5_5.py nc_v5_batch_quality_guard.py nc_v6_broad_radar.py russian_public_buyer_radar.py public_web_buyer_radar.py web_source_discovery.py forum_engine.py adaptive_radar_learning.py test_russian_public_buyer_radar.py test_public_web_buyer_radar.py test_web_source_discovery.py test_forum_engine.py test_adaptive_radar_learning.py
+          python -m py_compile main.py main_v5.py main_v5_1.py main_v5_2.py main_v5_3.py main_v5_4.py main_v5_5.py nc_v5_batch_quality_guard.py nc_v6_broad_radar.py russian_public_buyer_radar.py public_web_buyer_radar.py web_source_discovery.py forum_engine.py adaptive_radar_learning.py demand_language_radar.py test_russian_public_buyer_radar.py test_public_web_buyer_radar.py test_web_source_discovery.py test_forum_engine.py test_adaptive_radar_learning.py test_demand_language_radar.py test_demand_language_radar.py
 
       - name: Run legacy and V6 regressions
         run: |
