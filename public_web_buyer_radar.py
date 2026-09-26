@@ -17,8 +17,10 @@ import trafilatura
 
 import nc_v6_broad_radar as v6
 import web_source_discovery as discovery
+import forum_engine
+import adaptive_radar_learning as learning
 
-VERSION = "1.2-direct-forum-sources"
+VERSION = "1.3-adaptive-multisource"
 MAX_AGE_DAYS = int(os.getenv("RADAR_PUBLIC_WEB_MAX_AGE_DAYS", "45"))
 TIMEOUT = int(os.getenv("RADAR_HTTP_TIMEOUT", "20"))
 MAX_RESULTS_PER_QUERY = int(os.getenv("RADAR_PUBLIC_WEB_RESULTS_PER_QUERY", "10"))
@@ -209,14 +211,70 @@ def fetch_page(url: str) -> dict[str, Any]:
             node.decompose()
         text = _norm(soup.get_text(" ", strip=True))
 
+    forum = forum_engine.extract_forum_posts(response.text, str(response.url))
     return {
         "url": str(response.url),
         "title": title,
         "text": text[:120000],
         "published": _page_published(soup),
         "extractor": "trafilatura" if extracted else "beautifulsoup",
+        "forum_engine": forum.get("engine", "generic"),
+        "forum_posts": forum.get("posts", []),
     }
 
+
+
+def _page_units(page: dict[str, Any]) -> list[dict[str, Any]]:
+    posts = list(page.get("forum_posts") or [])
+    units: list[dict[str, Any]] = []
+    for post in posts:
+        text = _norm(post.get("text") or "")
+        if not text:
+            continue
+        published = _parse_date(str(post.get("published") or ""))
+        units.append({
+            "text": text,
+            "author": str(post.get("author") or ""),
+            "published": published,
+            "post_id": str(post.get("post_id") or ""),
+            "kind": "forum_post",
+        })
+    if units:
+        return units
+    return [{
+        "text": f"{page.get('title','')} {page.get('text','')}",
+        "author": "",
+        "published": page.get("published"),
+        "post_id": "",
+        "kind": "page",
+    }]
+
+
+def _capture_concern(
+    db: Any,
+    *,
+    source: str,
+    url: str,
+    text: str,
+    published: datetime | None,
+    stats: Counter,
+) -> None:
+    signal = learning.concern_signal(text, has_north_context=v6.has_nc_geo(text))
+    if not signal:
+        return
+    try:
+        learning.save_concern(
+            db,
+            source=source,
+            url=url,
+            text=text,
+            labels=signal["labels"],
+            score=signal["score"],
+            published=published.isoformat() if published else "",
+        )
+        stats["concerns"] += 1
+    except Exception:
+        stats["concern_save_error"] += 1
 
 def extract_candidate_windows(text: str, radius: int = 650) -> list[str]:
     raw = _norm(text)
@@ -361,6 +419,8 @@ def run() -> None:
     stats = Counter()
     rejects = Counter()
     source_stats = Counter()
+    source_scan_counts = Counter()
+    source_new_counts = Counter()
     discovery_stats = Counter()
     direct_rows, direct_debug = discover_direct_rows()
     discovery_rows, discovery_debug = discover_source_rows()
@@ -390,81 +450,97 @@ def run() -> None:
 
         stats["pages"] += 1
         discovery_stats[f"extractor_{page.get('extractor','unknown')}"] += 1
-        page_text = f"{page.get('title','')} {page.get('text','')}"
-        windows = extract_candidate_windows(page_text)
-        if not windows:
-            rejects["native_no_buyer_anchor"] += 1
-            continue
+        discovery_stats[f"forum_engine_{page.get('forum_engine','generic')}"] += 1
+        source_scan_counts[source] += 1
+        units = _page_units(page)
+        any_windows = False
 
-        freshness, age_days = _freshness(page.get("published"))
-        if freshness == "stale":
-            rejects["native_stale"] += 1
-            continue
-
-        for window in windows:
-            wkey = hashlib.sha256(window.casefold().encode("utf-8", "ignore")).hexdigest()
-            if wkey in seen_windows:
-                rejects["duplicate_window"] += 1
+        for unit in units:
+            unit_text = str(unit.get("text") or "")
+            unit_published = unit.get("published")
+            _capture_concern(
+                db,
+                source=source,
+                url=str(page.get("url") or url),
+                text=unit_text,
+                published=unit_published,
+                stats=discovery_stats,
+            )
+            windows = extract_candidate_windows(unit_text)
+            if not windows:
                 continue
-            seen_windows.add(wkey)
+            any_windows = True
 
-            signal, reason = classify_window(window)
-            if signal is None:
-                rejects[f"native_{reason}"] += 1
+            freshness, age_days = _freshness(unit_published)
+            if freshness == "stale":
+                rejects["native_stale"] += 1
                 continue
 
-            stats["valid_buyers"] += 1
-            source_stats[source] += 1
-            discovery_stats["native_valid_buyers"] += 1
-            lead_id = _lead_id(str(page.get("url") or url), window)
-            ref = db.collection(v6.core.COLLECTION).document(lead_id)
-            snap = ref.get()
-            if snap.exists:
-                previous = snap.to_dict() or {}
-                if previous.get("v5_notified_at") or previous.get("v6_notified_at"):
-                    stats["known"] += 1
-                    discovery_stats["native_known"] += 1
+            for window in windows:
+                wkey = hashlib.sha256(window.casefold().encode("utf-8", "ignore")).hexdigest()
+                if wkey in seen_windows:
+                    rejects["duplicate_window"] += 1
                     continue
-
-            lead = {
-                **signal,
-                "lead_id": lead_id,
-                "source": source,
-                "platform": source,
-                "source_type": "public_web_native_discovery",
-                "group": source,
-                "title": page.get("title") or "",
-                "author": "",
-                "message": window,
-                "text": window,
-                "url": page.get("url") or url,
-                "market": "north_cyprus",
-                "route_to": "Prime Kıbrıs",
-                "found_at": datetime.now(timezone.utc).isoformat(),
-                "message_time": page.get("published").isoformat() if page.get("published") else "",
-                "message_age_days": age_days if age_days is not None else "",
-                "freshness": freshness,
-                "classification": "HOT" if freshness == "0_7d" and signal.get("lead_class") == "HOT BUYER" else "WARM",
-                "radar_version": VERSION,
-                "why_selected": ", ".join(signal.get("lead_reasons") or []),
-                "discovery_method": row.get("discovery"),
-                "content_extractor": page.get("extractor"),
-            }
-
-            if freshness == "unknown":
-                lead["classification"] = "REVIEW"
-                lead["lead_class"] = "REVIEW"
-                lead["review_reason"] = "unknown_page_age"
-                db.collection("bay_s_public_web_review").document(lead_id).set(lead, merge=True)
-                stats["review_unknown_age"] += 1
-                discovery_stats["native_review_unknown_age"] += 1
-                continue
-
-            ref.set(lead, merge=True)
-            accepted.append(lead)
-            stats["new"] += 1
-            discovery_stats["native_new"] += 1
-
+                seen_windows.add(wkey)
+    
+                signal, reason = classify_window(window)
+                if signal is None:
+                    rejects[f"native_{reason}"] += 1
+                    continue
+    
+                stats["valid_buyers"] += 1
+                source_stats[source] += 1
+                discovery_stats["native_valid_buyers"] += 1
+                lead_id = _lead_id(str(page.get("url") or url), window)
+                ref = db.collection(v6.core.COLLECTION).document(lead_id)
+                snap = ref.get()
+                if snap.exists:
+                    previous = snap.to_dict() or {}
+                    if previous.get("v5_notified_at") or previous.get("v6_notified_at"):
+                        stats["known"] += 1
+                        discovery_stats["native_known"] += 1
+                        continue
+    
+                lead = {
+                    **signal,
+                    "lead_id": lead_id,
+                    "source": source,
+                    "platform": source,
+                    "source_type": "public_web_native_discovery",
+                    "group": source,
+                    "title": page.get("title") or "",
+                    "author": "",
+                    "message": window,
+                    "text": window,
+                    "url": page.get("url") or url,
+                    "market": "north_cyprus",
+                    "route_to": "Prime Kıbrıs",
+                    "found_at": datetime.now(timezone.utc).isoformat(),
+                    "message_time": page.get("published").isoformat() if page.get("published") else "",
+                    "message_age_days": age_days if age_days is not None else "",
+                    "freshness": freshness,
+                    "classification": "HOT" if freshness == "0_7d" and signal.get("lead_class") == "HOT BUYER" else "WARM",
+                    "radar_version": VERSION,
+                    "why_selected": ", ".join(signal.get("lead_reasons") or []),
+                    "discovery_method": row.get("discovery"),
+                    "content_extractor": page.get("extractor"),
+                }
+    
+                if freshness == "unknown":
+                    lead["classification"] = "REVIEW"
+                    lead["lead_class"] = "REVIEW"
+                    lead["review_reason"] = "unknown_page_age"
+                    db.collection("bay_s_public_web_review").document(lead_id).set(lead, merge=True)
+                    stats["review_unknown_age"] += 1
+                    discovery_stats["native_review_unknown_age"] += 1
+                    continue
+    
+                ref.set(lead, merge=True)
+                accepted.append(lead)
+                stats["new"] += 1
+                source_new_counts[source] += 1
+                discovery_stats["native_new"] += 1
+    
     for source, queries in SOURCE_QUERIES.items():
         for query in queries:
             stats["queries"] += 1
@@ -499,78 +575,94 @@ def run() -> None:
 
                 stats["pages"] += 1
                 discovery_stats[f"extractor_{page.get('extractor','snippet_fallback')}"] += 1
-                page_text = f"{page.get('title','')} {page.get('text','')}"
-                windows = extract_candidate_windows(page_text)
-                if not windows:
-                    rejects["no_buyer_anchor"] += 1
-                    continue
+                discovery_stats[f"forum_engine_{page.get('forum_engine','generic')}"] += 1
+                source_scan_counts[source] += 1
+                units = _page_units(page)
+                any_windows = False
 
-                freshness, age_days = _freshness(page.get("published"))
-                if freshness == "stale":
-                    rejects["stale"] += 1
-                    continue
-
-                for window in windows:
-                    wkey = hashlib.sha256(window.casefold().encode("utf-8", "ignore")).hexdigest()
-                    if wkey in seen_windows:
-                        rejects["duplicate_window"] += 1
+                for unit in units:
+                    unit_text = str(unit.get("text") or "")
+                    unit_published = unit.get("published")
+                    _capture_concern(
+                        db,
+                        source=source,
+                        url=str(page.get("url") or url),
+                        text=unit_text,
+                        published=unit_published,
+                        stats=discovery_stats,
+                    )
+                    windows = extract_candidate_windows(unit_text)
+                    if not windows:
                         continue
-                    seen_windows.add(wkey)
+                    any_windows = True
 
-                    signal, reason = classify_window(window)
-                    if signal is None:
-                        rejects[reason] += 1
+                    freshness, age_days = _freshness(unit_published)
+                    if freshness == "stale":
+                        rejects["stale"] += 1
                         continue
 
-                    stats["valid_buyers"] += 1
-                    source_stats[source] += 1
-                    lead_id = _lead_id(str(page.get("url") or url), window)
-                    ref = db.collection(v6.core.COLLECTION).document(lead_id)
-                    snap = ref.get()
-                    if snap.exists:
-                        previous = snap.to_dict() or {}
-                        if previous.get("v5_notified_at") or previous.get("v6_notified_at"):
-                            stats["known"] += 1
+                    for window in windows:
+                        wkey = hashlib.sha256(window.casefold().encode("utf-8", "ignore")).hexdigest()
+                        if wkey in seen_windows:
+                            rejects["duplicate_window"] += 1
                             continue
-
-                    lead = {
-                        **signal,
-                        "lead_id": lead_id,
-                        "source": source,
-                        "platform": source,
-                        "source_type": "public_web_buyer_window",
-                        "group": source,
-                        "title": page.get("title") or row.get("title") or "",
-                        "author": "",
-                        "message": window,
-                        "text": window,
-                        "url": page.get("url") or url,
-                        "market": "north_cyprus",
-                        "route_to": "Prime Kıbrıs",
-                        "found_at": datetime.now(timezone.utc).isoformat(),
-                        "message_time": page.get("published").isoformat() if page.get("published") else "",
-                        "message_age_days": age_days if age_days is not None else "",
-                        "freshness": freshness,
-                        "classification": "HOT" if freshness == "0_7d" and signal.get("lead_class") == "HOT BUYER" else "WARM",
-                        "radar_version": VERSION,
-                        "why_selected": ", ".join(signal.get("lead_reasons") or []),
-                    }
-
-                    # Unknown-age pages are retained for audit but not pushed as
-                    # sales alerts. Search indices frequently surface old forum
-                    # threads with a new crawl date.
-                    if freshness == "unknown":
-                        lead["classification"] = "REVIEW"
-                        lead["lead_class"] = "REVIEW"
-                        lead["review_reason"] = "unknown_page_age"
-                        db.collection("bay_s_public_web_review").document(lead_id).set(lead, merge=True)
-                        stats["review_unknown_age"] += 1
-                        continue
-
-                    ref.set(lead, merge=True)
-                    accepted.append(lead)
-                    stats["new"] += 1
-
+                        seen_windows.add(wkey)
+    
+                        signal, reason = classify_window(window)
+                        if signal is None:
+                            rejects[reason] += 1
+                            continue
+    
+                        stats["valid_buyers"] += 1
+                        source_stats[source] += 1
+                        lead_id = _lead_id(str(page.get("url") or url), window)
+                        ref = db.collection(v6.core.COLLECTION).document(lead_id)
+                        snap = ref.get()
+                        if snap.exists:
+                            previous = snap.to_dict() or {}
+                            if previous.get("v5_notified_at") or previous.get("v6_notified_at"):
+                                stats["known"] += 1
+                                continue
+    
+                        lead = {
+                            **signal,
+                            "lead_id": lead_id,
+                            "source": source,
+                            "platform": source,
+                            "source_type": "public_web_buyer_window",
+                            "group": source,
+                            "title": page.get("title") or row.get("title") or "",
+                            "author": "",
+                            "message": window,
+                            "text": window,
+                            "url": page.get("url") or url,
+                            "market": "north_cyprus",
+                            "route_to": "Prime Kıbrıs",
+                            "found_at": datetime.now(timezone.utc).isoformat(),
+                            "message_time": page.get("published").isoformat() if page.get("published") else "",
+                            "message_age_days": age_days if age_days is not None else "",
+                            "freshness": freshness,
+                            "classification": "HOT" if freshness == "0_7d" and signal.get("lead_class") == "HOT BUYER" else "WARM",
+                            "radar_version": VERSION,
+                            "why_selected": ", ".join(signal.get("lead_reasons") or []),
+                        }
+    
+                        # Unknown-age pages are retained for audit but not pushed as
+                        # sales alerts. Search indices frequently surface old forum
+                        # threads with a new crawl date.
+                        if freshness == "unknown":
+                            lead["classification"] = "REVIEW"
+                            lead["lead_class"] = "REVIEW"
+                            lead["review_reason"] = "unknown_page_age"
+                            db.collection("bay_s_public_web_review").document(lead_id).set(lead, merge=True)
+                            stats["review_unknown_age"] += 1
+                            continue
+    
+                        ref.set(lead, merge=True)
+                        accepted.append(lead)
+                        stats["new"] += 1
+                        source_new_counts[source] += 1
+    
     for lead in accepted:
         if v6.notify_lead(lead, "PUBLIC WEB"):
             try:
@@ -580,6 +672,18 @@ def run() -> None:
                 )
             except Exception:
                 pass
+
+    for source in sorted(set(source_scan_counts) | set(source_stats) | set(source_new_counts)):
+        try:
+            learning.update_source_yield(
+                db,
+                source,
+                scanned=source_scan_counts[source],
+                valid=source_stats[source],
+                new=source_new_counts[source],
+            )
+        except Exception:
+            discovery_stats["source_yield_save_error"] += 1
 
     report = {
         "version": VERSION,
@@ -592,6 +696,8 @@ def run() -> None:
         "known": stats["known"],
         "review_unknown_age": stats["review_unknown_age"],
         "accepted_by_source": dict(source_stats),
+        "scanned_by_source": dict(source_scan_counts),
+        "new_by_source": dict(source_new_counts),
         "discovery_stats": dict(discovery_stats),
         "discovery_debug": discovery_debug,
         "reject_reasons": dict(rejects),
