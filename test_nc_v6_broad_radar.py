@@ -667,5 +667,34 @@ class BroadIntentTests(unittest.TestCase):
         self.assertTrue(v6._is_self_telegram_message(Msg(), 0, "@my_username", "my_username"))
         self.assertFalse(v6._is_self_telegram_message(Msg(), 0, "my_username", "@other_user"))
 
+
+    def test_layout_only_russian_buyer_is_property_buyer(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            text = "Куплю 2+1 в Гирне, недорого, можно в рассрочку."
+            self.assertTrue(v6.strict_extra_candidate_signal(text))
+            lead, reason = v6.classify_text(text, group="", explicit_geo=True)
+        self.assertIsNotNone(lead, reason)
+        self.assertEqual(reason, "accepted")
+        self.assertIn(lead["lead_class"], {"HOT BUYER", "WARM BUYER"})
+
+    def test_layout_without_buy_signal_is_not_global_buyer(self):
+        text = "2+1 в Гирне, красивый вид, пишите в личку."
+        self.assertFalse(v6.strict_extra_candidate_signal(text))
+
+    def test_high_recall_queries_include_non_geo_buyer_language(self):
+        queries = set(v6.TELEGRAM_GLOBAL_BUYER_QUERIES)
+        self.assertIn("куплю квартиру", queries)
+        self.assertIn("куплю 2+1", queries)
+        self.assertIn("looking to buy apartment", queries)
+        self.assertIn("daire almak istiyorum", queries)
+
+    def test_robot_vacuum_still_rejected_after_layout_recall(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            text = "Куплю моющий робот пылесос для большой квартиры. Искеле - Фамагуста."
+            self.assertFalse(v6.strict_extra_candidate_signal(text))
+            lead, reason = v6.classify_text(text, group="", explicit_geo=True)
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "nonproperty_goods")
+
 if __name__ == "__main__":
     unittest.main()

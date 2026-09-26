@@ -18,7 +18,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.16-visible-valid-buyers"
+VERSION = "6.17-buyer-recall-engine"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -311,6 +311,12 @@ ROOM_RE = re.compile(
     r"\b(?:bir|iki|üç|uc|1|2|3)\s+yatak\s+odal[ıi]\b)",
     re.I,
 )
+
+UNIT_LAYOUT_RE = re.compile(
+    r"(?:\b(?:[0-6]\s*\+\s*[0-3])\b|\b(?:studio|st[üu]dyo|студи[яюи])\b)",
+    re.I,
+)
+
 SEA_RE = re.compile(r"(?:near\s+(?:the\s+)?sea|sea\s+view|denize\s+yak[ıi]n|море|у\s+моря)", re.I)
 FURNISHED_RE = re.compile(r"(?:furnished|e[şs]yal[ıi]|меблирован\w*|с\s+мебелью)", re.I)
 
@@ -524,14 +530,16 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
     if generic_cyprus and not north_group and SOUTH_ONLY_RE.search(own) and not explicit_geo:
         return None, "south_only"
 
-    has_property = bool(PROPERTY_RE.search(own))
+    explicit_geo = bool(explicit_geo)
     buy = bool(BUY_RE.search(own))
+    demand = bool(DEMAND_RE.search(own))
+    implicit_layout_property = bool(explicit_geo and UNIT_LAYOUT_RE.search(own) and (buy or demand))
+    has_property = bool(PROPERTY_RE.search(own) or implicit_layout_property)
     rent = bool(RENT_DEMAND_RE.search(own))
     relocation = bool(RELOCATION_RE.search(own))
     investor = bool(INVESTOR_RE.search(own))
     research = bool(RESEARCH_RE.search(own))
     residency = bool(RESIDENCY_RE.search(own))
-    demand = bool(DEMAND_RE.search(own))
     qualifier = bool(PURCHASE_QUALIFIER_RE.search(own))
     agent_client = bool(AGENT_CLIENT_RE.search(own))
     budget = extract_budget(own)
@@ -690,6 +698,7 @@ DEBUG: dict[str, Any] = {
     "global_search_reject_reasons": Counter(),
     "global_search_age_buckets": Counter(),
     "global_search_candidate_samples": [],
+    "global_search_query_stats": {},
     "peer_discovery_queries": 0,
     "peer_discovery_found": 0,
     "peer_discovery_scanned": 0,
@@ -740,16 +749,18 @@ def strict_extra_candidate_signal(text: str) -> bool:
     the normal sales-only classifier is even called.
     """
     own = str(text or "")
-    return bool(
-        has_nc_geo(own)
-        and PROPERTY_RE.search(own)
-        and (
-            BUY_RE.search(own)
-            or DEMAND_RE.search(own)
-            or PURCHASE_QUALIFIER_RE.search(own)
-            or INVESTOR_RE.search(own)
-        )
+    geo = has_nc_geo(own)
+    buyer_side = bool(
+        BUY_RE.search(own)
+        or DEMAND_RE.search(own)
+        or PURCHASE_QUALIFIER_RE.search(own)
+        or INVESTOR_RE.search(own)
     )
+    property_context = bool(
+        PROPERTY_RE.search(own)
+        or (UNIT_LAYOUT_RE.search(own) and BUY_RE.search(own))
+    )
+    return bool(geo and buyer_side and property_context)
 
 
 TELEGRAM_GLOBAL_PUBLIC_QUERIES = (
@@ -757,8 +768,12 @@ TELEGRAM_GLOBAL_PUBLIC_QUERIES = (
     "Северный Кипр недвижимость",
     "Искеле квартира",
     "Гирне квартира",
+    "Фамагуста квартира",
+    "Лонг Бич квартира",
     "North Cyprus apartment",
     "North Cyprus property",
+    "Iskele apartment",
+    "Kyrenia apartment",
     "Kuzey Kıbrıs daire",
     "Kuzey Kıbrıs gayrimenkul",
     "İskele daire",
@@ -766,20 +781,51 @@ TELEGRAM_GLOBAL_PUBLIC_QUERIES = (
 )
 
 
+# High-recall buyer-language queries. Most intentionally omit the geography:
+# every returned message still has to pass message-level North-Cyprus geography,
+# property context and the strict sales-only classifier.
 TELEGRAM_GLOBAL_BUYER_QUERIES = (
+    # Russian — strongest live source so far.
+    "куплю квартиру",
+    "хочу купить квартиру",
+    "ищу квартиру купить",
+    "ищу квартиру для покупки",
+    "планирую купить квартиру",
+    "куплю недвижимость",
+    "хочу купить недвижимость",
+    "куплю студию",
+    "куплю 1+1",
+    "куплю 2+1",
+    "куплю 3+1",
+    "квартира в рассрочку",
+    "квартира с предоплатой",
+    "бюджет на квартиру",
+    "первоначальный взнос квартира",
+    # English.
+    "looking to buy apartment",
+    "looking to buy property",
+    "want to buy apartment",
+    "want to buy property",
+    "planning to buy apartment",
+    "considering buying property",
+    "apartment payment plan",
+    "property payment plan",
+    # Turkish.
+    "daire almak istiyorum",
+    "ev almak istiyorum",
+    "daire satın almak istiyorum",
+    "ev satın almak istiyorum",
+    "satılık daire arıyorum",
+    "yatırım için daire arıyorum",
+    "taksitli daire arıyorum",
+    "2+1 daire arıyorum",
+    # Geo-qualified fallback phrases.
     "Северный Кипр куплю квартиру",
-    "Северный Кипр хочу купить квартиру",
-    "Северный Кипр ищу квартиру для покупки",
-    "Северный Кипр планирую купить недвижимость",
     "Искеле куплю квартиру",
     "Гирне куплю квартиру",
     "North Cyprus looking to buy property",
-    "North Cyprus want to buy apartment",
-    "North Cyprus considering buying property",
     "Kuzey Kıbrıs daire almak istiyorum",
     "Kuzey Kibris ev almak istiyorum",
-    "İskele daire almak istiyorum",
-    "Girne ev almak istiyorum",
 )
 
 TELEGRAM_GLOBAL_SEARCH_QUERIES = (
@@ -1178,13 +1224,30 @@ async def broad_telegram_scan(db_client, started):
 
         for query in TELEGRAM_GLOBAL_SEARCH_QUERIES:
             DEBUG["global_search_queries"] += 1
-            if query in TELEGRAM_GLOBAL_BUYER_QUERIES:
+            is_buyer_query = query in TELEGRAM_GLOBAL_BUYER_QUERIES
+            if is_buyer_query:
                 DEBUG["global_search_buyer_queries"] += 1
             else:
                 DEBUG["global_search_broad_queries"] += 1
+
+            query_limit = 120 if is_buyer_query else 40
+            query_days = global_days if is_buyer_query else min(global_days, 7)
+            query_cutoff = datetime.now(timezone.utc) - timedelta(days=query_days)
+            qstat = DEBUG["global_search_query_stats"].setdefault(query, {
+                "kind": "buyer" if is_buyer_query else "broad",
+                "raw": 0,
+                "fresh": 0,
+                "public": 0,
+                "north_context": 0,
+                "signal": 0,
+                "valid": 0,
+                "known": 0,
+                "new": 0,
+            })
             try:
-                async for msg in client.iter_messages(None, search=query, limit=80):
+                async for msg in client.iter_messages(None, search=query, limit=query_limit):
                     DEBUG["global_search_raw"] += 1
+                    qstat["raw"] += 1
 
                     dt = getattr(msg, "date", None)
                     if not dt:
@@ -1203,9 +1266,10 @@ async def broad_telegram_scan(db_client, started):
                     else:
                         DEBUG["global_search_age_buckets"]["gt_30d"] += 1
 
-                    if dt < global_cutoff:
+                    if dt < query_cutoff:
                         DEBUG["global_search_reject_reasons"]["stale"] += 1
                         continue
+                    qstat["fresh"] += 1
 
                     text = str(getattr(msg, "message", "") or "").strip()
                     if not text:
@@ -1221,6 +1285,7 @@ async def broad_telegram_scan(db_client, started):
                         DEBUG["global_search_reject_reasons"]["not_public_username_chat"] += 1
                         continue
                     DEBUG["global_search_public"] += 1
+                    qstat["public"] += 1
 
                     msg_id = int(getattr(msg, "id", 0) or 0)
                     identity = (username.casefold(), msg_id)
@@ -1239,6 +1304,7 @@ async def broad_telegram_scan(db_client, started):
                         DEBUG["global_search_reject_reasons"]["no_north_context"] += 1
                         continue
                     DEBUG["global_search_geo_pass"] += 1
+                    qstat["north_context"] += 1
 
                     try:
                         await msg.get_sender()
@@ -1261,6 +1327,7 @@ async def broad_telegram_scan(db_client, started):
                             DEBUG["global_search_reject_reasons"]["no_buyer_signal"] += 1
                         continue
                     DEBUG["global_search_signal_pass"] += 1
+                    qstat["signal"] += 1
                     if len(DEBUG["global_search_candidate_samples"]) < 12:
                         DEBUG["global_search_candidate_samples"].append({
                             "query": query,
@@ -1301,6 +1368,7 @@ async def broad_telegram_scan(db_client, started):
                         continue
 
                     DEBUG["global_search_valid_matches"] += 1
+                    qstat["valid"] += 1
                     stable_id = f"telegram-global|{username.casefold()}|{msg_id}"
                     lead_id = hashlib.sha256(stable_id.encode("utf-8")).hexdigest()
                     ref = db_client.collection(core.COLLECTION).document(lead_id)
@@ -1310,6 +1378,7 @@ async def broad_telegram_scan(db_client, started):
                         if previous.get("v5_notified_at") or previous.get("v6_notified_at"):
                             DEBUG["already_notified"] += 1
                             DEBUG["global_search_known_matches"] += 1
+                            qstat["known"] += 1
                             DEBUG["global_search_reject_reasons"]["already_notified"] += 1
                             continue
 
@@ -1325,6 +1394,7 @@ async def broad_telegram_scan(db_client, started):
 
                     DEBUG["accepted"] += 1
                     DEBUG["global_search_accepted"] += 1
+                    qstat["new"] += 1
                     DEBUG["accepted_classes"][signal["lead_class"]] += 1
                     DEBUG["languages"][signal["language"]] += 1
 
