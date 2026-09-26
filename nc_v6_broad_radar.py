@@ -15,12 +15,13 @@ import nc_v5_batch_quality_guard as batch_guard
 from telethon import functions as tg_functions
 
 import telegram_public_graph as tpg
+import adaptive_radar_learning as learning
 
 radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.22-source-expansion-quality"
+VERSION = "6.23-adaptive-query-learning"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -705,6 +706,8 @@ DEBUG: dict[str, Any] = {
     "global_search_age_buckets": Counter(),
     "global_search_candidate_samples": [],
     "global_search_query_stats": {},
+    "global_search_ranked_queries": [],
+    "buyer_concerns_saved": 0,
     "peer_discovery_queries": 0,
     "peer_discovery_found": 0,
     "peer_discovery_scanned": 0,
@@ -1299,7 +1302,11 @@ async def broad_telegram_scan(db_client, started):
         global_seen_contacts: set[str] = set()
         source_expansion_seeds: set[str] = set()
 
-        for query in TELEGRAM_GLOBAL_SEARCH_QUERIES:
+        query_history = learning.read_query_history(db_client, TELEGRAM_GLOBAL_SEARCH_QUERIES)
+        ranked_global_queries = learning.rank_queries(TELEGRAM_GLOBAL_SEARCH_QUERIES, query_history)
+        DEBUG["global_search_ranked_queries"] = ranked_global_queries[:12]
+
+        for query in ranked_global_queries:
             DEBUG["global_search_queries"] += 1
             is_buyer_query = query in TELEGRAM_GLOBAL_BUYER_QUERIES
             if is_buyer_query:
@@ -1307,7 +1314,10 @@ async def broad_telegram_scan(db_client, started):
             else:
                 DEBUG["global_search_broad_queries"] += 1
 
+            historical_score = learning.yield_score(query_history.get(query, {}))
             query_limit = 120 if is_buyer_query else 40
+            if is_buyer_query and historical_score >= 20:
+                query_limit = 160
             query_days = global_days if is_buyer_query else min(global_days, 7)
             query_cutoff = datetime.now(timezone.utc) - timedelta(days=query_days)
             qstat = DEBUG["global_search_query_stats"].setdefault(query, {
@@ -1383,6 +1393,22 @@ async def broad_telegram_scan(db_client, started):
                         continue
                     DEBUG["global_search_geo_pass"] += 1
                     qstat["north_context"] += 1
+
+                    try:
+                        concern = learning.concern_signal(text, has_north_context=True)
+                        if concern:
+                            learning.save_concern(
+                                db_client,
+                                source="Telegram",
+                                url=f"https://t.me/{username}/{msg_id}",
+                                text=text,
+                                labels=concern["labels"],
+                                score=concern["score"],
+                                published=dt.isoformat(timespec="seconds"),
+                            )
+                            DEBUG["buyer_concerns_saved"] += 1
+                    except Exception as exc:
+                        DEBUG["errors"].append(f"buyer_concern:{type(exc).__name__}:{exc}")
 
                     try:
                         await msg.get_sender()
@@ -1500,6 +1526,21 @@ async def broad_telegram_scan(db_client, started):
             except Exception as exc:
                 errors += 1
                 DEBUG["errors"].append(f"telegram_global_search:{query}:{type(exc).__name__}:{exc}")
+
+            try:
+                learning.update_query_yield(
+                    db_client,
+                    query,
+                    {
+                        "raw": qstat["raw"],
+                        "north_context": qstat["north_context"],
+                        "valid": qstat["valid"],
+                        "unique": max(0, qstat["valid"] - qstat["duplicate_buyer"]),
+                        "new": qstat["new"],
+                    },
+                )
+            except Exception as exc:
+                DEBUG["errors"].append(f"query_yield:{query}:{type(exc).__name__}:{exc}")
             await asyncio.sleep(0.35)
 
         # Third discovery surface: discover public Telegram groups/channels
