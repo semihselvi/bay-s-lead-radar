@@ -134,7 +134,7 @@ jobs:
         run: python russian_public_buyer_radar.py
 
       - name: Refresh demand language and content feedback
-        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '25 0 * * *'
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.schedule == '25 0 * * *'
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
