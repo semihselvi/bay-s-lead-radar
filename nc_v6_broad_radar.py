@@ -14,11 +14,13 @@ from typing import Any
 import nc_v5_batch_quality_guard as batch_guard
 from telethon import functions as tg_functions
 
+import telegram_public_graph as tpg
+
 radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.19-visible-freshness"
+VERSION = "6.20-telegram-source-expansion"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -714,6 +716,22 @@ DEBUG: dict[str, Any] = {
     "peer_discovery_accepted": 0,
     "peer_discovery_reject_reasons": Counter(),
     "peer_discovery_samples": [],
+    "source_expansion_seeds": 0,
+    "source_expansion_seed_fetch_ok": 0,
+    "source_expansion_seed_fetch_fail": 0,
+    "source_expansion_graph_candidates": 0,
+    "source_expansion_candidate_scanned": 0,
+    "source_expansion_candidate_fetch_fail": 0,
+    "source_expansion_messages": 0,
+    "source_expansion_geo_pass": 0,
+    "source_expansion_signal_pass": 0,
+    "source_expansion_valid_matches": 0,
+    "source_expansion_known_matches": 0,
+    "source_expansion_accepted": 0,
+    "source_expansion_productive_channels": 0,
+    "source_expansion_reject_reasons": Counter(),
+    "source_expansion_samples": [],
+    "source_expansion_channel_samples": [],
     "geography_pass": 0,
     "signal_pass": 0,
     "accepted": 0,
@@ -1270,6 +1288,7 @@ async def broad_telegram_scan(db_client, started):
         global_cutoff = datetime.now(timezone.utc) - timedelta(days=global_days)
         global_seen: set[tuple[str, int]] = set()
         global_seen_contacts: set[str] = set()
+        source_expansion_seeds: set[str] = set()
 
         for query in TELEGRAM_GLOBAL_SEARCH_QUERIES:
             DEBUG["global_search_queries"] += 1
@@ -1419,6 +1438,7 @@ async def broad_telegram_scan(db_client, started):
 
                     DEBUG["global_search_valid_matches"] += 1
                     qstat["valid"] += 1
+                    source_expansion_seeds.add(username)
 
                     contact_key = _buyer_contact_key(msg, candidate.get("author", ""))
                     if contact_key:
@@ -1570,6 +1590,7 @@ async def broad_telegram_scan(db_client, started):
                         continue
 
                     DEBUG["peer_discovery_valid_matches"] += 1
+                    source_expansion_seeds.add(username)
                     msg_id = int(getattr(msg, "id", 0) or 0)
                     candidate = {
                         "source": "Telegram",
@@ -1629,6 +1650,211 @@ async def broad_telegram_scan(db_client, started):
                 errors += 1
                 DEBUG["errors"].append(f"telegram_peer_scan:{username}:{type(exc).__name__}:{exc}")
             await asyncio.sleep(0.15)
+
+        # Fourth discovery surface: sessionless t.me/s graph expansion.
+        # Only channels that already produced a valid buyer become seeds.
+        # We inspect public preview links/mentions, then scan a bounded number
+        # of newly discovered public channels without joining them.
+        DEBUG["source_expansion_seeds"] = len(source_expansion_seeds)
+        graph_sources: dict[str, set[str]] = {}
+        seed_limit = max(1, min(12, int(os.getenv("RADAR_SOURCE_EXPANSION_SEEDS", "8") or "8")))
+        candidate_limit = max(1, min(40, int(os.getenv("RADAR_SOURCE_EXPANSION_CANDIDATES", "24") or "24")))
+        html_cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+
+        for seed in sorted(source_expansion_seeds)[:seed_limit]:
+            try:
+                page = await asyncio.to_thread(tpg.fetch_public_preview, seed, 15)
+                DEBUG["source_expansion_seed_fetch_ok"] += 1
+            except Exception as exc:
+                DEBUG["source_expansion_seed_fetch_fail"] += 1
+                DEBUG["source_expansion_reject_reasons"][f"seed_fetch_{type(exc).__name__}"] += 1
+                continue
+
+            for target in page.get("references", []) or []:
+                clean = tpg.clean_username(target)
+                if not clean:
+                    continue
+                key = clean.casefold()
+                if key == seed.casefold():
+                    continue
+                if key in joined_public_usernames or key in discovered_peers:
+                    DEBUG["source_expansion_reject_reasons"]["already_known_channel"] += 1
+                    continue
+                graph_sources.setdefault(key, set()).add(seed)
+
+        DEBUG["source_expansion_graph_candidates"] = len(graph_sources)
+
+        for username_key, seed_refs in sorted(
+            graph_sources.items(),
+            key=lambda kv: (-len(kv[1]), kv[0]),
+        )[:candidate_limit]:
+            username = tpg.clean_username(username_key)
+            if not username:
+                continue
+
+            try:
+                page = await asyncio.to_thread(tpg.fetch_public_preview, username, 15)
+            except Exception as exc:
+                DEBUG["source_expansion_candidate_fetch_fail"] += 1
+                DEBUG["source_expansion_reject_reasons"][f"candidate_fetch_{type(exc).__name__}"] += 1
+                continue
+
+            DEBUG["source_expansion_candidate_scanned"] += 1
+            title = str(page.get("title") or username)
+            direct_north = bool(
+                DIRECT_NORTH_GROUP_RE.search(title)
+                or DIRECT_NORTH_GROUP_RE.search(username)
+            )
+            channel_nc_messages = 0
+            channel_buyer_matches = 0
+
+            for row in page.get("messages", []) or []:
+                text = str(row.get("text") or "").strip()
+                if not text:
+                    continue
+
+                dt = tpg.parse_datetime(str(row.get("datetime") or ""))
+                if dt is None:
+                    DEBUG["source_expansion_reject_reasons"]["no_date"] += 1
+                    continue
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if dt < html_cutoff:
+                    continue
+
+                DEBUG["source_expansion_messages"] += 1
+                text_key = hashlib.sha256(_norm(text).encode("utf-8", "ignore")).hexdigest()
+                if text_key in seen_text_hashes:
+                    DEBUG["source_expansion_reject_reasons"]["duplicate_text"] += 1
+                    continue
+                seen_text_hashes.add(text_key)
+
+                if RADAR_SELF_FEEDBACK_RE.search(text):
+                    DEBUG["source_expansion_reject_reasons"]["self_feedback"] += 1
+                    continue
+
+                explicit_geo = has_nc_geo(text)
+                if not direct_north and not explicit_geo:
+                    DEBUG["source_expansion_reject_reasons"]["no_north_context"] += 1
+                    continue
+
+                channel_nc_messages += 1
+                DEBUG["source_expansion_geo_pass"] += 1
+
+                author = str(row.get("author") or "")
+                if self_username and author.strip().lstrip("@").casefold() == self_username.casefold():
+                    DEBUG["self_author_skipped"] += 1
+                    DEBUG["source_expansion_reject_reasons"]["self_author"] += 1
+                    continue
+
+                hard = _hard_reject(text, author)
+                if hard:
+                    DEBUG["source_expansion_reject_reasons"][hard] += 1
+                    continue
+                if not candidate_signal(text):
+                    DEBUG["source_expansion_reject_reasons"]["no_candidate_signal"] += 1
+                    continue
+                DEBUG["source_expansion_signal_pass"] += 1
+
+                signal, reason = classify_text(
+                    text,
+                    group=title if direct_north else "",
+                    author=author,
+                    explicit_geo=explicit_geo,
+                )
+                if signal is None:
+                    DEBUG["source_expansion_reject_reasons"][reason] += 1
+                    continue
+
+                DEBUG["source_expansion_valid_matches"] += 1
+                channel_buyer_matches += 1
+
+                msg_id = int(row.get("message_id") or 0)
+                age_days = max(0, int((datetime.now(timezone.utc) - dt).total_seconds() // 86400))
+                effective = _apply_global_recency(signal, age_days)
+                candidate = {
+                    "source": "Telegram",
+                    "platform": "Telegram",
+                    "source_type": "telegram_public_html_graph",
+                    "group": title,
+                    "group_priority": "PUBLIC_GRAPH",
+                    "group_username": username,
+                    "message_id": msg_id,
+                    "message_time": dt.isoformat(timespec="seconds"),
+                    "author": author,
+                    "message": text,
+                    "url": str(row.get("url") or f"https://t.me/{username}/{msg_id}"),
+                    "market": "north_cyprus",
+                    "found_at": started.isoformat(),
+                    "discovered_from": sorted(seed_refs),
+                }
+
+                stable_id = f"telegram-global|{username.casefold()}|{msg_id}"
+                lead_id = hashlib.sha256(stable_id.encode("utf-8")).hexdigest()
+                ref = db_client.collection(core.COLLECTION).document(lead_id)
+                snap = ref.get()
+                if snap.exists:
+                    previous = snap.to_dict() or {}
+                    if previous.get("v5_notified_at") or previous.get("v6_notified_at"):
+                        DEBUG["already_notified"] += 1
+                        DEBUG["source_expansion_known_matches"] += 1
+                        DEBUG["source_expansion_reject_reasons"]["already_notified"] += 1
+                        continue
+
+                lead = {**candidate, **effective}
+                lead["lead_id"] = lead_id
+                lead["telegram_score"] = effective["intent_score"]
+                lead["buyer_signal"] = effective["intent_type"].lower()
+                lead["radar_version"] = VERSION
+                lead["why_selected"] = ", ".join(effective["lead_reasons"])
+                ref.set(lead, merge=True)
+                accepted.append(lead)
+
+                DEBUG["accepted"] += 1
+                DEBUG["source_expansion_accepted"] += 1
+                DEBUG["accepted_classes"][lead["lead_class"]] += 1
+                DEBUG["languages"][lead["language"]] += 1
+
+                if len(DEBUG["source_expansion_samples"]) < 12:
+                    DEBUG["source_expansion_samples"].append({
+                        "group": title,
+                        "username": username,
+                        "author": author,
+                        "message": text[:500],
+                        "message_time": dt.isoformat(timespec="seconds"),
+                        "lead_class": lead["lead_class"],
+                        "discovered_from": sorted(seed_refs),
+                    })
+
+            productive = channel_buyer_matches > 0
+            if productive:
+                DEBUG["source_expansion_productive_channels"] += 1
+
+            channel_row = {
+                "username": username,
+                "title": title,
+                "discovered_from": sorted(seed_refs),
+                "recent_messages": len(page.get("messages", []) or []),
+                "north_context_messages": channel_nc_messages,
+                "buyer_matches": channel_buyer_matches,
+                "productive": productive,
+                "last_seen_at": datetime.now(timezone.utc).isoformat(),
+                "radar_version": VERSION,
+            }
+            if len(DEBUG["source_expansion_channel_samples"]) < 20:
+                DEBUG["source_expansion_channel_samples"].append(channel_row)
+            try:
+                source_id = hashlib.sha256(username.casefold().encode("utf-8")).hexdigest()
+                db_client.collection("bay_s_lead_radar_source_candidates").document(source_id).set(
+                    channel_row,
+                    merge=True,
+                )
+            except Exception as exc:
+                DEBUG["errors"].append(
+                    f"source_candidate_firestore:{username}:{type(exc).__name__}:{exc}"
+                )
+
+            await asyncio.sleep(0.12)
 
         return {
             "status": "completed",
@@ -1857,6 +2083,9 @@ def _serializable_debug() -> dict[str, Any]:
         "global_search_candidate_samples": DEBUG["global_search_candidate_samples"],
         "peer_discovery_reject_reasons": dict(DEBUG["peer_discovery_reject_reasons"]),
         "peer_discovery_samples": DEBUG["peer_discovery_samples"],
+        "source_expansion_reject_reasons": dict(DEBUG["source_expansion_reject_reasons"]),
+        "source_expansion_samples": DEBUG["source_expansion_samples"],
+        "source_expansion_channel_samples": DEBUG["source_expansion_channel_samples"],
     }
 
 
@@ -1880,6 +2109,7 @@ def save_and_notify_debug() -> None:
     strict_extra_rejects = ", ".join(f"{k}:{v}" for k, v in DEBUG["strict_extra_reject_reasons"].most_common(6)) or "-"
     global_search_rejects = ", ".join(f"{k}:{v}" for k, v in DEBUG["global_search_reject_reasons"].most_common(6)) or "-"
     peer_discovery_rejects = ", ".join(f"{k}:{v}" for k, v in DEBUG["peer_discovery_reject_reasons"].most_common(6)) or "-"
+    source_expansion_rejects = ", ".join(f"{k}:{v}" for k, v in DEBUG["source_expansion_reject_reasons"].most_common(6)) or "-"
     query_rank = sorted(
         DEBUG["global_search_query_stats"].items(),
         key=lambda kv: (
@@ -1900,6 +2130,8 @@ def save_and_notify_debug() -> None:
         f"Telegram ana grup: {DEBUG['groups_relevant']}/{DEBUG['groups_total']} | Mesaj: {DEBUG['messages_scanned']}\n"
         f"Ek sıkı grup: {DEBUG['strict_extra_groups_scanned']} | Mesaj: {DEBUG['strict_extra_messages_scanned']} | NC: {DEBUG['strict_extra_geo_pass']} | Aday: {DEBUG['strict_extra_signal_pass']} | Kabul: {DEBUG['strict_extra_accepted']}\n"        f"Global public 30g: sorgu {DEBUG['global_search_queries']} (buyer {DEBUG['global_search_buyer_queries']} + broad {DEBUG['global_search_broad_queries']}) | Ham {DEBUG['global_search_raw']} | Public {DEBUG['global_search_public']} | NC {DEBUG['global_search_geo_pass']} | Buyer mesajı {DEBUG['global_search_valid_matches']} | Benzersiz kişi {DEBUG['global_search_unique_buyers']} | Yeni {DEBUG['global_search_accepted']} | Bilinen {DEBUG['global_search_known_matches']} | Tekrar post {DEBUG['global_search_duplicate_buyer_posts']}\n"
         f"Global güncellik: HOT 0-7g {DEBUG['global_search_recent_hot']} | WARM 8-30g {DEBUG['global_search_aged_warm']} | En verimli sorgu: {top_queries}\n"        f"Public keşif: sorgu {DEBUG['peer_discovery_queries']} | Bulunan {DEBUG['peer_discovery_found']} | Taranan {DEBUG['peer_discovery_scanned']} | Mesaj {DEBUG['peer_discovery_messages']} | NC {DEBUG['peer_discovery_geo_pass']} | Aday {DEBUG['peer_discovery_signal_pass']} | Geçerli BUYER {DEBUG['peer_discovery_valid_matches']} | Yeni {DEBUG['peer_discovery_accepted']} | Bilinen {DEBUG['peer_discovery_known_matches']}\n"
+        f"Kaynak genişletme: Seed {DEBUG['source_expansion_seeds']} | Seed OK {DEBUG['source_expansion_seed_fetch_ok']} | Yeni kanal adayı {DEBUG['source_expansion_graph_candidates']} | Taranan {DEBUG['source_expansion_candidate_scanned']} | Mesaj {DEBUG['source_expansion_messages']} | NC {DEBUG['source_expansion_geo_pass']} | Buyer {DEBUG['source_expansion_valid_matches']} | Üretken kanal {DEBUG['source_expansion_productive_channels']} | Yeni {DEBUG['source_expansion_accepted']} | Bilinen {DEBUG['source_expansion_known_matches']}\n"
+        f"Kaynak genişletme eleme: {source_expansion_rejects}\n"
         f"Coğrafya geçti: {DEBUG['geography_pass']}\n"
         f"Intent/keyword adayı: {DEBUG['signal_pass']}\n"
         f"Yeni kabul edilen: {DEBUG['accepted']}\n"
