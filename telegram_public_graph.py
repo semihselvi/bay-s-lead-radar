@@ -94,6 +94,9 @@ def parse_public_preview(html: str, username: str) -> dict[str, Any]:
 
         refs = set(extract_public_usernames(text))
         for link in wrap.select("a[href]"):
+            classes = {str(x) for x in (link.get("class") or [])}
+            if "tgme_widget_message_author" in classes:
+                continue
             href = str(link.get("href", "") or "")
             refs |= extract_public_usernames(href)
 
