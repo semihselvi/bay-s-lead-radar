@@ -37,12 +37,13 @@ class BroadIntentTests(unittest.TestCase):
     def test_investment_question(self):
         self.assertLead("Long Beach yatırım için nasıl?", "INVESTOR")
 
-    def test_hot_tenant(self):
-        lead = self.assertLead(
+    def test_rental_demand_is_hard_excluded(self):
+        lead, reason = v6.classify_text(
             "Mağusa’da kiralık arıyorum, Ekim ayında taşınacağım. Bütçe £900.",
-            "HOT TENANT",
+            group="North Cyprus Expats",
         )
-        self.assertEqual(lead["intent_type"], "TENANT")
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "rental_hard_excluded")
 
     def test_property_research(self):
         self.assertLead(
@@ -106,23 +107,29 @@ class BroadIntentTests(unittest.TestCase):
         self.assertIsNone(lead)
         self.assertEqual(reason, "service_request")
 
-    def test_real_russian_rental_is_hot_tenant(self):
-        self.assertLead(
+    def test_real_russian_rental_is_hard_excluded(self):
+        lead, reason = v6.classify_text(
             "Ищу в аренду Фамагуста квартиры 1+1/2+1 в Sky Sakarya или Premier за 600 долларов в месяц?",
-            "HOT TENANT",
+            group="North Cyprus Expats",
         )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "rental_hard_excluded")
 
-    def test_one_month_studio_is_tenant(self):
-        self.assertLead(
+    def test_one_month_studio_is_hard_excluded(self):
+        lead, reason = v6.classify_text(
             "Ищу небольшую студию в Thalassa Beach Resort на 1 месяц, ориентировочно с 29 сентября.",
-            "HOT TENANT",
+            group="North Cyprus Expats",
         )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "rental_hard_excluded")
 
-    def test_dated_short_stay_is_tenant(self):
-        self.assertLead(
+    def test_dated_short_stay_is_hard_excluded(self):
+        lead, reason = v6.classify_text(
             "Ищу рядом 2 квартиры 2+1 и 1+1 с 9.10-19.10.",
-            "HOT TENANT",
+            group="North Cyprus Expats",
         )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "rental_hard_excluded")
 
     def test_crypto_not_property_buyer(self):
         lead, reason = v6.classify_text(
@@ -185,17 +192,20 @@ class BroadIntentTests(unittest.TestCase):
         self.assertIsNone(lead)
         self.assertEqual(reason, "personal_service")
 
-    def test_long_term_studio_is_hot_tenant(self):
-        self.assertLead(
+    def test_long_term_studio_is_hard_excluded(self):
+        lead, reason = v6.classify_text(
             "Ищу студию в роял сан, роял лайф (Искеле) на долгий срок",
-            "HOT TENANT",
+            group="North Cyprus Expats",
         )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "rental_hard_excluded")
 
-    def test_owner_rental_request_is_hot_tenant(self):
-        self.assertLead(
+    def test_owner_rental_request_is_excluded(self):
+        lead, _reason = v6.classify_text(
             "Я ищу квартиру-студию в Caesar Resort для себя. Владельцы, планирующие сдавать свои квартиры в аренду, пожалуйста, напишите мне.",
-            "HOT TENANT",
+            group="North Cyprus Expats",
         )
+        self.assertIsNone(lead)
 
     def test_ready_client_intermediary_is_sales_lead(self):
         with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
