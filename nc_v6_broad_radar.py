@@ -18,7 +18,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.18-unique-buyer-freshness"
+VERSION = "6.19-visible-freshness"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -1430,6 +1430,12 @@ async def broad_telegram_scan(db_client, started):
                         global_seen_contacts.add(contact_key)
                     DEBUG["global_search_unique_buyers"] += 1
 
+                    effective = _apply_global_recency(signal, age_days)
+                    if effective["classification"] == "HOT":
+                        DEBUG["global_search_recent_hot"] += 1
+                    else:
+                        DEBUG["global_search_aged_warm"] += 1
+
                     stable_id = f"telegram-global|{username.casefold()}|{msg_id}"
                     lead_id = hashlib.sha256(stable_id.encode("utf-8")).hexdigest()
                     ref = db_client.collection(core.COLLECTION).document(lead_id)
@@ -1443,7 +1449,6 @@ async def broad_telegram_scan(db_client, started):
                             DEBUG["global_search_reject_reasons"]["already_notified"] += 1
                             continue
 
-                    effective = _apply_global_recency(signal, age_days)
                     lead = {**candidate, **effective}
                     lead["lead_id"] = lead_id
                     lead["telegram_score"] = effective["intent_score"]
@@ -1455,10 +1460,6 @@ async def broad_telegram_scan(db_client, started):
 
                     DEBUG["accepted"] += 1
                     DEBUG["global_search_accepted"] += 1
-                    if lead["classification"] == "HOT":
-                        DEBUG["global_search_recent_hot"] += 1
-                    else:
-                        DEBUG["global_search_aged_warm"] += 1
                     qstat["new"] += 1
                     DEBUG["accepted_classes"][lead["lead_class"]] += 1
                     DEBUG["languages"][lead["language"]] += 1
@@ -1815,6 +1816,7 @@ def notify_lead(lead: dict[str, Any], prefix: str = "NEW") -> bool:
         f"Platform: {lead.get('platform') or lead.get('source','')}\n"
         f"Kaynak/Grup: {lead.get('group') or lead.get('title') or lead.get('source','')}\n"
         f"Dil: {lead.get('language','')} | Intent: {lead.get('intent_score',0)}/100\n"
+        f"Yaş: {lead.get('message_age_days','-')} gün | Güncellik: {lead.get('freshness','-')}\n"
         f"Bölge: {lead.get('estimated_region') or '-'} | Bütçe: {lead.get('estimated_budget') or '-'}\n"
         f"Kriterler: {criteria_text}\n"
         f"Neden: {reasons}\n\n"
