@@ -696,5 +696,42 @@ class BroadIntentTests(unittest.TestCase):
         self.assertIsNone(lead)
         self.assertEqual(reason, "nonproperty_goods")
 
+
+    def test_buyer_contact_key_prefers_sender_id(self):
+        class Msg:
+            sender_id = 123456
+        self.assertEqual(v6._buyer_contact_key(Msg(), "@someone"), "id:123456")
+
+    def test_buyer_contact_key_uses_public_username_fallback(self):
+        class Msg:
+            sender_id = 0
+        self.assertEqual(v6._buyer_contact_key(Msg(), "@SomeOne"), "user:someone")
+        self.assertEqual(v6._buyer_contact_key(Msg(), "Display Name"), "")
+
+    def test_global_recency_keeps_recent_hot(self):
+        signal = {
+            "lead_class": "HOT BUYER",
+            "intent_type": "BUYER",
+            "intent_score": 90,
+            "lead_reasons": ["explicit_purchase_intent"],
+        }
+        out = v6._apply_global_recency(signal, 3)
+        self.assertEqual(out["classification"], "HOT")
+        self.assertEqual(out["lead_class"], "HOT BUYER")
+        self.assertEqual(out["freshness"], "0_7d")
+
+    def test_global_recency_downgrades_old_hot_to_warm(self):
+        signal = {
+            "lead_class": "HOT BUYER",
+            "intent_type": "BUYER",
+            "intent_score": 90,
+            "lead_reasons": ["explicit_purchase_intent"],
+        }
+        out = v6._apply_global_recency(signal, 16)
+        self.assertEqual(out["classification"], "WARM")
+        self.assertEqual(out["lead_class"], "WARM BUYER")
+        self.assertEqual(out["freshness"], "15_30d")
+        self.assertLess(out["intent_score"], 90)
+
 if __name__ == "__main__":
     unittest.main()
