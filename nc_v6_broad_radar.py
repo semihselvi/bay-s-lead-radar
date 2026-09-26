@@ -1411,11 +1411,6 @@ async def broad_telegram_scan(db_client, started):
                     DEBUG["global_search_geo_pass"] += 1
                     qstat["north_context"] += 1
 
-                    if global_near_duplicates.is_duplicate(text):
-                        DEBUG["global_search_reject_reasons"]["near_duplicate_text"] += 1
-                        qstat["near_duplicate"] += 1
-                        continue
-
                     try:
                         concern = learning.concern_signal(text, has_north_context=True)
                         if concern:
@@ -1491,6 +1486,11 @@ async def broad_telegram_scan(db_client, started):
                     )
                     if signal is None:
                         DEBUG["global_search_reject_reasons"][reason] += 1
+                        continue
+
+                    if global_near_duplicates.is_duplicate(text):
+                        DEBUG["global_search_reject_reasons"]["near_duplicate_buyer_text"] += 1
+                        qstat["near_duplicate"] += 1
                         continue
 
                     DEBUG["global_search_valid_matches"] += 1
