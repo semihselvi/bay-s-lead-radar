@@ -20,7 +20,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.22-source-expansion-quality"
+VERSION = "6.23-high-intent-research"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -163,6 +163,26 @@ PURCHASE_QUALIFIER_RE = re.compile(
     r"(?:\bko[çc]an\w*\b|\btapu\b|\btitle\s+deed\b|\bdeed\b|\bready\s+to\s+move\b|"
     r"\bhaz[ıi]r\s+teslim\b|\btaksit\w*\b|\bpayment\s+plan\b|\bрассрочк\w*\b|\bготов\w*\s+квартир\w*\b)",
     re.I,
+)
+
+# Purchase-stage questions are genuine buyer signals even when the user does not
+# literally write "I want to buy". Keep this narrow: the message must concern a
+# property purchase decision (title/deed, payment plan, developer/project,
+# purchase taxes/fees or buying safety), and the normal hard-reject filters still
+# remove agents, listings, sellers, rentals and generic discussion.
+PURCHASE_DECISION_RE = re.compile(
+    r"(?:"
+    r"\b(?:title\s+deed|deed|purchase\s+tax|transfer\s+fee|payment\s+plan|mortgage)\b.{0,120}\b(?:property|apartment|flat|house|villa)\b|"
+    r"\b(?:property|apartment|flat|house|villa)\b.{0,120}\b(?:title\s+deed|deed|purchase\s+tax|transfer\s+fee|payment\s+plan|mortgage)\b|"
+    r"\bwhich\s+(?:developer|project|complex|area)\b.{0,120}\b(?:buy|buying|purchase|invest)\b|"
+    r"\b(?:safe|risky)\s+to\s+buy\b|\bbuying\b.{0,100}\b(?:safe|risk|title|deed|tax|fee)\b|"
+    r"\b(?:ev|daire|villa|konut)\s+al[ıi]rken\b.{0,120}\b(?:tapu|ko[çc]an|vergi|har[çc]|taksit|m[üu]teahhit|proje)\b|"
+    r"\bhangi\s+(?:proje|m[üu]teahhit|b[öo]lge)\b.{0,120}\b(?:ev|daire|villa|konut|yat[ıi]r[ıi]m)\b|"
+    r"\b(?:покупк\w*|покупать)\b.{0,120}\b(?:титул\w*|налог\w*|сбор\w*|рассрочк\w*|застройщик\w*|комплекс\w*)\b|"
+    r"\b(?:какой|какого|какую)\s+(?:застройщик\w*|проект\w*|комплекс\w*|район\w*)\b.{0,120}\b(?:покуп|квартир|недвижимост|инвест)\w*\b|"
+    r"\bбезопасно\s+ли\s+покупать\b"
+    r")",
+    re.I | re.S,
 )
 
 FINANCIAL_OR_GOODS_RE = re.compile(
@@ -557,7 +577,8 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
             return None, "rental_excluded_sales_only"
         purchase_budget_request = bool(has_property and demand and has_purchase_sized_budget(own))
         agent_purchase_request = bool(agent_client and has_property and demand and (purchase_budget_request or qualifier or investor))
-        if not buy and not agent_purchase_request and not purchase_budget_request:
+        purchase_decision_request = bool(explicit_geo and has_property and PURCHASE_DECISION_RE.search(own))
+        if not buy and not agent_purchase_request and not purchase_budget_request and not purchase_decision_request:
             return None, "no_explicit_purchase_intent"
         if not any((has_property, qualifier, investor, residency)):
             return None, "no_property_purchase_context"
@@ -597,6 +618,11 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
         lead_class = "HOT BUYER" if specificity >= 2 else "WARM BUYER"
         score = 78 + min(18, specificity * 4)
         reasons.append("purchase_budget_demand")
+    elif sales_only and explicit_geo and has_property and PURCHASE_DECISION_RE.search(own):
+        intent_type = "BUYER"
+        lead_class = "WARM BUYER"
+        score = 70 + min(14, specificity * 3)
+        reasons.append("purchase_decision_research")
     elif buy and investor:
         intent_type = "INVESTOR"
         lead_class = "INVESTOR"
