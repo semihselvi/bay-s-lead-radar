@@ -1,4 +1,5 @@
 name: NC - North Cyprus Buyer Radar
+# production classifier: source-expansion-quality-6.22
 # production classifier: source-neighbor-monitor-6.21
 # production classifier: telegram-source-expansion-6.20
 # production classifier: visible-freshness-6.19
