@@ -18,7 +18,7 @@ import trafilatura
 import nc_v6_broad_radar as v6
 import web_source_discovery as discovery
 
-VERSION = "1.1-web-source-discovery"
+VERSION = "1.2-direct-forum-sources"
 MAX_AGE_DAYS = int(os.getenv("RADAR_PUBLIC_WEB_MAX_AGE_DAYS", "45"))
 TIMEOUT = int(os.getenv("RADAR_HTTP_TIMEOUT", "20"))
 MAX_RESULTS_PER_QUERY = int(os.getenv("RADAR_PUBLIC_WEB_RESULTS_PER_QUERY", "10"))
@@ -29,6 +29,19 @@ SOURCE_ROOTS = {
     "Expat.com": "https://www.expat.com/en/forum/europe/cyprus/",
     "Kibkom": "https://kibkomnorthcyprusforum.com/",
     "BritishExpats": "https://britishexpats.com/forum/",
+}
+
+DIRECT_FEEDS = {
+    # BritishExpats documents RSS2 support and forum-specific filtering.
+    "BritishExpats": "https://britishexpats.com/forum/external.php?type=rss2&forumids=117",
+}
+
+DIRECT_FORUM_LISTINGS = {
+    # Dedicated North Cyprus sub-forum.
+    "Expat.com": {
+        "url": "https://www.expat.com/en/forum/europe/cyprus/north-cyprus/",
+        "include_pattern": r"/en/forum/europe/cyprus/north-cyprus/\d+[-/]",
+    },
 }
 
 DISCOVERY_MAX_PAGES_PER_SOURCE = int(os.getenv("RADAR_PUBLIC_WEB_DISCOVERY_MAX_PAGES", "40"))
@@ -259,6 +272,52 @@ def _lead_id(url: str, window: str) -> str:
     return hashlib.sha256(stable.encode("utf-8")).hexdigest()
 
 
+def discover_direct_rows() -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    debug: dict[str, Any] = {}
+
+    for source, feed_url in DIRECT_FEEDS.items():
+        try:
+            entries = discovery.fetch_feed_entries(feed_url, timeout=min(TIMEOUT, 15))
+        except Exception as exc:
+            debug[f"{source}:feed"] = {"error": f"{type(exc).__name__}:{exc}"}
+            continue
+        debug[f"{source}:feed"] = {"entries": len(entries), "url": feed_url}
+        for entry in entries:
+            rows.append({
+                "source": source,
+                "title": entry.get("title") or "",
+                "url": entry.get("url") or "",
+                "snippet": entry.get("text") or "",
+                "rss_published": entry.get("published") or "",
+                "discovery": "direct_rss",
+            })
+
+    for source, cfg in DIRECT_FORUM_LISTINGS.items():
+        try:
+            urls = discovery.fetch_listing_thread_links(
+                cfg["url"],
+                timeout=min(TIMEOUT, 15),
+                include_pattern=cfg.get("include_pattern"),
+                limit=80,
+            )
+        except Exception as exc:
+            debug[f"{source}:listing"] = {"error": f"{type(exc).__name__}:{exc}"}
+            continue
+        debug[f"{source}:listing"] = {"threads": len(urls), "url": cfg["url"]}
+        for url in urls:
+            rows.append({
+                "source": source,
+                "title": "",
+                "url": url,
+                "snippet": "",
+                "rss_published": "",
+                "discovery": "direct_forum_listing",
+            })
+
+    return rows, debug
+
+
 def discover_source_rows() -> tuple[list[dict[str, Any]], dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     debug: dict[str, Any] = {}
@@ -303,7 +362,10 @@ def run() -> None:
     rejects = Counter()
     source_stats = Counter()
     discovery_stats = Counter()
+    direct_rows, direct_debug = discover_direct_rows()
     discovery_rows, discovery_debug = discover_source_rows()
+    discovery_rows = direct_rows + discovery_rows
+    discovery_debug = {"direct": direct_debug, "generic": discovery_debug}
     seen_urls: set[str] = set()
     seen_windows: set[str] = set()
     fetched = 0
@@ -521,6 +583,7 @@ def run() -> None:
 
     report = {
         "version": VERSION,
+        "direct_rows": len(direct_rows),
         "queries": stats["queries"],
         "search_rows": stats["search_rows"],
         "pages": stats["pages"],
