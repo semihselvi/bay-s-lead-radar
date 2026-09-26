@@ -1,4 +1,5 @@
 name: NC - North Cyprus Buyer Radar
+# production classifier: public-web-multisource-1.0
 # production classifier: source-expansion-quality-6.22
 # production classifier: source-neighbor-monitor-6.21
 # production classifier: telegram-source-expansion-6.20
@@ -47,8 +48,8 @@ jobs:
 
       - name: Verify broad lead radar before scan
         run: |
-          python -m py_compile main.py main_v5.py main_v5_1.py main_v5_2.py main_v5_3.py main_v5_4.py main_v5_5.py nc_v5_batch_quality_guard.py nc_v6_broad_radar.py reddit_nc_buyer_miner.py reddit_nc_buyer_miner_resilient.py reddit_nc_buyer_miner_resilient_quality.py russian_public_buyer_radar.py test_v5_1_gate.py test_v5_3_gate.py test_v5_5_gate.py test_reddit_nc_buyer_miner.py test_reddit_nc_buyer_miner_resilient.py test_nc_reviewed_false_positives.py test_nc_v6_broad_radar.py test_russian_public_buyer_radar.py
-          python -m unittest -q test_v5_1_gate.py test_v5_3_gate.py test_v5_5_gate.py test_reddit_nc_buyer_miner.py test_reddit_nc_buyer_miner_resilient.py test_nc_reviewed_false_positives.py test_nc_v6_broad_radar.py test_russian_public_buyer_radar.py
+          python -m py_compile main.py main_v5.py main_v5_1.py main_v5_2.py main_v5_3.py main_v5_4.py main_v5_5.py nc_v5_batch_quality_guard.py nc_v6_broad_radar.py reddit_nc_buyer_miner.py reddit_nc_buyer_miner_resilient.py reddit_nc_buyer_miner_resilient_quality.py russian_public_buyer_radar.py public_web_buyer_radar.py test_v5_1_gate.py test_v5_3_gate.py test_v5_5_gate.py test_reddit_nc_buyer_miner.py test_reddit_nc_buyer_miner_resilient.py test_nc_reviewed_false_positives.py test_nc_v6_broad_radar.py test_russian_public_buyer_radar.py test_public_web_buyer_radar.py
+          python -m unittest -q test_v5_1_gate.py test_v5_3_gate.py test_v5_5_gate.py test_reddit_nc_buyer_miner.py test_reddit_nc_buyer_miner_resilient.py test_nc_reviewed_false_positives.py test_nc_v6_broad_radar.py test_russian_public_buyer_radar.py test_public_web_buyer_radar.py
 
       - name: Restore dedicated Prime Telegram session
         env:
@@ -105,6 +106,17 @@ jobs:
           NC_REDDIT_INDEX_LOOKBACK_DAYS: "30"
           NC_REDDIT_INDEX_QUERY_LIMIT: "12"
         run: python reddit_nc_buyer_miner_resilient_quality.py
+
+      - name: Mine public web buyer sources
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RADAR_SALES_ONLY: "1"
+          RADAR_PUBLIC_WEB_MAX_AGE_DAYS: "45"
+          RADAR_PUBLIC_WEB_RESULTS_PER_QUERY: "10"
+          RADAR_PUBLIC_WEB_MAX_FETCHES: "60"
+        run: python public_web_buyer_radar.py
 
       - name: Mine Russian public buyer sources
         env:
