@@ -65,5 +65,40 @@ class PublicWebBuyerRadarTests(unittest.TestCase):
         self.assertEqual(web._freshness(None), ("unknown", None))
 
 
+
+    def test_direct_rss_parser_extracts_entry(self):
+        xml = """<?xml version="1.0"?>
+        <rss version="2.0"><channel>
+          <item>
+            <title>Looking to buy in North Cyprus</title>
+            <link>https://britishexpats.com/forum/cyprus-117/example.html</link>
+            <pubDate>Fri, 25 Sep 2026 10:00:00 GMT</pubDate>
+            <description>I am looking to buy a villa in Kyrenia.</description>
+          </item>
+        </channel></rss>"""
+        rows = web.discovery.parse_feed_entries(xml)
+        self.assertEqual(len(rows), 1)
+        self.assertIn("Looking to buy", rows[0]["title"])
+        self.assertIn("britishexpats.com", rows[0]["url"])
+        self.assertIn("Kyrenia", rows[0]["text"])
+
+    def test_expat_listing_thread_link_extraction(self):
+        html = """
+        <html><body>
+          <a href="/en/forum/europe/cyprus/north-cyprus/123456-looking-to-buy.html">buyer</a>
+          <a href="/en/forum/europe/cyprus/north-cyprus/">forum root</a>
+          <a href="/en/forum/europe/cyprus/999999-other.html">other</a>
+        </body></html>
+        """
+        urls = web.discovery.extract_listing_thread_links(
+            html,
+            "https://www.expat.com/en/forum/europe/cyprus/north-cyprus/",
+            include_pattern=r"/en/forum/europe/cyprus/north-cyprus/\d+[-/]",
+        )
+        self.assertEqual(
+            urls,
+            ["https://www.expat.com/en/forum/europe/cyprus/north-cyprus/123456-looking-to-buy.html"],
+        )
+
 if __name__ == "__main__":
     unittest.main()
