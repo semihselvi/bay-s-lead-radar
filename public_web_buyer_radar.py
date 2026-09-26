@@ -483,13 +483,13 @@ def run() -> None:
                     rejects["duplicate_window"] += 1
                     continue
                 seen_windows.add(wkey)
-                if near_windows.is_duplicate(window):
-                    rejects["near_duplicate_window"] += 1
-                    continue
     
                 signal, reason = classify_window(window)
                 if signal is None:
                     rejects[f"native_{reason}"] += 1
+                    continue
+                if near_windows.is_duplicate(window):
+                    rejects["near_duplicate_buyer_window"] += 1
                     continue
     
                 stats["valid_buyers"] += 1
@@ -636,16 +636,16 @@ def run() -> None:
                             rejects["duplicate_window"] += 1
                             continue
                         seen_windows.add(wkey)
-                        if near_windows.is_duplicate(window):
-                            rejects["near_duplicate_window"] += 1
-                            qstat["near_duplicate"] += 1
-                            continue
                         if v6.has_nc_geo(window):
                             qstat["north_context"] += 1
     
                         signal, reason = classify_window(window)
                         if signal is None:
                             rejects[reason] += 1
+                            continue
+                        if near_windows.is_duplicate(window):
+                            rejects["near_duplicate_buyer_window"] += 1
+                            qstat["near_duplicate"] += 1
                             continue
     
                         stats["valid_buyers"] += 1
