@@ -7,6 +7,8 @@ from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
+from rapidfuzz import fuzz
+
 
 CONCERN_PATTERNS = {
     "title_deed": re.compile(
@@ -209,3 +211,118 @@ def save_concern(
         "published": published,
         "found_at": datetime.now(timezone.utc).isoformat(),
     }, merge=True)
+
+DEMAND_GEO_RE = re.compile(
+    r"(?:north(?:ern)?\s+cyprus|kuzey\s+k[ıi]br[ıi]s|северн\w*\s+кипр)",
+    re.I,
+)
+DEMAND_PROPERTY_RE = re.compile(
+    r"(?:property|real\s+estate|apartment|flat|house|villa|studio|off[-\s]?plan|"
+    r"payment\s+plan|installment|instalment|down\s*payment|"
+    r"emlak|gayrimenkul|daire|ev|villa|konut|taksit|peşinat|pesinat|"
+    r"недвижимост\w*|квартир\w*|дом\b|вилл\w*|рассроч\w*|первоначальн\w*\s+взнос)",
+    re.I,
+)
+DEMAND_TELEGRAM_INTENT_RE = re.compile(
+    r"(?:looking\s+to\s+buy|want(?:ing)?\s+to\s+buy|buy\s+(?:an?\s+)?(?:apartment|flat|house|villa|property)|"
+    r"payment\s+plan|installment|instalment|down\s*payment|"
+    r"almak\s+istiyorum|sat[ıi]n\s+al|taksit|peşinat|pesinat|"
+    r"хочу\s+купить|куплю|ищу\s+(?:квартир|дом|вилл|недвижим)|"
+    r"рассроч\w*|первоначальн\w*\s+взнос)",
+    re.I,
+)
+
+
+def normalize_dedupe_text(text: str) -> str:
+    value = str(text or "").casefold()
+    value = re.sub(r"https?://\S+|www\.\S+", " ", value)
+    value = re.sub(r"@[\w.]+|#[\w-]+", " ", value)
+    value = re.sub(r"[^\w\s+€£$₺₽]", " ", value, flags=re.UNICODE)
+    return " ".join(value.split())
+
+
+class NearDuplicateIndex:
+    """Small in-memory fuzzy duplicate guard for reposted buyer messages."""
+
+    def __init__(self, *, threshold: float = 92.0, min_chars: int = 35, max_items: int = 600):
+        self.threshold = float(threshold)
+        self.min_chars = int(min_chars)
+        self.max_items = int(max_items)
+        self._items: list[str] = []
+
+    def is_duplicate(self, text: str, *, add: bool = True) -> bool:
+        value = normalize_dedupe_text(text)
+        if not value:
+            return False
+
+        duplicate = False
+        if len(value) >= self.min_chars:
+            for prior in reversed(self._items):
+                if abs(len(prior) - len(value)) > max(80, int(max(len(prior), len(value)) * 0.35)):
+                    continue
+                if fuzz.ratio(value, prior) >= self.threshold:
+                    duplicate = True
+                    break
+
+        if add and not duplicate:
+            self._items.append(value)
+            if len(self._items) > self.max_items:
+                del self._items[: len(self._items) - self.max_items]
+        return duplicate
+
+
+def safe_demand_query(term: str, *, surface: str = "web") -> bool:
+    value = " ".join(str(term or "").split())
+    if not (5 <= len(value) <= 140):
+        return False
+    if not DEMAND_GEO_RE.search(value):
+        return False
+    if not DEMAND_PROPERTY_RE.search(value):
+        return False
+    if surface == "telegram" and not DEMAND_TELEGRAM_INTENT_RE.search(value):
+        return False
+    return True
+
+
+def read_learned_query_terms(
+    db: Any,
+    *,
+    surface: str,
+    limit: int = 12,
+    min_score: float = 15.0,
+    collection: str = "bay_s_radar_query_terms",
+) -> list[str]:
+    rows: list[dict[str, Any]] = []
+    try:
+        for snap in db.collection(collection).stream():
+            data = snap.to_dict() or {}
+            term = str(data.get("term") or "").strip()
+            surfaces = list(data.get("surfaces") or ["web"])
+            score = float(data.get("score", 0) or 0)
+            if data.get("active") is False:
+                continue
+            if surface not in surfaces or score < min_score:
+                continue
+            if not safe_demand_query(term, surface=surface):
+                continue
+            rows.append({
+                "term": term,
+                "score": score,
+                "updated_at": str(data.get("updated_at") or ""),
+            })
+    except Exception:
+        return []
+
+    rows.sort(key=lambda x: (-x["score"], x["updated_at"], x["term"].casefold()))
+    out: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        key = row["term"].casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(row["term"])
+        if len(out) >= max(0, int(limit)):
+            break
+    return out
+
