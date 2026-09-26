@@ -1,4 +1,5 @@
 name: NC - North Cyprus Buyer Radar
+# production classifier: visible-freshness-6.19
 # production classifier: unique-buyer-freshness-6.18
 # production classifier: buyer-recall-6.17
 # production classifier: visible-valid-buyers-6.16
