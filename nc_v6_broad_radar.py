@@ -1223,13 +1223,30 @@ async def broad_telegram_scan(db_client, started):
 
         for query in TELEGRAM_GLOBAL_SEARCH_QUERIES:
             DEBUG["global_search_queries"] += 1
-            if query in TELEGRAM_GLOBAL_BUYER_QUERIES:
+            is_buyer_query = query in TELEGRAM_GLOBAL_BUYER_QUERIES
+            if is_buyer_query:
                 DEBUG["global_search_buyer_queries"] += 1
             else:
                 DEBUG["global_search_broad_queries"] += 1
+
+            query_limit = 120 if is_buyer_query else 40
+            query_days = global_days if is_buyer_query else min(global_days, 7)
+            query_cutoff = datetime.now(timezone.utc) - timedelta(days=query_days)
+            qstat = DEBUG["global_search_query_stats"].setdefault(query, {
+                "kind": "buyer" if is_buyer_query else "broad",
+                "raw": 0,
+                "fresh": 0,
+                "public": 0,
+                "north_context": 0,
+                "signal": 0,
+                "valid": 0,
+                "known": 0,
+                "new": 0,
+            })
             try:
-                async for msg in client.iter_messages(None, search=query, limit=80):
+                async for msg in client.iter_messages(None, search=query, limit=query_limit):
                     DEBUG["global_search_raw"] += 1
+                    qstat["raw"] += 1
 
                     dt = getattr(msg, "date", None)
                     if not dt:
@@ -1248,9 +1265,10 @@ async def broad_telegram_scan(db_client, started):
                     else:
                         DEBUG["global_search_age_buckets"]["gt_30d"] += 1
 
-                    if dt < global_cutoff:
+                    if dt < query_cutoff:
                         DEBUG["global_search_reject_reasons"]["stale"] += 1
                         continue
+                    qstat["fresh"] += 1
 
                     text = str(getattr(msg, "message", "") or "").strip()
                     if not text:
@@ -1266,6 +1284,7 @@ async def broad_telegram_scan(db_client, started):
                         DEBUG["global_search_reject_reasons"]["not_public_username_chat"] += 1
                         continue
                     DEBUG["global_search_public"] += 1
+                    qstat["public"] += 1
 
                     msg_id = int(getattr(msg, "id", 0) or 0)
                     identity = (username.casefold(), msg_id)
@@ -1284,6 +1303,7 @@ async def broad_telegram_scan(db_client, started):
                         DEBUG["global_search_reject_reasons"]["no_north_context"] += 1
                         continue
                     DEBUG["global_search_geo_pass"] += 1
+                    qstat["north_context"] += 1
 
                     try:
                         await msg.get_sender()
@@ -1306,6 +1326,7 @@ async def broad_telegram_scan(db_client, started):
                             DEBUG["global_search_reject_reasons"]["no_buyer_signal"] += 1
                         continue
                     DEBUG["global_search_signal_pass"] += 1
+                    qstat["signal"] += 1
                     if len(DEBUG["global_search_candidate_samples"]) < 12:
                         DEBUG["global_search_candidate_samples"].append({
                             "query": query,
@@ -1346,6 +1367,7 @@ async def broad_telegram_scan(db_client, started):
                         continue
 
                     DEBUG["global_search_valid_matches"] += 1
+                    qstat["valid"] += 1
                     stable_id = f"telegram-global|{username.casefold()}|{msg_id}"
                     lead_id = hashlib.sha256(stable_id.encode("utf-8")).hexdigest()
                     ref = db_client.collection(core.COLLECTION).document(lead_id)
@@ -1355,6 +1377,7 @@ async def broad_telegram_scan(db_client, started):
                         if previous.get("v5_notified_at") or previous.get("v6_notified_at"):
                             DEBUG["already_notified"] += 1
                             DEBUG["global_search_known_matches"] += 1
+                            qstat["known"] += 1
                             DEBUG["global_search_reject_reasons"]["already_notified"] += 1
                             continue
 
@@ -1370,6 +1393,7 @@ async def broad_telegram_scan(db_client, started):
 
                     DEBUG["accepted"] += 1
                     DEBUG["global_search_accepted"] += 1
+                    qstat["new"] += 1
                     DEBUG["accepted_classes"][signal["lead_class"]] += 1
                     DEBUG["languages"][signal["language"]] += 1
 
