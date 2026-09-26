@@ -733,5 +733,39 @@ class BroadIntentTests(unittest.TestCase):
         self.assertEqual(out["freshness"], "15_30d")
         self.assertLess(out["intent_score"], 90)
 
+
+    def test_sales_only_accepts_purchase_decision_research_without_buy_phrase(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            lead, reason = v6.classify_text(
+                "North Cyprus apartment title deed and transfer fee - what should I check before signing?",
+                group="",
+                explicit_geo=True,
+            )
+        self.assertIsNotNone(lead, reason)
+        self.assertEqual(reason, "accepted")
+        self.assertEqual(lead["lead_class"], "WARM BUYER")
+        self.assertIn("purchase_decision_research", lead["lead_reasons"])
+
+    def test_sales_only_accepts_russian_purchase_due_diligence(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            lead, reason = v6.classify_text(
+                "Северный Кипр, квартира: при покупке какой титул и налог нужно проверить?",
+                group="",
+                explicit_geo=True,
+            )
+        self.assertIsNotNone(lead, reason)
+        self.assertEqual(reason, "accepted")
+        self.assertEqual(lead["lead_class"], "WARM BUYER")
+
+    def test_sales_only_does_not_turn_generic_property_research_into_buyer(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            lead, reason = v6.classify_text(
+                "North Cyprus property prices are interesting this year.",
+                group="",
+                explicit_geo=True,
+            )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "no_explicit_purchase_intent")
+
 if __name__ == "__main__":
     unittest.main()
