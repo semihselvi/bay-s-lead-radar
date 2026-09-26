@@ -20,7 +20,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.20-telegram-source-expansion"
+VERSION = "6.21-source-neighbor-monitor"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -719,6 +719,12 @@ DEBUG: dict[str, Any] = {
     "source_expansion_seeds": 0,
     "source_expansion_seed_fetch_ok": 0,
     "source_expansion_seed_fetch_fail": 0,
+    "source_expansion_seed_messages": 0,
+    "source_expansion_seed_valid_matches": 0,
+    "source_expansion_seed_known_matches": 0,
+    "source_expansion_seed_accepted": 0,
+    "source_expansion_neighbor_queries": 0,
+    "source_expansion_neighbor_candidates": 0,
     "source_expansion_graph_candidates": 0,
     "source_expansion_candidate_scanned": 0,
     "source_expansion_candidate_fetch_fail": 0,
@@ -1661,6 +1667,9 @@ async def broad_telegram_scan(db_client, started):
         candidate_limit = max(1, min(40, int(os.getenv("RADAR_SOURCE_EXPANSION_CANDIDATES", "24") or "24")))
         html_cutoff = datetime.now(timezone.utc) - timedelta(days=30)
 
+        seed_html_seen: set[tuple[str, int]] = set()
+        neighbor_keys: set[str] = set()
+
         for seed in sorted(source_expansion_seeds)[:seed_limit]:
             try:
                 page = await asyncio.to_thread(tpg.fetch_public_preview, seed, 15)
@@ -1669,6 +1678,95 @@ async def broad_telegram_scan(db_client, started):
                 DEBUG["source_expansion_seed_fetch_fail"] += 1
                 DEBUG["source_expansion_reject_reasons"][f"seed_fetch_{type(exc).__name__}"] += 1
                 continue
+
+            seed_title = str(page.get("title") or seed)
+            seed_direct_north = bool(
+                DIRECT_NORTH_GROUP_RE.search(seed_title)
+                or DIRECT_NORTH_GROUP_RE.search(seed)
+            )
+
+            # Proven buyer-producing channels are also monitored directly via
+            # public HTML. This is a sessionless fallback if Telegram global
+            # message search is unavailable or rate-limited.
+            for row in page.get("messages", []) or []:
+                msg_id = int(row.get("message_id") or 0)
+                identity = (seed.casefold(), msg_id)
+                if not msg_id or identity in seed_html_seen:
+                    continue
+                seed_html_seen.add(identity)
+
+                text = str(row.get("text") or "").strip()
+                if not text:
+                    continue
+                dt = tpg.parse_datetime(str(row.get("datetime") or ""))
+                if dt is None:
+                    continue
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if dt < html_cutoff:
+                    continue
+
+                DEBUG["source_expansion_seed_messages"] += 1
+                explicit_geo = has_nc_geo(text)
+                if not seed_direct_north and not explicit_geo:
+                    continue
+
+                author = str(row.get("author") or "")
+                if self_username and author.strip().lstrip("@").casefold() == self_username.casefold():
+                    continue
+                hard = _hard_reject(text, author)
+                if hard or not candidate_signal(text):
+                    continue
+
+                signal, reason = classify_text(
+                    text,
+                    group=seed_title if seed_direct_north else "",
+                    author=author,
+                    explicit_geo=explicit_geo,
+                )
+                if signal is None:
+                    continue
+
+                DEBUG["source_expansion_seed_valid_matches"] += 1
+                age_days = max(0, int((datetime.now(timezone.utc) - dt).total_seconds() // 86400))
+                effective = _apply_global_recency(signal, age_days)
+                stable_id = f"telegram-global|{seed.casefold()}|{msg_id}"
+                lead_id = hashlib.sha256(stable_id.encode("utf-8")).hexdigest()
+                ref = db_client.collection(core.COLLECTION).document(lead_id)
+                snap = ref.get()
+                if snap.exists:
+                    previous = snap.to_dict() or {}
+                    if previous.get("v5_notified_at") or previous.get("v6_notified_at"):
+                        DEBUG["source_expansion_seed_known_matches"] += 1
+                        continue
+
+                candidate = {
+                    "source": "Telegram",
+                    "platform": "Telegram",
+                    "source_type": "telegram_public_html_seed_monitor",
+                    "group": seed_title,
+                    "group_priority": "PUBLIC_SEED",
+                    "group_username": seed,
+                    "message_id": msg_id,
+                    "message_time": dt.isoformat(timespec="seconds"),
+                    "author": author,
+                    "message": text,
+                    "url": str(row.get("url") or f"https://t.me/{seed}/{msg_id}"),
+                    "market": "north_cyprus",
+                    "found_at": started.isoformat(),
+                }
+                lead = {**candidate, **effective}
+                lead["lead_id"] = lead_id
+                lead["telegram_score"] = effective["intent_score"]
+                lead["buyer_signal"] = effective["intent_type"].lower()
+                lead["radar_version"] = VERSION
+                lead["why_selected"] = ", ".join(effective["lead_reasons"])
+                ref.set(lead, merge=True)
+                accepted.append(lead)
+                DEBUG["accepted"] += 1
+                DEBUG["source_expansion_seed_accepted"] += 1
+                DEBUG["accepted_classes"][lead["lead_class"]] += 1
+                DEBUG["languages"][lead["language"]] += 1
 
             for target in page.get("references", []) or []:
                 clean = tpg.clean_username(target)
@@ -1682,6 +1780,41 @@ async def broad_telegram_scan(db_client, started):
                     continue
                 graph_sources.setdefault(key, set()).add(seed)
 
+            # Link graphs are often sparse in buyer chats. Search Telegram's
+            # public directory around the proven seed title/username and feed
+            # those neighboring channels into the same sessionless HTML scan.
+            hints: list[str] = []
+            for raw_hint in (seed_title, seed.replace("_", " ")):
+                hint = re.sub(r"\s+", " ", str(raw_hint or "")).strip(" |—-")
+                if len(hint) >= 4 and hint.casefold() not in {x.casefold() for x in hints}:
+                    hints.append(hint[:64])
+
+            for hint in hints[:2]:
+                DEBUG["source_expansion_neighbor_queries"] += 1
+                try:
+                    result = await client(tg_functions.contacts.SearchRequest(q=hint, limit=25))
+                except core.FloodWaitError as exc:
+                    DEBUG["errors"].append(f"source_neighbor_flood_wait:{hint}:{exc.seconds}")
+                    break
+                except Exception as exc:
+                    DEBUG["source_expansion_reject_reasons"][f"neighbor_search_{type(exc).__name__}"] += 1
+                    continue
+
+                for chat in getattr(result, "chats", []) or []:
+                    target = _public_chat_username(chat)
+                    if not target:
+                        continue
+                    key = target.casefold()
+                    if key == seed.casefold():
+                        continue
+                    if key in joined_public_usernames or key in discovered_peers:
+                        continue
+                    if key not in graph_sources:
+                        neighbor_keys.add(key)
+                    graph_sources.setdefault(key, set()).add(seed)
+                await asyncio.sleep(0.15)
+
+        DEBUG["source_expansion_neighbor_candidates"] = len(neighbor_keys)
         DEBUG["source_expansion_graph_candidates"] = len(graph_sources)
 
         for username_key, seed_refs in sorted(
@@ -2130,7 +2263,7 @@ def save_and_notify_debug() -> None:
         f"Telegram ana grup: {DEBUG['groups_relevant']}/{DEBUG['groups_total']} | Mesaj: {DEBUG['messages_scanned']}\n"
         f"Ek sıkı grup: {DEBUG['strict_extra_groups_scanned']} | Mesaj: {DEBUG['strict_extra_messages_scanned']} | NC: {DEBUG['strict_extra_geo_pass']} | Aday: {DEBUG['strict_extra_signal_pass']} | Kabul: {DEBUG['strict_extra_accepted']}\n"        f"Global public 30g: sorgu {DEBUG['global_search_queries']} (buyer {DEBUG['global_search_buyer_queries']} + broad {DEBUG['global_search_broad_queries']}) | Ham {DEBUG['global_search_raw']} | Public {DEBUG['global_search_public']} | NC {DEBUG['global_search_geo_pass']} | Buyer mesajı {DEBUG['global_search_valid_matches']} | Benzersiz kişi {DEBUG['global_search_unique_buyers']} | Yeni {DEBUG['global_search_accepted']} | Bilinen {DEBUG['global_search_known_matches']} | Tekrar post {DEBUG['global_search_duplicate_buyer_posts']}\n"
         f"Global güncellik: HOT 0-7g {DEBUG['global_search_recent_hot']} | WARM 8-30g {DEBUG['global_search_aged_warm']} | En verimli sorgu: {top_queries}\n"        f"Public keşif: sorgu {DEBUG['peer_discovery_queries']} | Bulunan {DEBUG['peer_discovery_found']} | Taranan {DEBUG['peer_discovery_scanned']} | Mesaj {DEBUG['peer_discovery_messages']} | NC {DEBUG['peer_discovery_geo_pass']} | Aday {DEBUG['peer_discovery_signal_pass']} | Geçerli BUYER {DEBUG['peer_discovery_valid_matches']} | Yeni {DEBUG['peer_discovery_accepted']} | Bilinen {DEBUG['peer_discovery_known_matches']}\n"
-        f"Kaynak genişletme: Seed {DEBUG['source_expansion_seeds']} | Seed OK {DEBUG['source_expansion_seed_fetch_ok']} | Yeni kanal adayı {DEBUG['source_expansion_graph_candidates']} | Taranan {DEBUG['source_expansion_candidate_scanned']} | Mesaj {DEBUG['source_expansion_messages']} | NC {DEBUG['source_expansion_geo_pass']} | Buyer {DEBUG['source_expansion_valid_matches']} | Üretken kanal {DEBUG['source_expansion_productive_channels']} | Yeni {DEBUG['source_expansion_accepted']} | Bilinen {DEBUG['source_expansion_known_matches']}\n"
+        f"Kaynak genişletme: Seed {DEBUG['source_expansion_seeds']} | Seed OK {DEBUG['source_expansion_seed_fetch_ok']} | Seed mesaj {DEBUG['source_expansion_seed_messages']} | Seed BUYER {DEBUG['source_expansion_seed_valid_matches']} (yeni {DEBUG['source_expansion_seed_accepted']} / bilinen {DEBUG['source_expansion_seed_known_matches']}) | Komşu sorgu {DEBUG['source_expansion_neighbor_queries']} | Komşu aday {DEBUG['source_expansion_neighbor_candidates']} | Toplam yeni kanal adayı {DEBUG['source_expansion_graph_candidates']} | Taranan {DEBUG['source_expansion_candidate_scanned']} | Mesaj {DEBUG['source_expansion_messages']} | NC {DEBUG['source_expansion_geo_pass']} | Buyer {DEBUG['source_expansion_valid_matches']} | Üretken kanal {DEBUG['source_expansion_productive_channels']} | Yeni {DEBUG['source_expansion_accepted']} | Bilinen {DEBUG['source_expansion_known_matches']}\n"
         f"Kaynak genişletme eleme: {source_expansion_rejects}\n"
         f"Coğrafya geçti: {DEBUG['geography_pass']}\n"
         f"Intent/keyword adayı: {DEBUG['signal_pass']}\n"
