@@ -825,6 +825,7 @@ TELEGRAM_GLOBAL_BUYER_QUERIES = (
     "Гирне куплю квартиру",
     "North Cyprus looking to buy property",
     "Kuzey Kıbrıs daire almak istiyorum",
+    "Kuzey Kibris ev almak istiyorum",
 )
 
 TELEGRAM_GLOBAL_SEARCH_QUERIES = (
