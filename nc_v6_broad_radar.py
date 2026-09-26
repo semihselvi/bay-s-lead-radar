@@ -20,7 +20,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.21-source-neighbor-monitor"
+VERSION = "6.22-source-expansion-quality"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -725,7 +725,10 @@ DEBUG: dict[str, Any] = {
     "source_expansion_seed_accepted": 0,
     "source_expansion_neighbor_queries": 0,
     "source_expansion_neighbor_candidates": 0,
+    "source_expansion_neighbor_rejected": 0,
     "source_expansion_graph_candidates": 0,
+    "source_expansion_telethon_fallback_channels": 0,
+    "source_expansion_telethon_fallback_messages": 0,
     "source_expansion_candidate_scanned": 0,
     "source_expansion_candidate_fetch_fail": 0,
     "source_expansion_messages": 0,
@@ -1663,6 +1666,7 @@ async def broad_telegram_scan(db_client, started):
         # of newly discovered public channels without joining them.
         DEBUG["source_expansion_seeds"] = len(source_expansion_seeds)
         graph_sources: dict[str, set[str]] = {}
+        neighbor_entities: dict[str, Any] = {}
         seed_limit = max(1, min(12, int(os.getenv("RADAR_SOURCE_EXPANSION_SEEDS", "8") or "8")))
         candidate_limit = max(1, min(40, int(os.getenv("RADAR_SOURCE_EXPANSION_CANDIDATES", "24") or "24")))
         html_cutoff = datetime.now(timezone.utc) - timedelta(days=30)
@@ -1784,12 +1788,15 @@ async def broad_telegram_scan(db_client, started):
             # public directory around the proven seed title/username and feed
             # those neighboring channels into the same sessionless HTML scan.
             hints: list[str] = []
-            for raw_hint in (seed_title, seed.replace("_", " ")):
-                hint = re.sub(r"\s+", " ", str(raw_hint or "")).strip(" |—-")
-                if len(hint) >= 4 and hint.casefold() not in {x.casefold() for x in hints}:
-                    hints.append(hint[:64])
+            title_hint = re.sub(r"\s+", " ", str(seed_title or "")).strip(" |—-")
+            if len(title_hint) >= 4:
+                hints.append(title_hint[:64])
+            if not hints or title_hint.casefold() == seed.casefold():
+                username_hint = re.sub(r"\s+", " ", seed.replace("_", " ")).strip()
+                if len(username_hint) >= 6:
+                    hints.append(username_hint[:64])
 
-            for hint in hints[:2]:
+            for hint in hints[:1]:
                 DEBUG["source_expansion_neighbor_queries"] += 1
                 try:
                     result = await client(tg_functions.contacts.SearchRequest(q=hint, limit=25))
@@ -1809,9 +1816,28 @@ async def broad_telegram_scan(db_client, started):
                         continue
                     if key in joined_public_usernames or key in discovered_peers:
                         continue
+
+                    candidate_title = str(getattr(chat, "title", None) or target)
+                    title_blob = f"{candidate_title} {target}"
+                    north_named = bool(DIRECT_NORTH_GROUP_RE.search(title_blob))
+                    cyprus_property_named = bool(
+                        GENERIC_CYPRUS_GROUP_RE.search(title_blob)
+                        and THEMATIC_GROUP_RE.search(title_blob)
+                    )
+                    rental_named = bool(re.search(
+                        r"(?:rent|rental|kiral[ıi]k|аренд\w*)",
+                        title_blob,
+                        re.I,
+                    ))
+                    south_named = bool(SOUTH_ONLY_RE.search(title_blob))
+                    if south_named or rental_named or not (north_named or cyprus_property_named):
+                        DEBUG["source_expansion_neighbor_rejected"] += 1
+                        continue
+
                     if key not in graph_sources:
                         neighbor_keys.add(key)
                     graph_sources.setdefault(key, set()).add(seed)
+                    neighbor_entities[key] = chat
                 await asyncio.sleep(0.15)
 
         DEBUG["source_expansion_neighbor_candidates"] = len(neighbor_keys)
@@ -1830,10 +1856,59 @@ async def broad_telegram_scan(db_client, started):
             except Exception as exc:
                 DEBUG["source_expansion_candidate_fetch_fail"] += 1
                 DEBUG["source_expansion_reject_reasons"][f"candidate_fetch_{type(exc).__name__}"] += 1
-                continue
+                page = {"username": username, "title": username, "messages": [], "references": []}
+
+            entity = neighbor_entities.get(username_key)
+            title = str(
+                page.get("title")
+                or getattr(entity, "title", None)
+                or username
+            )
+
+            # Public supergroups often expose no message history at t.me/s.
+            # Fall back to read-only Telethon for those already discovered
+            # public entities; we still never join the channel/group.
+            if not (page.get("messages") or []) and entity is not None:
+                fallback_rows: list[dict[str, Any]] = []
+                try:
+                    async for msg in client.iter_messages(entity, limit=60):
+                        dt = getattr(msg, "date", None)
+                        if not dt:
+                            continue
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        if dt < html_cutoff:
+                            break
+                        text = str(getattr(msg, "message", "") or "").strip()
+                        if not text:
+                            continue
+                        try:
+                            await msg.get_sender()
+                        except Exception:
+                            pass
+                        fallback_rows.append({
+                            "message_id": int(getattr(msg, "id", 0) or 0),
+                            "text": text,
+                            "datetime": dt.isoformat(timespec="seconds"),
+                            "author": core.tg_sender(msg),
+                            "url": f"https://t.me/{username}/{int(getattr(msg, 'id', 0) or 0)}",
+                            "references": [],
+                        })
+                    if fallback_rows:
+                        page = {
+                            "username": username,
+                            "title": title,
+                            "messages": fallback_rows,
+                            "references": [],
+                        }
+                        DEBUG["source_expansion_telethon_fallback_channels"] += 1
+                        DEBUG["source_expansion_telethon_fallback_messages"] += len(fallback_rows)
+                except core.FloodWaitError as exc:
+                    DEBUG["errors"].append(f"source_neighbor_scan_flood_wait:{username}:{exc.seconds}")
+                except Exception as exc:
+                    DEBUG["source_expansion_reject_reasons"][f"fallback_{type(exc).__name__}"] += 1
 
             DEBUG["source_expansion_candidate_scanned"] += 1
-            title = str(page.get("title") or username)
             direct_north = bool(
                 DIRECT_NORTH_GROUP_RE.search(title)
                 or DIRECT_NORTH_GROUP_RE.search(username)
@@ -2263,7 +2338,7 @@ def save_and_notify_debug() -> None:
         f"Telegram ana grup: {DEBUG['groups_relevant']}/{DEBUG['groups_total']} | Mesaj: {DEBUG['messages_scanned']}\n"
         f"Ek sıkı grup: {DEBUG['strict_extra_groups_scanned']} | Mesaj: {DEBUG['strict_extra_messages_scanned']} | NC: {DEBUG['strict_extra_geo_pass']} | Aday: {DEBUG['strict_extra_signal_pass']} | Kabul: {DEBUG['strict_extra_accepted']}\n"        f"Global public 30g: sorgu {DEBUG['global_search_queries']} (buyer {DEBUG['global_search_buyer_queries']} + broad {DEBUG['global_search_broad_queries']}) | Ham {DEBUG['global_search_raw']} | Public {DEBUG['global_search_public']} | NC {DEBUG['global_search_geo_pass']} | Buyer mesajı {DEBUG['global_search_valid_matches']} | Benzersiz kişi {DEBUG['global_search_unique_buyers']} | Yeni {DEBUG['global_search_accepted']} | Bilinen {DEBUG['global_search_known_matches']} | Tekrar post {DEBUG['global_search_duplicate_buyer_posts']}\n"
         f"Global güncellik: HOT 0-7g {DEBUG['global_search_recent_hot']} | WARM 8-30g {DEBUG['global_search_aged_warm']} | En verimli sorgu: {top_queries}\n"        f"Public keşif: sorgu {DEBUG['peer_discovery_queries']} | Bulunan {DEBUG['peer_discovery_found']} | Taranan {DEBUG['peer_discovery_scanned']} | Mesaj {DEBUG['peer_discovery_messages']} | NC {DEBUG['peer_discovery_geo_pass']} | Aday {DEBUG['peer_discovery_signal_pass']} | Geçerli BUYER {DEBUG['peer_discovery_valid_matches']} | Yeni {DEBUG['peer_discovery_accepted']} | Bilinen {DEBUG['peer_discovery_known_matches']}\n"
-        f"Kaynak genişletme: Seed {DEBUG['source_expansion_seeds']} | Seed OK {DEBUG['source_expansion_seed_fetch_ok']} | Seed mesaj {DEBUG['source_expansion_seed_messages']} | Seed BUYER {DEBUG['source_expansion_seed_valid_matches']} (yeni {DEBUG['source_expansion_seed_accepted']} / bilinen {DEBUG['source_expansion_seed_known_matches']}) | Komşu sorgu {DEBUG['source_expansion_neighbor_queries']} | Komşu aday {DEBUG['source_expansion_neighbor_candidates']} | Toplam yeni kanal adayı {DEBUG['source_expansion_graph_candidates']} | Taranan {DEBUG['source_expansion_candidate_scanned']} | Mesaj {DEBUG['source_expansion_messages']} | NC {DEBUG['source_expansion_geo_pass']} | Buyer {DEBUG['source_expansion_valid_matches']} | Üretken kanal {DEBUG['source_expansion_productive_channels']} | Yeni {DEBUG['source_expansion_accepted']} | Bilinen {DEBUG['source_expansion_known_matches']}\n"
+        f"Kaynak genişletme: Seed {DEBUG['source_expansion_seeds']} | Seed OK {DEBUG['source_expansion_seed_fetch_ok']} | Seed mesaj {DEBUG['source_expansion_seed_messages']} | Seed BUYER {DEBUG['source_expansion_seed_valid_matches']} (yeni {DEBUG['source_expansion_seed_accepted']} / bilinen {DEBUG['source_expansion_seed_known_matches']}) | Komşu sorgu {DEBUG['source_expansion_neighbor_queries']} | Komşu aday {DEBUG['source_expansion_neighbor_candidates']} | Komşu red {DEBUG['source_expansion_neighbor_rejected']} | Toplam yeni kanal adayı {DEBUG['source_expansion_graph_candidates']} | Taranan {DEBUG['source_expansion_candidate_scanned']} | HTML boş→Telethon {DEBUG['source_expansion_telethon_fallback_channels']} kanal/{DEBUG['source_expansion_telethon_fallback_messages']} mesaj | Mesaj {DEBUG['source_expansion_messages']} | NC {DEBUG['source_expansion_geo_pass']} | Buyer {DEBUG['source_expansion_valid_matches']} | Üretken kanal {DEBUG['source_expansion_productive_channels']} | Yeni {DEBUG['source_expansion_accepted']} | Bilinen {DEBUG['source_expansion_known_matches']}\n"
         f"Kaynak genişletme eleme: {source_expansion_rejects}\n"
         f"Coğrafya geçti: {DEBUG['geography_pass']}\n"
         f"Intent/keyword adayı: {DEBUG['signal_pass']}\n"
