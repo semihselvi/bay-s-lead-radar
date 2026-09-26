@@ -283,6 +283,127 @@ def discover_urls(
     return result
 
 
+
+def parse_feed_entries(xml_text: str) -> list[dict]:
+    """Return RSS/Atom entries with URL, title, published date and inline text."""
+    try:
+        root = ET.fromstring(xml_text)
+    except Exception:
+        return []
+
+    out: list[dict] = []
+
+    for item in root.findall(".//item"):
+        link = _norm_url((item.findtext("link") or "").strip())
+        if not link:
+            continue
+        title = " ".join((item.findtext("title") or "").split())
+        published = " ".join(
+            (
+                item.findtext("pubDate")
+                or item.findtext("{*}date")
+                or item.findtext("date")
+                or ""
+            ).split()
+        )
+        description = " ".join((item.findtext("description") or "").split())
+        content = ""
+        for child in list(item):
+            if child.tag.rsplit("}", 1)[-1].casefold() in {"encoded", "content"}:
+                content = " ".join((child.text or "").split())
+                if content:
+                    break
+        out.append({
+            "url": link,
+            "title": title,
+            "published": published,
+            "text": content or description,
+        })
+
+    for entry in root.findall(".//{*}entry"):
+        link = ""
+        for node in entry.findall("{*}link"):
+            href = _norm_url(str(node.get("href") or ""))
+            rel = str(node.get("rel") or "alternate").casefold()
+            if href and rel in {"alternate", ""}:
+                link = href
+                break
+        if not link:
+            continue
+        title = " ".join((entry.findtext("{*}title") or "").split())
+        published = " ".join(
+            (
+                entry.findtext("{*}published")
+                or entry.findtext("{*}updated")
+                or ""
+            ).split()
+        )
+        text = " ".join(
+            (
+                entry.findtext("{*}content")
+                or entry.findtext("{*}summary")
+                or ""
+            ).split()
+        )
+        out.append({
+            "url": link,
+            "title": title,
+            "published": published,
+            "text": text,
+        })
+
+    return out
+
+
+def fetch_feed_entries(feed_url: str, *, timeout: int = 15) -> list[dict]:
+    session = requests.Session()
+    resp = _get(session, feed_url, timeout)
+    resp.raise_for_status()
+    return parse_feed_entries(resp.text)
+
+
+def extract_listing_thread_links(
+    html: str,
+    base_url: str,
+    *,
+    include_pattern: str | re.Pattern | None = None,
+    limit: int = 80,
+) -> list[str]:
+    """Extract unique thread-like links from a forum listing page."""
+    pattern = re.compile(include_pattern, re.I) if isinstance(include_pattern, str) else include_pattern
+    soup = BeautifulSoup(str(html or ""), "html.parser")
+    out: list[str] = []
+    seen: set[str] = set()
+    for node in soup.select("a[href]"):
+        href = _norm_url(urllib.parse.urljoin(base_url, str(node.get("href") or "")))
+        if not href or href in seen:
+            continue
+        if pattern and not pattern.search(href):
+            continue
+        seen.add(href)
+        out.append(href)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def fetch_listing_thread_links(
+    listing_url: str,
+    *,
+    timeout: int = 15,
+    include_pattern: str | re.Pattern | None = None,
+    limit: int = 80,
+) -> list[str]:
+    session = requests.Session()
+    resp = _get(session, listing_url, timeout)
+    resp.raise_for_status()
+    return extract_listing_thread_links(
+        resp.text,
+        str(resp.url),
+        include_pattern=include_pattern,
+        limit=limit,
+    )
+
 def merged_candidate_urls(result: dict) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
