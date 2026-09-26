@@ -18,7 +18,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.17-buyer-recall-engine"
+VERSION = "6.18-unique-buyer-freshness"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -693,8 +693,12 @@ DEBUG: dict[str, Any] = {
     "global_search_geo_pass": 0,
     "global_search_signal_pass": 0,
     "global_search_valid_matches": 0,
+    "global_search_unique_buyers": 0,
+    "global_search_duplicate_buyer_posts": 0,
     "global_search_known_matches": 0,
     "global_search_accepted": 0,
+    "global_search_recent_hot": 0,
+    "global_search_aged_warm": 0,
     "global_search_reject_reasons": Counter(),
     "global_search_age_buckets": Counter(),
     "global_search_candidate_samples": [],
@@ -884,6 +888,47 @@ def _is_self_telegram_message(
     own = str(self_username or "").strip().lstrip("@").casefold()
     seen_author = str(author or "").strip().lstrip("@").casefold()
     return bool(own and seen_author and own == seen_author)
+
+
+def _buyer_contact_key(msg: Any, author: str = "") -> str:
+    """Stable per-person key for within-run dedupe when Telegram exposes one."""
+    sender_id = int(getattr(msg, "sender_id", 0) or 0)
+    if sender_id:
+        return f"id:{sender_id}"
+
+    seen_author = str(author or "").strip()
+    if seen_author.startswith("@") and len(seen_author) > 1:
+        return f"user:{seen_author[1:].casefold()}"
+    return ""
+
+
+def _apply_global_recency(signal: dict[str, Any], age_days: int) -> dict[str, Any]:
+    out = dict(signal)
+    reasons = list(out.get("lead_reasons") or [])
+    score = int(out.get("intent_score") or 0)
+
+    if age_days <= 7:
+        out["classification"] = "HOT" if out.get("lead_class") in {"HOT BUYER", "HOT TENANT"} else "WARM"
+        out["freshness"] = "0_7d"
+        reasons.append("fresh_0_7d")
+    elif age_days <= 14:
+        out["classification"] = "WARM"
+        out["freshness"] = "8_14d"
+        out["intent_score"] = max(60, score - 8)
+        if out.get("lead_class") == "HOT BUYER":
+            out["lead_class"] = "WARM BUYER"
+        reasons.append("older_8_14d")
+    else:
+        out["classification"] = "WARM"
+        out["freshness"] = "15_30d"
+        out["intent_score"] = max(55, score - 14)
+        if out.get("lead_class") == "HOT BUYER":
+            out["lead_class"] = "WARM BUYER"
+        reasons.append("older_15_30d")
+
+    out["message_age_days"] = age_days
+    out["lead_reasons"] = reasons
+    return out
 
 
 def _base_candidate(group: str, entity: Any, msg: Any, started: datetime) -> dict[str, Any]:
@@ -1224,6 +1269,7 @@ async def broad_telegram_scan(db_client, started):
         global_days = max(3, min(60, int(os.getenv("RADAR_GLOBAL_TELEGRAM_DAYS", "30") or "30")))
         global_cutoff = datetime.now(timezone.utc) - timedelta(days=global_days)
         global_seen: set[tuple[str, int]] = set()
+        global_seen_contacts: set[str] = set()
 
         for query in TELEGRAM_GLOBAL_SEARCH_QUERIES:
             DEBUG["global_search_queries"] += 1
@@ -1246,6 +1292,7 @@ async def broad_telegram_scan(db_client, started):
                 "valid": 0,
                 "known": 0,
                 "new": 0,
+                "duplicate_buyer": 0,
             })
             try:
                 async for msg in client.iter_messages(None, search=query, limit=query_limit):
@@ -1372,6 +1419,17 @@ async def broad_telegram_scan(db_client, started):
 
                     DEBUG["global_search_valid_matches"] += 1
                     qstat["valid"] += 1
+
+                    contact_key = _buyer_contact_key(msg, candidate.get("author", ""))
+                    if contact_key:
+                        if contact_key in global_seen_contacts:
+                            DEBUG["global_search_duplicate_buyer_posts"] += 1
+                            DEBUG["global_search_reject_reasons"]["duplicate_buyer_contact"] += 1
+                            qstat["duplicate_buyer"] += 1
+                            continue
+                        global_seen_contacts.add(contact_key)
+                    DEBUG["global_search_unique_buyers"] += 1
+
                     stable_id = f"telegram-global|{username.casefold()}|{msg_id}"
                     lead_id = hashlib.sha256(stable_id.encode("utf-8")).hexdigest()
                     ref = db_client.collection(core.COLLECTION).document(lead_id)
@@ -1385,21 +1443,25 @@ async def broad_telegram_scan(db_client, started):
                             DEBUG["global_search_reject_reasons"]["already_notified"] += 1
                             continue
 
-                    lead = {**candidate, **signal}
+                    effective = _apply_global_recency(signal, age_days)
+                    lead = {**candidate, **effective}
                     lead["lead_id"] = lead_id
-                    lead["classification"] = "HOT" if signal["lead_class"] in {"HOT BUYER", "HOT TENANT"} else "WARM"
-                    lead["telegram_score"] = signal["intent_score"]
-                    lead["buyer_signal"] = signal["intent_type"].lower()
+                    lead["telegram_score"] = effective["intent_score"]
+                    lead["buyer_signal"] = effective["intent_type"].lower()
                     lead["radar_version"] = VERSION
-                    lead["why_selected"] = ", ".join(signal["lead_reasons"])
+                    lead["why_selected"] = ", ".join(effective["lead_reasons"])
                     ref.set(lead, merge=True)
                     accepted.append(lead)
 
                     DEBUG["accepted"] += 1
                     DEBUG["global_search_accepted"] += 1
+                    if lead["classification"] == "HOT":
+                        DEBUG["global_search_recent_hot"] += 1
+                    else:
+                        DEBUG["global_search_aged_warm"] += 1
                     qstat["new"] += 1
-                    DEBUG["accepted_classes"][signal["lead_class"]] += 1
-                    DEBUG["languages"][signal["language"]] += 1
+                    DEBUG["accepted_classes"][lead["lead_class"]] += 1
+                    DEBUG["languages"][lead["language"]] += 1
 
             except core.FloodWaitError as exc:
                 errors += 1
@@ -1816,11 +1878,26 @@ def save_and_notify_debug() -> None:
     strict_extra_rejects = ", ".join(f"{k}:{v}" for k, v in DEBUG["strict_extra_reject_reasons"].most_common(6)) or "-"
     global_search_rejects = ", ".join(f"{k}:{v}" for k, v in DEBUG["global_search_reject_reasons"].most_common(6)) or "-"
     peer_discovery_rejects = ", ".join(f"{k}:{v}" for k, v in DEBUG["peer_discovery_reject_reasons"].most_common(6)) or "-"
+    query_rank = sorted(
+        DEBUG["global_search_query_stats"].items(),
+        key=lambda kv: (
+            int(kv[1].get("valid", 0)),
+            int(kv[1].get("north_context", 0)),
+            int(kv[1].get("fresh", 0)),
+        ),
+        reverse=True,
+    )
+    top_queries = ", ".join(
+        f"{q}={stats.get('valid', 0)}"
+        for q, stats in query_rank[:4]
+        if int(stats.get("valid", 0)) > 0
+    ) or "-"
     total_errors = len(DEBUG["errors"])
     msg = (
         "🧪 LEAD RADAR DEBUG | SON TARAMA\n\n"
         f"Telegram ana grup: {DEBUG['groups_relevant']}/{DEBUG['groups_total']} | Mesaj: {DEBUG['messages_scanned']}\n"
-        f"Ek sıkı grup: {DEBUG['strict_extra_groups_scanned']} | Mesaj: {DEBUG['strict_extra_messages_scanned']} | NC: {DEBUG['strict_extra_geo_pass']} | Aday: {DEBUG['strict_extra_signal_pass']} | Kabul: {DEBUG['strict_extra_accepted']}\n"        f"Global public 30g: sorgu {DEBUG['global_search_queries']} (buyer {DEBUG['global_search_buyer_queries']} + broad {DEBUG['global_search_broad_queries']}) | Ham {DEBUG['global_search_raw']} | Public {DEBUG['global_search_public']} | NC {DEBUG['global_search_geo_pass']} | Aday {DEBUG['global_search_signal_pass']} | Geçerli BUYER {DEBUG['global_search_valid_matches']} | Yeni {DEBUG['global_search_accepted']} | Bilinen {DEBUG['global_search_known_matches']}\n"        f"Public keşif: sorgu {DEBUG['peer_discovery_queries']} | Bulunan {DEBUG['peer_discovery_found']} | Taranan {DEBUG['peer_discovery_scanned']} | Mesaj {DEBUG['peer_discovery_messages']} | NC {DEBUG['peer_discovery_geo_pass']} | Aday {DEBUG['peer_discovery_signal_pass']} | Geçerli BUYER {DEBUG['peer_discovery_valid_matches']} | Yeni {DEBUG['peer_discovery_accepted']} | Bilinen {DEBUG['peer_discovery_known_matches']}\n"
+        f"Ek sıkı grup: {DEBUG['strict_extra_groups_scanned']} | Mesaj: {DEBUG['strict_extra_messages_scanned']} | NC: {DEBUG['strict_extra_geo_pass']} | Aday: {DEBUG['strict_extra_signal_pass']} | Kabul: {DEBUG['strict_extra_accepted']}\n"        f"Global public 30g: sorgu {DEBUG['global_search_queries']} (buyer {DEBUG['global_search_buyer_queries']} + broad {DEBUG['global_search_broad_queries']}) | Ham {DEBUG['global_search_raw']} | Public {DEBUG['global_search_public']} | NC {DEBUG['global_search_geo_pass']} | Buyer mesajı {DEBUG['global_search_valid_matches']} | Benzersiz kişi {DEBUG['global_search_unique_buyers']} | Yeni {DEBUG['global_search_accepted']} | Bilinen {DEBUG['global_search_known_matches']} | Tekrar post {DEBUG['global_search_duplicate_buyer_posts']}\n"
+        f"Global güncellik: HOT 0-7g {DEBUG['global_search_recent_hot']} | WARM 8-30g {DEBUG['global_search_aged_warm']} | En verimli sorgu: {top_queries}\n"        f"Public keşif: sorgu {DEBUG['peer_discovery_queries']} | Bulunan {DEBUG['peer_discovery_found']} | Taranan {DEBUG['peer_discovery_scanned']} | Mesaj {DEBUG['peer_discovery_messages']} | NC {DEBUG['peer_discovery_geo_pass']} | Aday {DEBUG['peer_discovery_signal_pass']} | Geçerli BUYER {DEBUG['peer_discovery_valid_matches']} | Yeni {DEBUG['peer_discovery_accepted']} | Bilinen {DEBUG['peer_discovery_known_matches']}\n"
         f"Coğrafya geçti: {DEBUG['geography_pass']}\n"
         f"Intent/keyword adayı: {DEBUG['signal_pass']}\n"
         f"Yeni kabul edilen: {DEBUG['accepted']}\n"
