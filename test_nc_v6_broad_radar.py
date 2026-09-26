@@ -309,7 +309,7 @@ class BroadIntentTests(unittest.TestCase):
                 group="Северный Кипр Недвижимость",
             )
         self.assertIsNone(lead)
-        self.assertEqual(reason, "rental_excluded_sales_only")
+        self.assertEqual(reason, "rental_hard_excluded")
 
     def test_sales_only_rejects_generic_investment_discussion(self):
         with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
