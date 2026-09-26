@@ -61,7 +61,7 @@ class TelegramPublicGraphTests(unittest.TestCase):
         self.assertIn("another_channel", refs)
 
         all_refs = {x.casefold() for x in page["references"]}
-        self.assertIn("realbuyer", all_refs)
+        self.assertNotIn("realbuyer", all_refs)
         self.assertIn("linked_channel", all_refs)
         self.assertIn("another_channel", all_refs)
         self.assertNotIn("share", all_refs)
