@@ -13,14 +13,26 @@ from typing import Any
 
 import requests
 from bs4 import BeautifulSoup
+import trafilatura
 
 import nc_v6_broad_radar as v6
+import web_source_discovery as discovery
 
-VERSION = "1.0-public-web-multisource"
+VERSION = "1.1-web-source-discovery"
 MAX_AGE_DAYS = int(os.getenv("RADAR_PUBLIC_WEB_MAX_AGE_DAYS", "45"))
 TIMEOUT = int(os.getenv("RADAR_HTTP_TIMEOUT", "20"))
 MAX_RESULTS_PER_QUERY = int(os.getenv("RADAR_PUBLIC_WEB_RESULTS_PER_QUERY", "10"))
 MAX_FETCHES = int(os.getenv("RADAR_PUBLIC_WEB_MAX_FETCHES", "60"))
+
+
+SOURCE_ROOTS = {
+    "Expat.com": "https://www.expat.com/en/forum/europe/cyprus/",
+    "Kibkom": "https://kibkomnorthcyprusforum.com/",
+    "BritishExpats": "https://britishexpats.com/forum/",
+}
+
+DISCOVERY_MAX_PAGES_PER_SOURCE = int(os.getenv("RADAR_PUBLIC_WEB_DISCOVERY_MAX_PAGES", "40"))
+DISCOVERY_MAX_CRAWL_PAGES = int(os.getenv("RADAR_PUBLIC_WEB_DISCOVERY_CRAWL_PAGES", "10"))
 
 SOURCE_QUERIES = {
     "Expat.com": (
@@ -155,21 +167,41 @@ def _page_published(soup: BeautifulSoup) -> datetime | None:
 def fetch_page(url: str) -> dict[str, Any]:
     response = requests.get(
         url,
-        headers={"User-Agent": "Mozilla/5.0 (compatible; PrimeKibrisLeadRadar/1.0)"},
+        headers={"User-Agent": "Mozilla/5.0 (compatible; PrimeKibrisLeadRadar/1.1)"},
         timeout=TIMEOUT,
         allow_redirects=True,
     )
     response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
-    for node in soup(["script", "style", "noscript", "svg"]):
-        node.decompose()
     title = _norm(soup.title.get_text(" ", strip=True) if soup.title else "")
-    text = _norm(soup.get_text(" ", strip=True))
+
+    extracted = ""
+    try:
+        extracted = trafilatura.extract(
+            response.text,
+            url=str(response.url),
+            include_comments=True,
+            include_tables=False,
+            include_links=False,
+            favor_recall=True,
+            deduplicate=True,
+        ) or ""
+    except Exception:
+        extracted = ""
+
+    if extracted:
+        text = _norm(extracted)
+    else:
+        for node in soup(["script", "style", "noscript", "svg"]):
+            node.decompose()
+        text = _norm(soup.get_text(" ", strip=True))
+
     return {
         "url": str(response.url),
         "title": title,
         "text": text[:120000],
         "published": _page_published(soup),
+        "extractor": "trafilatura" if extracted else "beautifulsoup",
     }
 
 
@@ -227,16 +259,149 @@ def _lead_id(url: str, window: str) -> str:
     return hashlib.sha256(stable.encode("utf-8")).hexdigest()
 
 
+def discover_source_rows() -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    debug: dict[str, Any] = {}
+    for source, root in SOURCE_ROOTS.items():
+        try:
+            result = discovery.discover_urls(
+                root,
+                timeout=min(TIMEOUT, 15),
+                max_pages=DISCOVERY_MAX_PAGES_PER_SOURCE,
+                max_crawl_pages=DISCOVERY_MAX_CRAWL_PAGES,
+            )
+        except Exception as exc:
+            debug[source] = {"error": f"{type(exc).__name__}:{exc}"}
+            continue
+
+        urls = discovery.merged_candidate_urls(result)
+        debug[source] = {
+            "feeds": len(result.get("feeds", []) or []),
+            "sitemaps": len(result.get("sitemaps", []) or []),
+            "feed_urls": len(result.get("feed_urls", []) or []),
+            "sitemap_urls": len(result.get("sitemap_urls", []) or []),
+            "crawl_urls": len(result.get("crawl_urls", []) or []),
+            "candidate_urls": len(urls),
+            "errors": list(result.get("errors", []) or [])[:8],
+        }
+        for url in urls:
+            rows.append({
+                "source": source,
+                "title": "",
+                "url": url,
+                "snippet": "",
+                "rss_published": "",
+                "discovery": "native_feed_sitemap_crawl",
+            })
+    return rows, debug
+
+
 def run() -> None:
     os.environ["RADAR_SALES_ONLY"] = "1"
     db = v6.core.db()
     stats = Counter()
     rejects = Counter()
     source_stats = Counter()
+    discovery_stats = Counter()
+    discovery_rows, discovery_debug = discover_source_rows()
     seen_urls: set[str] = set()
     seen_windows: set[str] = set()
     fetched = 0
     accepted: list[dict[str, Any]] = []
+
+    # First-party discovery: RSS/Atom, sitemap and bounded internal crawl.
+    # These URLs do not depend on Bing/Google indexing.
+    for row in discovery_rows:
+        source = str(row.get("source") or "Public Web")
+        url = str(row.get("url") or "")
+        if not url or url in seen_urls or fetched >= MAX_FETCHES:
+            continue
+        seen_urls.add(url)
+        fetched += 1
+        discovery_stats["native_candidate_urls"] += 1
+
+        try:
+            page = fetch_page(url)
+        except Exception as exc:
+            rejects[f"native_fetch_{type(exc).__name__}"] += 1
+            continue
+
+        stats["pages"] += 1
+        discovery_stats[f"extractor_{page.get('extractor','unknown')}"] += 1
+        page_text = f"{page.get('title','')} {page.get('text','')}"
+        windows = extract_candidate_windows(page_text)
+        if not windows:
+            rejects["native_no_buyer_anchor"] += 1
+            continue
+
+        freshness, age_days = _freshness(page.get("published"))
+        if freshness == "stale":
+            rejects["native_stale"] += 1
+            continue
+
+        for window in windows:
+            wkey = hashlib.sha256(window.casefold().encode("utf-8", "ignore")).hexdigest()
+            if wkey in seen_windows:
+                rejects["duplicate_window"] += 1
+                continue
+            seen_windows.add(wkey)
+
+            signal, reason = classify_window(window)
+            if signal is None:
+                rejects[f"native_{reason}"] += 1
+                continue
+
+            stats["valid_buyers"] += 1
+            source_stats[source] += 1
+            discovery_stats["native_valid_buyers"] += 1
+            lead_id = _lead_id(str(page.get("url") or url), window)
+            ref = db.collection(v6.core.COLLECTION).document(lead_id)
+            snap = ref.get()
+            if snap.exists:
+                previous = snap.to_dict() or {}
+                if previous.get("v5_notified_at") or previous.get("v6_notified_at"):
+                    stats["known"] += 1
+                    discovery_stats["native_known"] += 1
+                    continue
+
+            lead = {
+                **signal,
+                "lead_id": lead_id,
+                "source": source,
+                "platform": source,
+                "source_type": "public_web_native_discovery",
+                "group": source,
+                "title": page.get("title") or "",
+                "author": "",
+                "message": window,
+                "text": window,
+                "url": page.get("url") or url,
+                "market": "north_cyprus",
+                "route_to": "Prime Kıbrıs",
+                "found_at": datetime.now(timezone.utc).isoformat(),
+                "message_time": page.get("published").isoformat() if page.get("published") else "",
+                "message_age_days": age_days if age_days is not None else "",
+                "freshness": freshness,
+                "classification": "HOT" if freshness == "0_7d" and signal.get("lead_class") == "HOT BUYER" else "WARM",
+                "radar_version": VERSION,
+                "why_selected": ", ".join(signal.get("lead_reasons") or []),
+                "discovery_method": row.get("discovery"),
+                "content_extractor": page.get("extractor"),
+            }
+
+            if freshness == "unknown":
+                lead["classification"] = "REVIEW"
+                lead["lead_class"] = "REVIEW"
+                lead["review_reason"] = "unknown_page_age"
+                db.collection("bay_s_public_web_review").document(lead_id).set(lead, merge=True)
+                stats["review_unknown_age"] += 1
+                discovery_stats["native_review_unknown_age"] += 1
+                continue
+
+            ref.set(lead, merge=True)
+            accepted.append(lead)
+            stats["new"] += 1
+            discovery_stats["native_new"] += 1
 
     for source, queries in SOURCE_QUERIES.items():
         for query in queries:
@@ -271,6 +436,7 @@ def run() -> None:
                     }
 
                 stats["pages"] += 1
+                discovery_stats[f"extractor_{page.get('extractor','snippet_fallback')}"] += 1
                 page_text = f"{page.get('title','')} {page.get('text','')}"
                 windows = extract_candidate_windows(page_text)
                 if not windows:
@@ -363,6 +529,8 @@ def run() -> None:
         "known": stats["known"],
         "review_unknown_age": stats["review_unknown_age"],
         "accepted_by_source": dict(source_stats),
+        "discovery_stats": dict(discovery_stats),
+        "discovery_debug": discovery_debug,
         "reject_reasons": dict(rejects),
         "new_leads": [
             {
