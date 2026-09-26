@@ -1,4 +1,5 @@
 name: NC - North Cyprus Buyer Radar
+# production classifier: demand-language-loop-6.26
 # production classifier: adaptive-multisource-6.23
 # production classifier: direct-forum-sources-1.2
 # production classifier: web-source-discovery-6.24
@@ -51,8 +52,8 @@ jobs:
 
       - name: Verify broad lead radar before scan
         run: |
-          python -m py_compile main.py main_v5.py main_v5_1.py main_v5_2.py main_v5_3.py main_v5_4.py main_v5_5.py nc_v5_batch_quality_guard.py nc_v6_broad_radar.py reddit_nc_buyer_miner.py reddit_nc_buyer_miner_resilient.py reddit_nc_buyer_miner_resilient_quality.py russian_public_buyer_radar.py public_web_buyer_radar.py web_source_discovery.py forum_engine.py adaptive_radar_learning.py test_v5_1_gate.py test_v5_3_gate.py test_v5_5_gate.py test_reddit_nc_buyer_miner.py test_reddit_nc_buyer_miner_resilient.py test_nc_reviewed_false_positives.py test_nc_v6_broad_radar.py test_russian_public_buyer_radar.py test_public_web_buyer_radar.py test_web_source_discovery.py test_forum_engine.py test_adaptive_radar_learning.py
-          python -m unittest -q test_v5_1_gate.py test_v5_3_gate.py test_v5_5_gate.py test_reddit_nc_buyer_miner.py test_reddit_nc_buyer_miner_resilient.py test_nc_reviewed_false_positives.py test_nc_v6_broad_radar.py test_russian_public_buyer_radar.py test_public_web_buyer_radar.py test_web_source_discovery.py test_forum_engine.py test_adaptive_radar_learning.py
+          python -m py_compile main.py main_v5.py main_v5_1.py main_v5_2.py main_v5_3.py main_v5_4.py main_v5_5.py nc_v5_batch_quality_guard.py nc_v6_broad_radar.py reddit_nc_buyer_miner.py reddit_nc_buyer_miner_resilient.py reddit_nc_buyer_miner_resilient_quality.py russian_public_buyer_radar.py public_web_buyer_radar.py web_source_discovery.py forum_engine.py adaptive_radar_learning.py demand_language_radar.py test_v5_1_gate.py test_v5_3_gate.py test_v5_5_gate.py test_reddit_nc_buyer_miner.py test_reddit_nc_buyer_miner_resilient.py test_nc_reviewed_false_positives.py test_nc_v6_broad_radar.py test_russian_public_buyer_radar.py test_public_web_buyer_radar.py test_web_source_discovery.py test_forum_engine.py test_adaptive_radar_learning.py test_demand_language_radar.py
+          python -m unittest -q test_v5_1_gate.py test_v5_3_gate.py test_v5_5_gate.py test_reddit_nc_buyer_miner.py test_reddit_nc_buyer_miner_resilient.py test_nc_reviewed_false_positives.py test_nc_v6_broad_radar.py test_russian_public_buyer_radar.py test_public_web_buyer_radar.py test_web_source_discovery.py test_forum_engine.py test_adaptive_radar_learning.py test_demand_language_radar.py
 
       - name: Restore dedicated Prime Telegram session
         env:
@@ -131,6 +132,16 @@ jobs:
           RADAR_SALES_ONLY: "1"
           RADAR_V5_WEB_MAX_AGE_DAYS: "90"
         run: python russian_public_buyer_radar.py
+
+      - name: Refresh demand language and content feedback
+        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '25 0 * * *'
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          pip install -r requirements-intent.txt
+          python demand_language_radar.py
 
       - name: Cleanup Telegram session
         if: always()
