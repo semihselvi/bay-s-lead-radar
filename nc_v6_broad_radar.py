@@ -131,11 +131,11 @@ RELOCATION_RE = re.compile(
 
 INVESTOR_RE = re.compile(
     r"(?:"
-    r"\binvest(?:ment|ing|or)\b|\brental\s+yield\b|\byield\b|\broi\b|\breturn\s+on\s+investment\b|\bpayment\s+plan\b|"
+    r"\binvest(?:ment|ing|or)\b|\brental\s+yield\b|\byield\b|\broi\b|\breturn\s+on\s+investment\b|"
     r"\bbest\s+area\s+to\s+invest\b|\bproperty\s+prices?\b|\brental\s+income\b|"
-    r"\byat[ıi]r[ıi]m\b|\bkira\s+getirisi\b|\bgeri\s+d[öo]n[üu][şs]\b|\btaksit\w*\b|\b[öo]deme\s+plan[ıi]\b|"
+    r"\byat[ıi]r[ıi]m\b|\bkira\s+getirisi\b|\bgeri\s+d[öo]n[üu][şs]\b|"
     r"\b(?:ev|daire|villa)\s+al[ıi]p\s+kiraya\s+ver\w*\b|\bbuy\b.{0,80}\brent\s+(?:it|the\s+property)\s+out\b|"
-    r"\binvestic\w*\b|\bинвест\w*\b|\bдоход\s+от\s+аренд\w*\b|\bдоходност\w*\b|\bрассрочк\w*\b"
+    r"\binvestic\w*\b|\bинвест\w*\b|\bдоход\s+от\s+аренд\w*\b|\bдоходност\w*\b"
     r")",
     re.I,
 )
@@ -749,6 +749,8 @@ def strict_extra_candidate_signal(text: str) -> bool:
     the normal sales-only classifier is even called.
     """
     own = str(text or "")
+    if _hard_reject(own):
+        return False
     geo = has_nc_geo(own)
     buyer_side = bool(
         BUY_RE.search(own)
@@ -821,6 +823,7 @@ TELEGRAM_GLOBAL_BUYER_QUERIES = (
     "2+1 daire arıyorum",
     # Geo-qualified fallback phrases.
     "Северный Кипр куплю квартиру",
+    "Северный Кипр хочу купить квартиру",
     "Искеле куплю квартиру",
     "Гирне куплю квартиру",
     "North Cyprus looking to buy property",
