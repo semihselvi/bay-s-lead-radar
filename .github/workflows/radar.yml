@@ -5,6 +5,7 @@ name: NC - Lead Radar V6 Branch Quality
     branches:
       - feature/radar-v5-buyer-expansion
       - feature/demand-language-loop-v626
+      - fix/v626-buyer-only-dedupe
     paths:
       - "*.py"
       - ".github/workflows/radar.yml"
