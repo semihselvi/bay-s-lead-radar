@@ -21,7 +21,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.23-adaptive-query-learning"
+VERSION = "6.26-demand-language-loop"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -1301,14 +1301,30 @@ async def broad_telegram_scan(db_client, started):
         global_seen: set[tuple[str, int]] = set()
         global_seen_contacts: set[str] = set()
         source_expansion_seeds: set[str] = set()
+        global_near_duplicates = learning.NearDuplicateIndex(
+            threshold=float(os.getenv("RADAR_NEAR_DUP_THRESHOLD", "92") or "92"),
+            min_chars=35,
+            max_items=700,
+        )
 
-        query_history = learning.read_query_history(db_client, TELEGRAM_GLOBAL_SEARCH_QUERIES)
-        ranked_global_queries = learning.rank_queries(TELEGRAM_GLOBAL_SEARCH_QUERIES, query_history)
+        learned_global_queries = learning.read_learned_query_terms(
+            db_client,
+            surface="telegram",
+            limit=int(os.getenv("RADAR_LEARNED_TELEGRAM_QUERIES", "8") or "8"),
+        )
+        learned_query_set = set(learned_global_queries)
+        all_global_queries = list(dict.fromkeys([
+            *TELEGRAM_GLOBAL_SEARCH_QUERIES,
+            *learned_global_queries,
+        ]))
+        query_history = learning.read_query_history(db_client, all_global_queries)
+        ranked_global_queries = learning.rank_queries(all_global_queries, query_history)
         DEBUG["global_search_ranked_queries"] = ranked_global_queries[:12]
+        DEBUG["global_search_learned_queries"] = learned_global_queries
 
         for query in ranked_global_queries:
             DEBUG["global_search_queries"] += 1
-            is_buyer_query = query in TELEGRAM_GLOBAL_BUYER_QUERIES
+            is_buyer_query = query in TELEGRAM_GLOBAL_BUYER_QUERIES or query in learned_query_set
             if is_buyer_query:
                 DEBUG["global_search_buyer_queries"] += 1
             else:
@@ -1331,6 +1347,7 @@ async def broad_telegram_scan(db_client, started):
                 "known": 0,
                 "new": 0,
                 "duplicate_buyer": 0,
+                "near_duplicate": 0,
             })
             try:
                 async for msg in client.iter_messages(None, search=query, limit=query_limit):
@@ -1393,6 +1410,11 @@ async def broad_telegram_scan(db_client, started):
                         continue
                     DEBUG["global_search_geo_pass"] += 1
                     qstat["north_context"] += 1
+
+                    if global_near_duplicates.is_duplicate(text):
+                        DEBUG["global_search_reject_reasons"]["near_duplicate_text"] += 1
+                        qstat["near_duplicate"] += 1
+                        continue
 
                     try:
                         concern = learning.concern_signal(text, has_north_context=True)

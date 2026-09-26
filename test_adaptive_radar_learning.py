@@ -35,5 +35,33 @@ class AdaptiveRadarLearningTests(unittest.TestCase):
         self.assertNotEqual(learning.query_doc_id("куплю 1+1"), learning.query_doc_id("куплю 2+1"))
 
 
+    def test_near_duplicate_guard_catches_reposts_not_exact_hashes(self):
+        index = learning.NearDuplicateIndex(threshold=90, min_chars=20)
+        first = "Looking to buy a 1+1 apartment in North Cyprus, budget £120,000."
+        repost = "Looking to buy a 1+1 apartment in North Cyprus — budget £120,000! 🔥"
+        self.assertFalse(index.is_duplicate(first))
+        self.assertTrue(index.is_duplicate(repost))
+
+    def test_learned_query_surface_guard(self):
+        self.assertTrue(
+            learning.safe_demand_query(
+                "north cyprus property prices",
+                surface="web",
+            )
+        )
+        self.assertFalse(
+            learning.safe_demand_query(
+                "north cyprus property prices",
+                surface="telegram",
+            )
+        )
+        self.assertTrue(
+            learning.safe_demand_query(
+                "купить квартиру северный кипр рассрочка",
+                surface="telegram",
+            )
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

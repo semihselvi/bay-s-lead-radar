@@ -20,7 +20,7 @@ import web_source_discovery as discovery
 import forum_engine
 import adaptive_radar_learning as learning
 
-VERSION = "1.3-adaptive-multisource"
+VERSION = "1.4-demand-language-loop"
 MAX_AGE_DAYS = int(os.getenv("RADAR_PUBLIC_WEB_MAX_AGE_DAYS", "45"))
 TIMEOUT = int(os.getenv("RADAR_HTTP_TIMEOUT", "20"))
 MAX_RESULTS_PER_QUERY = int(os.getenv("RADAR_PUBLIC_WEB_RESULTS_PER_QUERY", "10"))
@@ -428,6 +428,7 @@ def run() -> None:
     discovery_debug = {"direct": direct_debug, "generic": discovery_debug}
     seen_urls: set[str] = set()
     seen_windows: set[str] = set()
+    near_windows = learning.NearDuplicateIndex(threshold=92.0, min_chars=50, max_items=500)
     fetched = 0
     accepted: list[dict[str, Any]] = []
 
@@ -482,6 +483,9 @@ def run() -> None:
                     rejects["duplicate_window"] += 1
                     continue
                 seen_windows.add(wkey)
+                if near_windows.is_duplicate(window):
+                    rejects["near_duplicate_window"] += 1
+                    continue
     
                 signal, reason = classify_window(window)
                 if signal is None:
@@ -541,15 +545,40 @@ def run() -> None:
                 source_new_counts[source] += 1
                 discovery_stats["native_new"] += 1
     
-    for source, queries in SOURCE_QUERIES.items():
-        for query in queries:
+    learned_web_terms = learning.read_learned_query_terms(
+        db,
+        surface="web",
+        limit=int(os.getenv("RADAR_LEARNED_WEB_QUERIES", "10") or "10"),
+    )
+    runtime_source_queries = dict(SOURCE_QUERIES)
+    if learned_web_terms:
+        runtime_source_queries["Demand Language"] = tuple(learned_web_terms)
+    discovery_stats["learned_web_queries"] = len(learned_web_terms)
+
+    for source, queries in runtime_source_queries.items():
+        query_history = learning.read_query_history(
+            db,
+            queries,
+            collection="bay_s_radar_web_query_yield",
+        )
+        ranked_queries = learning.rank_queries(queries, query_history)
+        for query in ranked_queries:
             stats["queries"] += 1
+            qstat = {
+                "raw": 0,
+                "north_context": 0,
+                "valid": 0,
+                "unique": 0,
+                "new": 0,
+                "near_duplicate": 0,
+            }
             try:
                 rows = bing_rss(query)
             except Exception as exc:
                 rejects[f"search_{type(exc).__name__}"] += 1
                 continue
             stats["search_rows"] += len(rows)
+            qstat["raw"] = len(rows)
 
             for row in rows:
                 url = str(row.get("url") or "")
@@ -607,6 +636,12 @@ def run() -> None:
                             rejects["duplicate_window"] += 1
                             continue
                         seen_windows.add(wkey)
+                        if near_windows.is_duplicate(window):
+                            rejects["near_duplicate_window"] += 1
+                            qstat["near_duplicate"] += 1
+                            continue
+                        if v6.has_nc_geo(window):
+                            qstat["north_context"] += 1
     
                         signal, reason = classify_window(window)
                         if signal is None:
@@ -615,6 +650,8 @@ def run() -> None:
     
                         stats["valid_buyers"] += 1
                         source_stats[source] += 1
+                        qstat["valid"] += 1
+                        qstat["unique"] += 1
                         lead_id = _lead_id(str(page.get("url") or url), window)
                         ref = db.collection(v6.core.COLLECTION).document(lead_id)
                         snap = ref.get()
@@ -662,6 +699,17 @@ def run() -> None:
                         accepted.append(lead)
                         stats["new"] += 1
                         source_new_counts[source] += 1
+                        qstat["new"] += 1
+
+            try:
+                learning.update_query_yield(
+                    db,
+                    query,
+                    qstat,
+                    collection="bay_s_radar_web_query_yield",
+                )
+            except Exception:
+                discovery_stats["web_query_yield_save_error"] += 1
     
     for lead in accepted:
         if v6.notify_lead(lead, "PUBLIC WEB"):
