@@ -42,6 +42,14 @@ QUESTION_RE = re.compile(
     re.I,
 )
 
+CONCERN_INTENT_RE = re.compile(
+    r"(?:looking\s+to\s+buy|want(?:ing)?\s+to\s+buy|considering\s+buying|planning\s+to\s+buy|"
+    r"looking\s+for|need\s+(?:an?\s+)?(?:apartment|flat|house|villa|property)|"
+    r"almak\s+istiyorum|sat[ıi]n\s+almak|ar[ıi]yorum|bak[ıi]yorum|"
+    r"хочу\s+купить|куплю|ищу|планир\w*\s+купить|рассматрива\w*)",
+    re.I,
+)
+
 
 def concern_labels(text: str) -> list[str]:
     value = str(text or "")
@@ -52,13 +60,20 @@ def concern_signal(text: str, *, has_north_context: bool) -> dict[str, Any] | No
     labels = concern_labels(text)
     if not labels or not has_north_context:
         return None
+    question_like = bool(QUESTION_RE.search(text or ""))
+    intent_like = bool(CONCERN_INTENT_RE.search(text or ""))
+    if not question_like and not intent_like:
+        return None
     score = 50 + min(30, len(labels) * 8)
-    if QUESTION_RE.search(text or ""):
+    if question_like:
         score += 12
+    if intent_like:
+        score += 8
     return {
         "labels": labels,
         "score": min(score, 95),
-        "question_like": bool(QUESTION_RE.search(text or "")),
+        "question_like": question_like,
+        "intent_like": intent_like,
     }
 
 
