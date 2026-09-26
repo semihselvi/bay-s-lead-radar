@@ -16,6 +16,15 @@ WEB_MAX_AGE_DAYS = int(os.getenv("RADAR_V5_WEB_MAX_AGE_DAYS", "90"))
 TELEGRAM_BACKFILL_DAYS = int(os.getenv("RADAR_V5_TELEGRAM_BACKFILL_DAYS", "7"))
 TELEGRAM_BACKFILL_LIMIT = int(os.getenv("RADAR_V5_TELEGRAM_BACKFILL_LIMIT", "12"))
 
+# Legacy/recovery safety: this product is purchase-buyer only. Historical
+# rental rows must never be recovered or sent as leads.
+RENTAL_HARD_RE = re.compile(
+    r"\\b(?:looking\\s+to\\s+rent|want\\s+to\\s+rent|for\\s+rent|long[-\\s]?term\\s+rent|short[-\\s]?term\\s+rent)\\b|"
+    r"\\b(?:kiral[ıi]k|kiralam\\w*)\\b|"
+    r"\\b(?:аренд\\w*|сниму|снять|долгосроч\\w*|долгосрок\\w*|посуточ\\w*|подселен\\w*)\\b",
+    re.I,
+)
+
 # Keep Telegram recent enough to catch a missed scheduled run, without turning the
 # user account into a deep-history crawler.
 core.TELEGRAM_HOURS = int(os.getenv("RADAR_V5_TELEGRAM_HOURS", "48"))
@@ -230,7 +239,10 @@ def notify_telegram_lead(lead: dict[str, Any], prefix: str = "NEW") -> bool:
         return False
     if str(lead.get("classification") or "") not in {"HOT", "WARM"}:
         return False
-    message = _clip(lead.get("message") or "", 900)
+    raw_message = str(lead.get("message") or "")
+    if RENTAL_HARD_RE.search(raw_message):
+        return False
+    message = _clip(raw_message, 900)
     emoji = "🔥" if lead.get("classification") == "HOT" else "🟡"
     msg = (
         f"{emoji} BAY-S V5 | {lead.get('classification')} TELEGRAM BUYER [{prefix}]\n\n"
@@ -284,6 +296,8 @@ def backfill_unnotified_telegram(db_client, started: datetime) -> list[dict[str,
                 continue
             group = str(data.get("group") or "")
             text = str(data.get("message") or "")
+            if RENTAL_HARD_RE.search(text):
+                continue
             score_data = core.tg_score(text, group)
             score, label, *_rest = score_data
             market = score_data[8]
@@ -355,7 +369,9 @@ def main() -> None:
 
     current_tg = [
         x for x in (tg_result.get("new_leads") or [])
-        if x.get("market") == "north_cyprus" and x.get("classification") in {"HOT", "WARM"}
+        if x.get("market") == "north_cyprus"
+        and x.get("classification") in {"HOT", "WARM"}
+        and not RENTAL_HARD_RE.search(str(x.get("message") or ""))
     ]
     counts["Telegram"] = len(current_tg)
 
