@@ -20,15 +20,15 @@ class AdaptiveRadarLearningTests(unittest.TestCase):
             )
         )
 
-    def test_query_ranking_prefers_proven_buyer_queries(self):
-        queries = ["zero", "winner", "medium"]
+    def test_query_ranking_prefers_new_buyer_yield_and_exploration(self):
+        queries = ["fresh", "winner", "stale"]
         history = {
             "winner": {"runs": 2, "raw": 100, "north_context": 30, "valid": 8, "unique": 7, "new": 3},
-            "medium": {"runs": 2, "raw": 100, "north_context": 10, "valid": 1, "unique": 1, "new": 0},
+            "stale": {"runs": 4, "raw": 300, "north_context": 80, "valid": 12, "unique": 8, "new": 0},
         }
         ranked = learning.rank_queries(queries, history)
         self.assertEqual(ranked[0], "winner")
-        self.assertLess(ranked.index("medium"), ranked.index("zero"))
+        self.assertLess(ranked.index("fresh"), ranked.index("stale"))
 
     def test_query_doc_id_is_stable(self):
         self.assertEqual(learning.query_doc_id("куплю 1+1"), learning.query_doc_id("куплю 1+1"))
