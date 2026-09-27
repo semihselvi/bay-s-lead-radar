@@ -8,4 +8,4 @@ python-dotenv
 trafilatura>=1.12,<3
 rapidfuzz>=3.14,<4
 
-forumscraper>=0.2,<1
+forumscraper
