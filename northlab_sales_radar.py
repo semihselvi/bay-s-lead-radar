@@ -15,7 +15,7 @@ import requests
 
 import main as core
 
-VERSION = "1.1-project-intent-precision"
+VERSION = "1.2-global-project-discovery"
 COLLECTION = "northlab_sales_project_leads"
 SCAN_COLLECTION = "northlab_sales_project_scans"
 TELEGRAM_HOURS = int(os.getenv("NORTHLAB_TELEGRAM_HOURS", "24"))
@@ -65,6 +65,22 @@ PROJECT_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("MULTILINGUAL", re.compile(
         r"(?:multilingual\s+website|multi[-\s]?language\s+site|çok\s+dilli\s+site|"
         r"rusça\s+site|ingilizce\s+site|многоязычн\w*\s+сайт\w*|сайт\w*\s+на\s+(?:английск|русск|турецк))",
+        re.I,
+    )),
+    ("SOFTWARE", re.compile(
+        r"(?:custom\s+software|software\s+(?:project|developer|development)|web\s+app|webapp|"
+        r"saas|internal\s+tool|portal|client\s+portal|müşteri\s+portalı|özel\s+yazılım|"
+        r"yazılım\s+(?:projesi|geliştirme)|веб[-\s]?приложен\w*|разработк\w*\s+по|программ\w*\s+разработ)",
+        re.I,
+    )),
+    ("INTEGRATION", re.compile(
+        r"(?:api\s+integration|integration\s+project|integrate\s+(?:our|my)\s+(?:crm|website|system)|"
+        r"entegrasyon\s+(?:projesi|lazım|gerekiyor)|api\s+entegrasyon|интеграц\w*\s+api|интеграц\w*\s+систем)",
+        re.I,
+    )),
+    ("MOBILE_APP", re.compile(
+        r"(?:mobile\s+app|ios\s+app|android\s+app|mobil\s+uygulama|"
+        r"мобильн\w*\s+приложен\w*|приложен\w*\s+(?:ios|android))",
         re.I,
     )),
 ]
@@ -189,28 +205,64 @@ PROJECT_REQUEST_RE = re.compile(
     r"\b(?:lazım|ihtiyac|arıyorum|yaptırmak|kurmak|geliştirmek|yenilemek)\w*.{0,100}\b(?:web\s+sitesi|crm|rezervasyon\s+sistemi|yönetim\s+paneli|otomasyon|e[-\s]?ticaret)\b|"
     r"\b(?:нужен|нужна|нужно|ищу|хотим)\b.{0,100}\b(?:сайт\w*|веб[-\s]?сайт\w*|crm|срм|систем\w*.{0,40}бронирован\w*|админ[-\s]?панел\w*|автоматизац\w*|интернет[-\s]?магазин\w*)\b|"
     r"\b(?:создать|сделать|разработать|обновить|переделать|интегрировать|автоматизировать)\w*.{0,100}\b(?:сайт\w*|crm|срм|систем\w*|панел\w*|магазин\w*)\b|"
-    r"\b(?:сайт\w*|crm|срм|систем\w*.{0,40}бронирован\w*|админ[-\s]?панел\w*)\b.{0,100}\b(?:нужен|нужна|нужно|ищу|разработать|создать|сделать|обновить)\w*"
+    r"\b(?:сайт\w*|crm|срм|систем\w*.{0,40}бронирован\w*|админ[-\s]?панел\w*)\b.{0,100}\b(?:нужен|нужна|нужно|ищу|разработать|создать|сделать|обновить)\w*|"
+    r"\b(?:looking\s+for|need|seeking)\b.{0,70}\b(?:developer|designer|agency|freelancer)\b.{0,100}\b(?:project|website|web\s+app|software|automation|crm|integration|app)\b|"
+    r"\b(?:developer|designer|agency|freelancer)\b.{0,70}\b(?:needed|required|wanted)\b.{0,100}\b(?:project|website|software|automation|integration|app)\b|"
+    r"\b(?:yazılımcı|yazilimci|tasarımcı|tasarimci|ajans)\s+arıyorum\b.{0,120}\b(?:proje|site|yazılım|yazilim|otomasyon|uygulama|entegrasyon)\b|"
+    r"\bищу\b.{0,70}\b(?:разработчик\w*|дизайнер\w*|агентств\w*)\b.{0,120}\b(?:проект\w*|сайт\w*|автоматизац\w*|интеграц\w*|приложен\w*)\b"
     r")",
     re.I | re.S,
 )
 
 WEB_QUERIES = [
-    '"North Cyprus" "looking for" "website developer"',
-    '"North Cyprus" "need a website"',
-    '"North Cyprus" "website redesign"',
-    '"North Cyprus" "booking system" business',
-    '"North Cyprus" CRM business',
-    '"North Cyprus" "online booking" developer',
-    '"Kuzey Kıbrıs" "web sitesi" arıyorum',
-    '"Kuzey Kıbrıs" "web sitesi" yaptırmak',
-    '"Kuzey Kıbrıs" "rezervasyon sistemi"',
-    '"Северный Кипр" "нужен сайт"',
-    '"Северный Кипр" "ищу разработчика"',
-    '"Северный Кипр" "система бронирования"',
-    'site:facebook.com/groups "North Cyprus" "website"',
-    'site:facebook.com/groups "Kuzey Kıbrıs" "web sitesi"',
-    'site:facebook.com/groups "Северный Кипр" "сайт"',
-    'site:reddit.com Cyprus "need a website"',
+    '"looking for web developer" project',
+    '"need a website" business',
+    '"website redesign" "looking for" developer',
+    '"webflow developer" needed project',
+    '"wordpress developer" needed project',
+    '"shopify developer" needed project',
+    '"booking system" "looking for developer"',
+    '"CRM setup" "looking for" consultant',
+    '"workflow automation" "looking for" freelancer',
+    '"AI automation" "looking for" developer',
+    '"custom software" "looking for developer"',
+    '"API integration" "need developer"',
+    '"mobile app" "looking for developer"',
+    '"web sitesi" "yazılımcı arıyorum"',
+    '"otomasyon" "yazılımcı arıyorum"',
+    '"ищу веб разработчика"',
+    '"нужен разработчик сайта"',
+    '"нужна автоматизация" бизнес',
+    '"suche webentwickler" projekt',
+    'site:reddit.com "looking for web developer"',
+    'site:reddit.com "need a website" business',
+    'site:linkedin.com/posts "looking for web developer"',
+    'site:facebook.com/groups "looking for web developer"',
+]
+
+GLOBAL_TELEGRAM_QUERIES = [
+    "looking for web developer",
+    "need a website",
+    "website redesign",
+    "webflow developer",
+    "wordpress developer",
+    "shopify developer",
+    "landing page developer",
+    "booking system developer",
+    "CRM setup developer",
+    "workflow automation",
+    "AI automation developer",
+    "custom software developer",
+    "API integration developer",
+    "mobile app developer",
+    "web sitesi yaptırmak",
+    "yazılımcı arıyorum",
+    "otomasyon yaptırmak",
+    "ищу веб разработчика",
+    "нужен разработчик сайта",
+    "нужна автоматизация",
+    "suche webentwickler",
+    "brauche eine website",
 ]
 
 
