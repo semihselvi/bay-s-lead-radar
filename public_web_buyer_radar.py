@@ -30,13 +30,15 @@ MAX_FETCHES = int(os.getenv("RADAR_PUBLIC_WEB_MAX_FETCHES", "60"))
 SOURCE_ROOTS = {
     "Expat.com": "https://www.expat.com/en/forum/europe/cyprus/",
     "Kibkom": "https://kibkomnorthcyprusforum.com/",
-    "BritishExpats": "https://britishexpats.com/forum/",
+    "BritishExpats": "https://britishexpats.com/forum/cyprus-117/",
 }
 
 DIRECT_FEEDS = {
     # BritishExpats documents RSS2 support and forum-specific filtering.
     "BritishExpats": "https://britishexpats.com/forum/external.php?type=rss2&forumids=117",
 }
+
+SOURCE_IMPLICIT_NC = {"Kibkom"}
 
 DIRECT_FORUM_LISTINGS = {
     # Dedicated North Cyprus sub-forum.
@@ -307,16 +309,16 @@ def _freshness(published: datetime | None) -> tuple[str, int | None]:
     return "stale", age
 
 
-def classify_window(window: str) -> tuple[dict[str, Any] | None, str]:
+def classify_window(window: str, *, implicit_north_cyprus: bool = False) -> tuple[dict[str, Any] | None, str]:
     if SELLER_PAGE_RE.search(window) and not BUY_ANCHOR_RE.search(window):
         return None, "seller_page"
-    if not v6.has_nc_geo(window):
+    if not implicit_north_cyprus and not v6.has_nc_geo(window):
         return None, "no_north_context"
     signal, reason = v6.classify_text(
         window,
         group="",
         author="",
-        explicit_geo=True,
+        explicit_geo=implicit_north_cyprus or v6.has_nc_geo(window),
     )
     if signal is None:
         return None, reason
@@ -517,7 +519,7 @@ def run() -> None:
                     continue
                 seen_windows.add(wkey)
     
-                signal, reason = classify_window(window)
+                signal, reason = classify_window(window, implicit_north_cyprus=source in SOURCE_IMPLICIT_NC)
                 if signal is None:
                     rejects[f"native_{reason}"] += 1
                     continue
