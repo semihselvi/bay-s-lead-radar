@@ -1,2 +1,4 @@
 -r requirements.txt
 trendspy==0.1.6
+
+forumscraper
