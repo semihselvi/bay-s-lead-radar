@@ -1,0 +1,75 @@
+name: OCEAN - Global Residents Buying Abroad
+
+"on":
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "europe_abroad_buyer_radar.py"
+      - "europe_buyer_serper_resilient.py"
+      - ".github/workflows/global-abroad-ocean.yml"
+  schedule:
+    - cron: "40 5,11,17 * * *"
+
+concurrency:
+  group: global-abroad-ocean-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  global-abroad-buyer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        profile:
+          - uk_abroad
+          - ireland_abroad
+          - poland_abroad
+          - sweden_abroad
+          - italy_abroad
+          - spain_abroad
+          - portugal_abroad
+          - uae_abroad
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Verify ocean buyer radar
+        run: |
+          python -m py_compile europe_abroad_buyer_radar.py europe_abroad_buyer_radar_verified.py europe_buyer_search_fallback.py europe_buyer_serper_resilient.py
+          python - <<'PY'
+          import europe_abroad_buyer_radar as r
+          required = {
+              "uk_abroad", "ireland_abroad", "poland_abroad", "sweden_abroad",
+              "italy_abroad", "spain_abroad", "portugal_abroad", "uae_abroad",
+          }
+          missing = sorted(required - set(r.PROFILES))
+          if missing:
+              raise SystemExit(f"Missing ocean profiles: {missing}")
+          print("Ocean profiles OK:", ", ".join(sorted(required)))
+          PY
+
+      - name: Run global abroad buyer discovery
+        env:
+          ABROAD_RADAR_PROFILE: ${{ matrix.profile }}
+          ABROAD_RADAR_LOOKBACK_DAYS: "30"
+          ABROAD_RADAR_QUERY_LIMIT: "10"
+          RADAR_FALLBACK_QUERY_LIMIT: "4"
+          RADAR_FALLBACK_MAX_RESULTS: "8"
+          SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python europe_buyer_serper_resilient.py
