@@ -2308,8 +2308,13 @@ def notify_lead(lead: dict[str, Any], prefix: str = "NEW") -> bool:
     if str(lead.get("market") or "") != "north_cyprus":
         return False
     lead_class = str(lead.get("lead_class") or "WATCH")
+    intent_type = str(lead.get("intent_type") or "").upper()
     message_text = str(lead.get("message") or lead.get("text") or "")
-    if str(lead.get("intent_type") or "").upper() == "TENANT" or RENT_DEMAND_RE.search(message_text):
+    # Telegram is now a sales alarm, not a research/debug channel.
+    # Only explicit BUYER leads are pushed to the phone.
+    if intent_type != "BUYER":
+        return False
+    if RENT_DEMAND_RE.search(message_text):
         return False
     emoji = "🔥" if lead_class == "HOT BUYER" else "🟡" if lead_class in {"WARM BUYER", "INVESTOR", "RELOCATION"} else "👀"
     criteria_text = ", ".join(lead.get("important_criteria") or []) or "-"
@@ -2426,7 +2431,8 @@ def save_and_notify_debug() -> None:
         f"Web provider durumu: {provider_errors}\n"
         f"Gerçek hata: {total_errors}"
     )
-    core.telegram(msg[:3900])
+    if os.getenv("RADAR_NOTIFY_DEBUG", "0").strip() == "1":
+        core.telegram(msg[:3900])
     try:
         for row in sorted(DEBUG["review_samples"], key=lambda x: x.get("score", 0), reverse=True):
             print("LEAD_RADAR_REVIEW_CURRENT", json.dumps(row, ensure_ascii=False))
