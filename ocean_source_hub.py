@@ -18,6 +18,7 @@ from buyer_intent_core import classify_candidate, clean
 from ocean_learning import (
     rank_queries,
     update_query_stats,
+    update_query_yield,
     update_source_stats,
     record_person_event,
     load_source_scores,
@@ -412,12 +413,16 @@ def run():
     reasons = Counter()
     qualified = []
     by_source = defaultdict(int)
+    qualified_by_query = Counter()
     for row in unique.values():
         lead, reason = classify_candidate(row)
         reasons[reason] += 1
         if lead:
             qualified.append(lead)
             by_source[lead.get("source", "unknown")] += 1
+            q = str(lead.get("semantic_query") or lead.get("discovery_query") or "")
+            if q:
+                qualified_by_query[q] += 1
 
     new = []
     for lead in qualified:
@@ -469,6 +474,15 @@ def run():
                 qualified=0,
                 new=1,
             )
+
+    new_by_query = Counter()
+    for lead in new:
+        q = str(lead.get("semantic_query") or lead.get("discovery_query") or "")
+        if q:
+            new_by_query[q] += 1
+
+    for q, qcount in qualified_by_query.items():
+        update_query_yield(db, q, qualified=qcount, new=int(new_by_query.get(q, 0)))
 
     for source_name, raw_count in source_counts.items():
         q_count = int(by_source.get({
