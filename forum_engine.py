@@ -185,6 +185,55 @@ def _forumscraper_posts(html: str, url: str) -> dict[str, Any]:
 
     return {"engine": engine or "forumscraper", "posts": out}
 
+
+def discover_forum_threads(
+    root_url: str,
+    *,
+    limit: int = 40,
+    timeout: int = 20,
+) -> dict[str, Any]:
+    """Discover public thread URLs from a supported forum root."""
+    if _fs_extractor is None or _fs_outputs is None or not root_url:
+        return {"engine": "", "threads": [], "error": "forumscraper_unavailable"}
+
+    try:
+        ex = _fs_extractor(requests={"timeout": timeout, "retry": 0})
+        result = ex.guess(
+            root_url,
+            output=_fs_outputs.urls,
+            requests={"retry": 0, "timeout": timeout},
+            pages_max=1,
+            pages_forums_max=3,
+            pages_threads_max=max(1, min(int(limit), 80)),
+            thread_pages_max=1,
+        )
+    except Exception as exc:
+        return {"engine": "", "threads": [], "error": f"{type(exc).__name__}:{exc}"}
+
+    if not isinstance(result, dict):
+        return {"engine": "", "threads": [], "error": "no_result"}
+
+    urls = result.get("urls") or {}
+    raw_threads = urls.get("threads") or []
+    seen: set[str] = set()
+    threads: list[str] = []
+    for value in raw_threads:
+        url = str(value or "").strip()
+        if not url or not url.startswith(("http://", "https://")) or url in seen:
+            continue
+        seen.add(url)
+        threads.append(url)
+        if len(threads) >= max(1, int(limit)):
+            break
+
+    scraper = result.get("scraper")
+    engine = scraper.__class__.__name__.casefold() if scraper is not None else ""
+    if not engine:
+        method = result.get("scraper-method")
+        engine = getattr(method, "__qualname__", "") or getattr(method, "__name__", "") or "forumscraper"
+
+    return {"engine": engine, "threads": threads, "error": ""}
+
 def extract_forum_posts(html: str, url: str = "") -> dict[str, Any]:
     soup = BeautifulSoup(str(html or ""), "html.parser")
     engine = detect_forum_engine(html)
