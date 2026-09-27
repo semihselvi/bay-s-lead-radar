@@ -91,12 +91,31 @@ def yield_score(stats: dict[str, Any]) -> float:
     new = max(0, int(stats.get("new", 0) or 0))
     north = max(0, int(stats.get("north_context", 0) or 0))
 
-    # Buyers dominate the score; north-context efficiency is a small tiebreaker.
-    buyer_value = (valid * 6.0) + (unique * 4.0) + (new * 8.0)
-    efficiency = (valid / max(1, raw)) * 100.0
-    north_eff = (north / max(1, raw)) * 10.0
-    maturity_penalty = min(6.0, math.log2(runs + 1))
-    return round(buyer_value + efficiency + north_eff - maturity_penalty, 4)
+    # V6.27 discovery-first scoring:
+    # A query that repeatedly finds already-known buyers must not monopolize
+    # the front of the queue. NEW people are the primary value signal.
+    new_value = new * 40.0
+    new_efficiency = (new / max(1, raw)) * 300.0
+    valid_support = valid * 1.5
+    unique_support = unique * 1.0
+    north_eff = (north / max(1, raw)) * 5.0
+    maturity_penalty = min(10.0, math.log2(runs + 1) * 2.0)
+
+    # Explicitly demote mature queries which keep producing valid/unique hits
+    # but have never produced a new buyer.
+    stale_discovery_penalty = 0.0
+    if runs >= 2 and new == 0:
+        stale_discovery_penalty = min(80.0, 20.0 + runs * 5.0 + valid * 2.0)
+
+    # Give never-tried queries a modest exploration bonus so fresh language
+    # gets searched before old zero-new winners consume the run.
+    exploration_bonus = 18.0 if int(stats.get("runs", 0) or 0) == 0 else 0.0
+
+    return round(
+        new_value + new_efficiency + valid_support + unique_support + north_eff
+        + exploration_bonus - maturity_penalty - stale_discovery_penalty,
+        4,
+    )
 
 
 def rank_queries(queries: Iterable[str], history: dict[str, dict[str, Any]]) -> list[str]:
