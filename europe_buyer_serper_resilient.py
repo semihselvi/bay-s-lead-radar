@@ -38,6 +38,14 @@ _REDDIT_COUNTRY_PATHS = {
     "netherlands_abroad": ("/r/netherlands/",),
     "belgium_abroad": ("/r/belgium/",),
     "switzerland_abroad": ("/r/switzerland/",),
+    "uk_abroad": ("/r/askuk/", "/r/ukpersonalfinance/", "/r/unitedkingdom/"),
+    "ireland_abroad": ("/r/ireland/", "/r/irishpersonalfinance/"),
+    "poland_abroad": ("/r/poland/", "/r/polska/"),
+    "sweden_abroad": ("/r/sweden/", "/r/tillsverige/"),
+    "italy_abroad": ("/r/italy/", "/r/italiapersonalfinance/"),
+    "spain_abroad": ("/r/spain/", "/r/spainfire/"),
+    "portugal_abroad": ("/r/portugal/", "/r/literaciafinanceira/"),
+    "uae_abroad": ("/r/dubai/", "/r/uae/"),
 }
 
 _HOME_REDDIT_COUNTRY_PATHS = {
