@@ -196,6 +196,27 @@ DOCUMENT_ACCOUNT_CONTEXT_RE = re.compile(
     re.I,
 )
 
+CRYPTO_EARNINGS_RE = re.compile(
+    r"(?:"
+    r"\bcrypto(?:currency)?\b|\bbitcoin\b|\busdt\b|\bforex\b|"
+    r"криптовалют\w*|крипто\w*|биткоин\w*|"
+    r"\bpassive\s+income\b|\beasy\s+money\b|"
+    r"заработ\w*|доход\w*|прибыл\w*|"
+    r"\b\d+\s*[-–]\s*\d+\s*(?:usd|eur|gbp|\$|€|£)\b.{0,80}(?:day|hour|день|час)"
+    r")",
+    re.I | re.S,
+)
+
+RECRUITMENT_PARTNER_RE = re.compile(
+    r"(?:"
+    r"нужен\s+партн[её]р|ищу\s+партн[её]ра|пишите\s+в\s+личк|"
+    r"опыт\s+не\s+нужен|объясню\s+с\s+нуля|18\+|"
+    r"looking\s+for\s+(?:a\s+)?partner.{0,80}(?:income|earn|commission|crypto)|"
+    r"partner\s+opportunit|no\s+experience\s+needed|dm\s+me\b"
+    r")",
+    re.I | re.S,
+)
+
 PROJECT_REQUEST_RE = re.compile(
     r"(?:"
     r"\bneed\s+(?:a|an|new|our|someone|somebody|developer|agency|company)\b.{0,90}\b(?:website|web\s*site|crm|booking\s+system|reservation\s+system|admin\s+panel|automation|payment\s+integration|e[-\s]?commerce)\b|"
@@ -299,6 +320,8 @@ def classify(text: str) -> tuple[dict[str, Any] | None, str]:
         return None, "portal_account_support"
     if DOCUMENT_ACCOUNT_CONTEXT_RE.search(value) and re.search(r"личн\w*\s+кабинет|account|hesap", value, re.I):
         return None, "document_portal_context"
+    if CRYPTO_EARNINGS_RE.search(value) and RECRUITMENT_PARTNER_RE.search(value):
+        return None, "crypto_or_earnings_recruitment"
 
     types = project_types(value)
     demand = bool(DEMAND_RE.search(value))
