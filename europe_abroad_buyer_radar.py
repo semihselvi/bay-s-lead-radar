@@ -263,6 +263,114 @@ PROFILES = {
             '"holiday home abroad" "looking to buy"',
         ],
     },
+    "norway_abroad": {
+        "icon": "🇳🇴", "title": "NORWAY RESIDENTS BUYING ABROAD", "hl": "no", "gl": "no",
+        "audience_re": re.compile(r"(?:\bjeg bor i norge\b|\bvi bor i norge\b|\bfra norge\b|\bfrom norway\b|\bi live in norway\b|\bnorwegian resident\b)", re.I),
+        "query_anchor": re.compile(r"(?:norge|norway|norwegian)", re.I),
+        "bridge_domains": {"reddit.com", "expat.com", "expatforum.com"},
+        "queries": [
+            'site:reddit.com/r/norge "buy property abroad"',
+            'Norge "kjøpe bolig i utlandet"',
+            'Norge "kjøpe hus i utlandet"',
+            'Norge "feriebolig i utlandet" kjøpe',
+            '"bolig i utlandet" budsjett Norge',
+            '"investere i eiendom i utlandet" Norge',
+            '"andre bolig i utlandet" Norge',
+            '"Mediterranean property" Norway buy',
+            '"Nord-Kypros" kjøpe leilighet',
+            '"North Cyprus" Norwegian buyer property',
+        ],
+    },
+    "denmark_abroad": {
+        "icon": "🇩🇰", "title": "DENMARK RESIDENTS BUYING ABROAD", "hl": "da", "gl": "dk",
+        "audience_re": re.compile(r"(?:\bjeg bor i danmark\b|\bvi bor i danmark\b|\bfra danmark\b|\bfrom denmark\b|\bi live in denmark\b|\bdanish resident\b)", re.I),
+        "query_anchor": re.compile(r"(?:danmark|denmark|danish)", re.I),
+        "bridge_domains": {"reddit.com", "expat.com", "expatforum.com"},
+        "queries": [
+            'site:reddit.com/r/Denmark "buy property abroad"',
+            'Danmark "købe bolig i udlandet"',
+            'Danmark "købe hus i udlandet"',
+            'Danmark "feriebolig i udlandet" købe',
+            '"bolig i udlandet" budget Danmark',
+            '"investere i ejendom i udlandet" Danmark',
+            '"anden bolig i udlandet" Danmark',
+            '"Mediterranean property" Denmark buy',
+            '"Nordcypern" købe lejlighed',
+            '"North Cyprus" Danish buyer property',
+        ],
+    },
+    "finland_abroad": {
+        "icon": "🇫🇮", "title": "FINLAND RESIDENTS BUYING ABROAD", "hl": "fi", "gl": "fi",
+        "audience_re": re.compile(r"(?:\basun suomessa\b|\basumme suomessa\b|\bsuomesta\b|\bfrom finland\b|\bi live in finland\b|\bfinnish resident\b)", re.I),
+        "query_anchor": re.compile(r"(?:suomi|suomessa|finland|finnish)", re.I),
+        "bridge_domains": {"reddit.com", "expat.com", "expatforum.com"},
+        "queries": [
+            'site:reddit.com/r/Finland "buy property abroad"',
+            'Suomi "ostaa asunto ulkomailta"',
+            'Suomi "ostaa talo ulkomailta"',
+            'Suomi "loma-asunto ulkomailla" ostaa',
+            '"asunto ulkomailla" budjetti Suomi',
+            '"sijoittaa kiinteistöön ulkomailla" Suomi',
+            '"toinen koti ulkomailla" Suomi',
+            '"Mediterranean property" Finland buy',
+            '"Pohjois-Kypros" ostaa asunto',
+            '"North Cyprus" Finnish buyer property',
+        ],
+    },
+    "czechia_abroad": {
+        "icon": "🇨🇿", "title": "CZECHIA RESIDENTS BUYING ABROAD", "hl": "cs", "gl": "cz",
+        "audience_re": re.compile(r"(?:\bžiji v česku\b|\bžijeme v česku\b|\bz česka\b|\bfrom czechia\b|\bi live in czechia\b|\bczech resident\b)", re.I),
+        "query_anchor": re.compile(r"(?:česko|česká|czechia|czech)", re.I),
+        "bridge_domains": {"reddit.com", "expat.com", "expatforum.com"},
+        "queries": [
+            'site:reddit.com/r/czech "buy property abroad"',
+            'Česko "koupit nemovitost v zahraničí"',
+            'Česko "koupit byt v zahraničí"',
+            'Česko "druhý domov v zahraničí"',
+            '"nemovitost v zahraničí" rozpočet Česko',
+            '"investovat do nemovitosti v zahraničí" Česko',
+            '"apartmán u moře" zahraničí koupit',
+            '"Mediterranean property" Czechia buy',
+            '"Severní Kypr" koupit byt',
+            '"North Cyprus" Czech buyer property',
+        ],
+    },
+    "estonia_abroad": {
+        "icon": "🇪🇪", "title": "ESTONIA RESIDENTS BUYING ABROAD", "hl": "et", "gl": "ee",
+        "audience_re": re.compile(r"(?:\belan eestis\b|\belame eestis\b|\beestist\b|\bfrom estonia\b|\bi live in estonia\b|\bestonian resident\b)", re.I),
+        "query_anchor": re.compile(r"(?:eesti|estonia|estonian)", re.I),
+        "bridge_domains": {"reddit.com", "expat.com", "expatforum.com"},
+        "queries": [
+            'site:reddit.com/r/Eesti "buy property abroad"',
+            'Eesti "osta kinnisvara välismaal"',
+            'Eesti "osta korter välismaal"',
+            'Eesti "teine kodu välismaal"',
+            '"kinnisvara välismaal" eelarve Eesti',
+            '"investeerida kinnisvarasse välismaal" Eesti',
+            '"korter mere ääres" välismaal Eesti',
+            '"Mediterranean property" Estonia buy',
+            '"Põhja-Küpros" osta korter',
+            '"North Cyprus" Estonian buyer property',
+        ],
+    },
+    "uae_arabic_abroad": {
+        "icon": "🇦🇪", "title": "ARABIC-SPEAKING UAE RESIDENTS BUYING ABROAD", "hl": "ar", "gl": "ae",
+        "audience_re": re.compile(r"(?:أعيش في الإمارات|نعيش في الإمارات|أعيش في دبي|نعيش في دبي|مقيم في الإمارات|مقيم في دبي)", re.I),
+        "query_anchor": re.compile(r"(?:الإمارات|دبي|uae|dubai)", re.I),
+        "bridge_domains": {"reddit.com", "expat.com", "expatforum.com"},
+        "queries": [
+            'الإمارات "أريد شراء عقار في الخارج"',
+            'دبي "أبحث عن عقار في الخارج"',
+            'الإمارات "شراء منزل في الخارج"',
+            'دبي "شراء شقة في الخارج"',
+            '"عقار في الخارج" ميزانية الإمارات',
+            '"استثمار عقاري في الخارج" دبي',
+            '"منزل ثان في الخارج" الإمارات',
+            '"عقار على البحر المتوسط" دبي شراء',
+            '"شمال قبرص" شراء شقة',
+            '"قبرص الشمالية" شراء عقار',
+        ],
+    },
     "golden_visa": {
         "icon": "🛂", "title": "GOLDEN VISA BUYER INTENT", "hl": "en", "gl": "us",
         "audience_re": None,
@@ -283,7 +391,7 @@ PROFILES = {
     },
 }
 
-PROPERTY_RE = re.compile(r"(?:property|real estate|apartment|flat|house|home|villa|land|second home|holiday home|immobilie|wohnung|haus|ferienwohnung|ferienhaus|auslandsimmobilie|woning|huis|vastgoed|appartement|immobilier|maison|résidence|residence|nieruchomość|mieszkanie|dom|bostad|lägenhet|hus|casa|immobile|abitazione|vivienda|inmueble|imóvel|apartamento)", re.I)
+PROPERTY_RE = re.compile(r"(?:property|real estate|apartment|flat|house|home|villa|land|second home|holiday home|immobilie|wohnung|haus|ferienwohnung|ferienhaus|auslandsimmobilie|woning|huis|vastgoed|appartement|immobilier|maison|résidence|residence|nieruchomość|mieszkanie|dom|bostad|lägenhet|hus|casa|immobile|abitazione|vivienda|inmueble|imóvel|apartamento|bolig|hus|lejlighed|asunto|talo|nemovitost|byt|kinnisvara|korter|عقار|شقة|منزل)", re.I)
 BUYER_RE = re.compile(
     r"(?:\b(?:i|we)\b.{0,70}\b(?:want|looking|planning|considering|ready|need|seeking)\b.{0,90}\b(?:buy|purchase|invest|property|apartment|house|villa|home)\b|"
     r"\blooking\s+to\s+buy\b|\bwant\s+to\s+buy\b|\bplanning\s+to\s+buy\b|"
@@ -294,10 +402,16 @@ BUYER_RE = re.compile(
     r"\b(?:jag|vi)\b.{0,70}\b(?:vill|planerar|överväger|söker)\b.{0,90}\b(?:köpa|bostad|lägenhet|hus|fastighet)\b|"
     r"\b(?:io|noi)\b.{0,70}\b(?:voglio|vogliamo|cerco|cerchiamo|penso|pensiamo)\b.{0,90}\b(?:comprare|acquistare|casa|immobile|appartamento)\b|"
     r"\b(?:yo|nosotros)\b.{0,70}\b(?:quiero|queremos|busco|buscamos|pienso|pensamos)\b.{0,90}\b(?:comprar|vivienda|casa|apartamento|inmueble)\b|"
-    r"\b(?:eu|nós|nos)\b.{0,70}\b(?:quero|queremos|procuro|procuramos|planejo|planejamos)\b.{0,90}\b(?:comprar|casa|apartamento|imóvel)\b)",
+    r"\b(?:eu|nós|nos)\b.{0,70}\b(?:quero|queremos|procuro|procuramos|planejo|planejamos)\b.{0,90}\b(?:comprar|casa|apartamento|imóvel)\b|"
+    r"\b(?:jeg|vi)\b.{0,70}\b(?:vil|ønsker|planlegger|ser etter|søker)\b.{0,90}\b(?:kjøpe|bolig|hus|leilighet|eiendom)\b|"
+    r"\b(?:jeg|vi)\b.{0,70}\b(?:vil|ønsker|planlægger|leder efter|søger)\b.{0,90}\b(?:købe|bolig|hus|lejlighed|ejendom)\b|"
+    r"\b(?:minä|me)\b.{0,70}\b(?:haluan|haluamme|etsin|etsimme|suunnittelen|suunnittelemme)\b.{0,90}\b(?:ostaa|asunto|talo|kiinteistö)\b|"
+    r"\b(?:já|my)\b.{0,70}\b(?:chci|chceme|hledám|hledáme|plánuji|plánujeme)\b.{0,90}\b(?:koupit|nemovitost|byt|dům)\b|"
+    r"\b(?:mina|me)\b.{0,70}\b(?:tahan|tahame|otsin|otsime|plaanin|plaanime)\b.{0,90}\b(?:osta|kinnisvara|korter|maja)\b|"
+    r"(?:أريد|نريد|أبحث|نبحث|أخطط|نخطط).{0,90}(?:شراء|عقار|شقة|منزل)\b)",
     re.I | re.S,
 )
-FIRST_PERSON_RE = re.compile(r"\b(?:i|we|my|our|ich|wir|mein\w*|unser\w*|ik|wij|mijn|ons|onze|je|nous|mon|ma|notre|chcę|chcemy|szukam|szukamy|jag|vi|io|noi|yo|nosotros|eu|nós|nos)\b", re.I)
+FIRST_PERSON_RE = re.compile(r"(?:\b(?:i|we|my|our|ich|wir|mein\w*|unser\w*|ik|wij|mijn|ons|onze|je|nous|mon|ma|notre|chcę|chcemy|szukam|szukamy|jag|vi|io|noi|yo|nosotros|eu|nós|nos|jeg|minä|me|já|my|mina)\b|(?:أريد|نريد|أبحث|نبحث))", re.I)
 CONCRETE_RE = re.compile(r"(?:[£€$₣]\s*\d[\d\s.,]*(?:\s*[kKmM])?|\bbudget\b|\bmortgage\b|\bdeposit\b|\bpayment plan\b|\beigenkapital\b|\bfinanzierung\b|\bhypotheek\b|\bfinanciering\b|\bapport\b|\bfinancement\b|\bminimum investment\b)", re.I)
 RENT_RE = re.compile(r"(?:for rent|looking to rent|rental|per month|monthly|mieten|miete|zur miete|huren|huur|per maand|à louer|a louer|location mensuelle)", re.I)
 SELLER_RE = re.compile(r"(?:for sale|available now|contact us|whatsapp|estate agent|real estate agent|realtor|broker|developer|listing|our project|our properties|zu verkaufen|makler|immobilienmakler|te koop aangeboden|makelaar|à vendre|a vendre|agent immobilier|promoteur)", re.I)
