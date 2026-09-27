@@ -217,6 +217,22 @@ RECRUITMENT_PARTNER_RE = re.compile(
     re.I | re.S,
 )
 
+PLATFORM_PROMO_RE = re.compile(
+    r"(?:"
+    r"everything\s+you\s+need\s+to\s+build\s+your\s+website|"
+    r"create\s+your\s+(?:wordpress\s+)?website|start\s+building\s+today|"
+    r"built[-\s]?in\s+hosting|premium\s+themes?|free\s+plan\s+available|"
+    r"sign\s+up\s+free|get\s+started\s+free|"
+    r"try\s+.*\s+free|no\s+technical\s+setup\s+required"
+    r")",
+    re.I | re.S,
+)
+
+KNOWN_PLATFORM_HOSTS = {
+    "wordpress.com", "wix.com", "squarespace.com", "webflow.com",
+    "shopify.com", "godaddy.com", "weebly.com", "framer.com",
+}
+
 PROJECT_REQUEST_RE = re.compile(
     r"(?:"
     r"\bneed\s+(?:a|an|new|our|someone|somebody|developer|agency|company)\b.{0,90}\b(?:website|web\s*site|crm|booking\s+system|reservation\s+system|admin\s+panel|automation|payment\s+integration|e[-\s]?commerce)\b|"
@@ -620,6 +636,10 @@ def scan_web(db_client, now: datetime, debug: dict[str, Any]) -> list[dict[str, 
                 continue
             seen.add(key)
             blob = f"{row.get('title','')} {row.get('text','')}"
+            host = urllib.parse.urlparse(str(row.get("url") or "")).netloc.casefold().removeprefix("www.")
+            if host in KNOWN_PLATFORM_HOSTS or PLATFORM_PROMO_RE.search(blob):
+                debug["web_rejects"]["platform_or_product_promo"] += 1
+                continue
             signal, reason = classify(blob)
             if signal is None:
                 debug["web_rejects"][reason] += 1
