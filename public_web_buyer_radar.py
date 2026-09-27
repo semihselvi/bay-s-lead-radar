@@ -20,7 +20,7 @@ import web_source_discovery as discovery
 import forum_engine
 import adaptive_radar_learning as learning
 
-VERSION = "1.4-demand-language-loop"
+VERSION = "1.5-forumscraper-fallback"
 MAX_AGE_DAYS = int(os.getenv("RADAR_PUBLIC_WEB_MAX_AGE_DAYS", "45"))
 TIMEOUT = int(os.getenv("RADAR_HTTP_TIMEOUT", "20"))
 MAX_RESULTS_PER_QUERY = int(os.getenv("RADAR_PUBLIC_WEB_RESULTS_PER_QUERY", "10"))

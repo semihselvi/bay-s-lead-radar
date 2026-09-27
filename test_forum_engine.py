@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 import forum_engine
 
@@ -38,6 +39,44 @@ class ForumEngineTests(unittest.TestCase):
         self.assertEqual(result["engine"], "phpbb")
         self.assertEqual(len(result["posts"]), 1)
 
+
+
+    def test_forumscraper_fallback_normalizes_structured_posts(self):
+        class FakeExtractor:
+            def __init__(self, **kwargs):
+                pass
+
+            def guess(self, url, html, **kwargs):
+                return {
+                    "data": {
+                        "threads": [{
+                            "format_version": "xenforo-2-thread",
+                            "posts": [{
+                                "id": 77,
+                                "user": "BuyerTwo",
+                                "date": "2026-09-26T08:30:00+0000",
+                                "text": "<p>I want to buy a villa in <b>North Cyprus</b>, budget £250,000.</p>",
+                            }],
+                        }]
+                    }
+                }
+
+        class FakeOutputs:
+            data = 1
+            threads = 2
+
+        # No native post wrapper -> universal parser should become the fallback.
+        html = "<html><body><main>forum shell</main></body></html>"
+        with patch.object(forum_engine, "_fs_extractor", FakeExtractor), patch.object(
+            forum_engine, "_fs_outputs", FakeOutputs
+        ):
+            result = forum_engine.extract_forum_posts(html, "https://example.com/threads/77")
+
+        self.assertEqual(result["engine"], "xenforo")
+        self.assertEqual(len(result["posts"]), 1)
+        self.assertEqual(result["posts"][0]["author"], "BuyerTwo")
+        self.assertIn("want to buy a villa", result["posts"][0]["text"])
+        self.assertNotIn("<p>", result["posts"][0]["text"])
 
 if __name__ == "__main__":
     unittest.main()
