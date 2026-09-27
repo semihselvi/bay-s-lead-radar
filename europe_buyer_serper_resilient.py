@@ -46,6 +46,12 @@ _REDDIT_COUNTRY_PATHS = {
     "spain_abroad": ("/r/spain/", "/r/spainfire/"),
     "portugal_abroad": ("/r/portugal/", "/r/literaciafinanceira/"),
     "uae_abroad": ("/r/dubai/", "/r/uae/"),
+    "norway_abroad": ("/r/norge/", "/r/norway/"),
+    "denmark_abroad": ("/r/denmark/",),
+    "finland_abroad": ("/r/finland/", "/r/suomi/"),
+    "czechia_abroad": ("/r/czech/", "/r/czechrepublic/"),
+    "estonia_abroad": ("/r/eesti/", "/r/estonia/"),
+    "uae_arabic_abroad": ("/r/dubai/", "/r/uae/"),
 }
 
 _HOME_REDDIT_COUNTRY_PATHS = {
