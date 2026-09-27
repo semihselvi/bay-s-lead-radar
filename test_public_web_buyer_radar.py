@@ -37,6 +37,16 @@ class PublicWebBuyerRadarTests(unittest.TestCase):
         self.assertIsNotNone(signal, reason)
         self.assertEqual(signal["intent_type"], "BUYER")
 
+    def test_kibkom_source_context_counts_as_north_cyprus(self):
+        with patch.dict(os.environ, {"RADAR_SALES_ONLY": "1"}):
+            signal, reason = web.classify_window(
+                "I am looking to buy a 2+1 apartment. My budget is £150,000.",
+                implicit_north_cyprus=True,
+            )
+        self.assertIsNotNone(signal, reason)
+        self.assertEqual(reason, "accepted")
+        self.assertEqual(signal["intent_type"], "BUYER")
+
     def test_seller_listing_is_not_buyer(self):
         with patch.dict(os.environ, {"RADAR_SALES_ONLY": "1"}):
             signal, reason = web.classify_window(
