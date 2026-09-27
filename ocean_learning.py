@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 QUERY_COLLECTION = "bay_s_ocean_query_learning"
 SOURCE_COLLECTION = "bay_s_ocean_source_learning"
+DISCOVERED_SOURCE_COLLECTION = "bay_s_ocean_discovered_sources"
 PERSON_COLLECTION = "bay_s_ocean_person_journey"
 
 
@@ -87,10 +88,6 @@ def update_query_stats(db, query: str, raw: int = 0, qualified: int = 0, new: in
     try:
         ref.set({
             "query": query,
-            "runs": 1,
-            "raw": raw,
-            "qualified": qualified,
-            "new": new,
             "last_run_at": now_iso(),
         }, merge=True)
         from google.cloud import firestore
@@ -134,6 +131,47 @@ def load_source_scores(db) -> dict[str, float]:
     except Exception as exc:
         print("OCEAN_SOURCE_LEARNING_READ_ERROR", type(exc).__name__, exc)
     return out
+
+
+
+def learn_discovered_source(db, source_key: str, source_type: str, url: str = "", qualified: int = 0, new: int = 0):
+    if not db or not source_key:
+        return
+    ref = db.collection(DISCOVERED_SOURCE_COLLECTION).document(stable_id("discovered-source", f"{source_type}|{source_key}"))
+    try:
+        ref.set({
+            "source_key": source_key,
+            "source_type": source_type,
+            "url": url,
+            "last_seen_at": now_iso(),
+        }, merge=True)
+        from google.cloud import firestore
+        ref.update({
+            "seen": firestore.Increment(1),
+            "qualified": firestore.Increment(qualified),
+            "new": firestore.Increment(new),
+        })
+    except Exception as exc:
+        print("OCEAN_DISCOVERED_SOURCE_WRITE_ERROR", type(exc).__name__, exc)
+
+
+def best_discovered_sources(db, limit: int = 20) -> list[dict]:
+    if not db:
+        return []
+    rows = []
+    try:
+        for doc in db.collection(DISCOVERED_SOURCE_COLLECTION).stream():
+            data = doc.to_dict() or {}
+            seen = int(data.get("seen") or 0)
+            qualified = int(data.get("qualified") or 0)
+            new = int(data.get("new") or 0)
+            score = new * 30.0 + qualified * 4.0 + (new / max(1, seen)) * 120.0
+            data["score"] = score
+            rows.append(data)
+    except Exception as exc:
+        print("OCEAN_DISCOVERED_SOURCE_READ_ERROR", type(exc).__name__, exc)
+    rows.sort(key=lambda x: x.get("score", 0), reverse=True)
+    return rows[:max(1, limit)]
 
 
 def record_person_event(db, lead: dict) -> dict:
