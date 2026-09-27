@@ -1,4 +1,5 @@
 name: NC - North Cyprus Buyer Radar
+# production classifier: new-buyer-discovery-6.27
 # production classifier: sales-only-notifications-6.26
 # production repair: forumscraper-import-2026-09-27
 # production repair: buyer-source-context-2026-09-27
@@ -101,6 +102,7 @@ jobs:
           RADAR_V5_TELEGRAM_BACKFILL_DAYS: "7"
           RADAR_V5_TELEGRAM_BACKFILL_LIMIT: "12"
           RADAR_V5_WEB_MAX_AGE_DAYS: "90"
+          RADAR_LEARNED_TELEGRAM_QUERIES: "20"
         run: python nc_v6_broad_radar.py
 
       - name: Mine Reddit buyer and research intent
