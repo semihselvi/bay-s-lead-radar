@@ -1,5 +1,9 @@
 name: NORTHLAB - Sales Opportunity Radar
 
+concurrency:
+  group: northlab-sales-radar
+  cancel-in-progress: true
+
 "on":
   workflow_dispatch:
   push:
