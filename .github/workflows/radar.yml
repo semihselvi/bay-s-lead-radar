@@ -39,7 +39,7 @@ jobs:
       - name: Checkout NC production branch
         uses: actions/checkout@v6
         with:
-          ref: feature/radar-v5-buyer-expansion
+          ref: production/radar
 
       - name: Setup Python
         uses: actions/setup-python@v6
