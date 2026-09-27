@@ -243,7 +243,27 @@ PROFILES = {
             'Dubai "North Cyprus" property buy',
             'UAE resident "payment plan" property abroad',
         ],
-    }    "golden_visa": {
+    }    "global_abroad": {
+        "icon": "🌍", "title": "GLOBAL BUYERS LOOKING ABROAD", "hl": "en", "gl": "us",
+        "audience_re": None,
+        "query_anchor": re.compile(r"(?:property abroad|buy abroad|second home abroad|retire abroad|mediterranean property|overseas property)", re.I),
+        "bridge_domains": {"reddit.com", "expat.com", "expatforum.com", "internations.org", "nomadgate.com", "bogleheads.org", "moneysavingexpert.com"},
+        "queries": [
+            'site:reddit.com "looking to buy property abroad"',
+            'site:reddit.com "want to buy property abroad"',
+            'site:reddit.com "second home abroad" "I"',
+            'site:reddit.com "retire abroad" "buy property"',
+            'site:reddit.com "Mediterranean property" "looking to buy"',
+            'site:expat.com "buy property abroad" forum',
+            'site:expatforum.com "second home abroad" buy',
+            '"property abroad" "budget" forum',
+            '"overseas property" "payment plan"',
+            '"property abroad" "under €150,000"',
+            '"Mediterranean apartment" "want to buy"',
+            '"holiday home abroad" "looking to buy"',
+        ],
+    },
+    "golden_visa": {
         "icon": "🛂", "title": "GOLDEN VISA BUYER INTENT", "hl": "en", "gl": "us",
         "audience_re": None,
         "query_anchor": re.compile(r"golden visa|residency by investment|residence by investment|investor visa", re.I),
@@ -357,7 +377,7 @@ def serper_search(profile: str, query: str) -> list[dict]:
 
 def audience_match(profile: str, item: dict, text: str) -> tuple[bool, bool]:
     spec = PROFILES[profile]
-    if profile == "golden_visa":
+    if profile in {"golden_visa", "global_abroad"}:
         return True, True
     explicit = bool(spec["audience_re"].search(text))
     if explicit:
