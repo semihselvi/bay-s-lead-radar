@@ -19,6 +19,9 @@ name: OCEAN - Global Residents Buying Abroad
   schedule:
     - cron: "40 5,11,17 * * *"
 
+permissions:
+  contents: write
+
 concurrency:
   group: global-abroad-ocean-${{ github.ref }}
   cancel-in-progress: false
@@ -79,7 +82,9 @@ jobs:
           PY
 
       - name: Run unified Ocean Source Hub
+        id: ocean_hub
         if: matrix.profile == 'global_abroad'
+        continue-on-error: true
         env:
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
@@ -91,6 +96,32 @@ jobs:
           OCEAN_FORUM_URL_LIMIT: "10"
           OCEAN_FORUM_DL_TIMEOUT: "35"
         run: python ocean_source_hub.py
+
+      - name: Persist Ocean run status
+        if: always() && matrix.profile == 'global_abroad'
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+          p=Path("ocean-last-run.json")
+          if not p.exists():
+              p.write_text(json.dumps({
+                  "status":"failed",
+                  "finished_at":datetime.now(timezone.utc).isoformat(),
+                  "reason":"Ocean Source Hub step did not produce a status file"
+              }, ensure_ascii=False, indent=2), encoding="utf-8")
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ocean-last-run.json
+          git commit -m "Update Ocean last run status" || true
+          git pull --rebase origin main || true
+          git push origin HEAD:main || true
+
+      - name: Fail job if Ocean Source Hub failed
+        if: matrix.profile == 'global_abroad' && steps.ocean_hub.outcome == 'failure'
+        run: exit 1
 
       - name: Run global abroad buyer discovery
         env:
