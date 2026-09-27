@@ -528,6 +528,20 @@ def run():
 
     print("OCEAN_SOURCE_HUB_COMPLETE", json.dumps(stats, ensure_ascii=False))
 
+    debug_lines = [
+        "🧪 OCEAN SOURCE HUB DEBUG | SON TARAMA",
+        f"Ham: {stats['raw']} | Unique: {stats['unique']} | Qualified: {stats['qualified']} | Yeni: {stats['new']}",
+        "Kaynaklar: " + json.dumps(stats["source_counts"], ensure_ascii=False),
+        "Qualified kaynak: " + json.dumps(stats["qualified_by_source"], ensure_ascii=False),
+        "Eleme: " + json.dumps(stats["reject_reasons"], ensure_ascii=False),
+        "Öğrenen kaynak: " + str(len(stats.get("learned_sources") or []))
+        + " | Journey HOT: " + str(stats.get("journey_hot", 0)),
+    ]
+    try:
+        notify("\n".join(debug_lines))
+    except Exception as exc:
+        print("OCEAN_DEBUG_NOTIFY_ERROR", type(exc).__name__, exc)
+
     if new:
         lines = [f"🌊 OCEAN SOURCE HUB | {len(new)} YENİ BUYER"]
         for lead in sorted(new, key=lambda x: (int(x.get("journey_score") or 0), x["classification"] == "HOT", x["intent_score"]), reverse=True)[:12]:
