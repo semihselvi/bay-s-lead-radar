@@ -14,6 +14,7 @@ from typing import Any
 import requests
 
 import main as core
+import northlab_sales_source_hub as source_hub
 
 VERSION = "1.2-global-project-discovery"
 COLLECTION = "northlab_sales_project_leads"
@@ -615,6 +616,7 @@ def _serial(debug: dict[str, Any]) -> dict[str, Any]:
         **{k: v for k, v in debug.items() if not isinstance(v, Counter)},
         "rejects": dict(debug["rejects"]),
         "web_rejects": dict(debug["web_rejects"]),
+        "hub_rejects": dict(debug["hub_rejects"]),
         "accepted_classes": dict(debug["accepted_classes"]),
         "project_types": dict(debug["project_types"]),
         "languages": dict(debug["languages"]),
@@ -631,8 +633,14 @@ def main() -> None:
         "telegram_global_messages": 0,
         "web_raw": 0,
         "web_accepted": 0,
+        "hub_raw": 0,
+        "hub_accepted": 0,
+        "hub_source_counts": {},
+        "hub_youtube_urls": 0,
+        "hub_forum_urls": 0,
         "rejects": Counter(),
         "web_rejects": Counter(),
+        "hub_rejects": Counter(),
         "accepted_classes": Counter(),
         "project_types": Counter(),
         "languages": Counter(),
@@ -642,7 +650,15 @@ def main() -> None:
 
     telegram_new = asyncio.run(scan_telegram(db_client, now, debug))
     web_new = scan_web(db_client, now, debug)
-    new_leads = telegram_new + web_new
+
+    hub_rows, hub_meta = source_hub.collect_all()
+    debug["hub_raw"] = len(hub_rows)
+    debug["hub_source_counts"] = hub_meta.get("source_counts", {})
+    debug["hub_youtube_urls"] = hub_meta.get("youtube_urls", 0)
+    debug["hub_forum_urls"] = hub_meta.get("forum_urls", 0)
+    hub_new = source_hub.process_rows(db_client, now, hub_rows, debug)
+
+    new_leads = telegram_new + web_new + hub_new
     new_leads.sort(
         key=lambda x: (
             x.get("lead_class") == "HOT PROJECT",
@@ -673,6 +689,7 @@ def main() -> None:
 
     rejects = ", ".join(f"{k}:{v}" for k, v in debug["rejects"].most_common(8)) or "-"
     web_rejects = ", ".join(f"{k}:{v}" for k, v in debug["web_rejects"].most_common(8)) or "-"
+    hub_rejects = ", ".join(f"{k}:{v}" for k, v in debug["hub_rejects"].most_common(8)) or "-"
     classes = ", ".join(f"{k}:{v}" for k, v in debug["accepted_classes"].most_common()) or "-"
     types = ", ".join(f"{k}:{v}" for k, v in debug["project_types"].most_common()) or "-"
     langs = ", ".join(f"{k}:{v}" for k, v in debug["languages"].most_common()) or "-"
@@ -689,6 +706,10 @@ def main() -> None:
             f"Telegram eleme: {rejects}\n"
             f"Web ham: {debug['web_raw']} | Web kabul: {debug['web_accepted']}\n"
             f"Web eleme: {web_rejects}\n"
+            f"Source Hub ham: {debug['hub_raw']} | Kabul: {debug['hub_accepted']}\n"
+            f"Hub kaynaklar: {json.dumps(debug['hub_source_counts'], ensure_ascii=False)}\n"
+            f"YouTube URL: {debug['hub_youtube_urls']} | Forum URL: {debug['hub_forum_urls']}\n"
+            f"Hub eleme: {hub_rejects}\n"
             f"Gerçek hata: {len(debug['errors'])}"
         )[:3900]
     )
