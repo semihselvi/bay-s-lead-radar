@@ -1,5 +1,6 @@
 name: NC - North Cyprus Buyer Radar
 # production repair: forumscraper-import-2026-09-27
+# production repair: buyer-source-context-2026-09-27
 # production classifier: forum-engine-discovery-6.25
 # production classifier: forumscraper-fallback-1.5
 # production classifier: demand-language-loop-6.26
