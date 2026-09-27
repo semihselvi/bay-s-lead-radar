@@ -20,7 +20,7 @@ import web_source_discovery as discovery
 import forum_engine
 import adaptive_radar_learning as learning
 
-VERSION = "1.5-forumscraper-fallback"
+VERSION = "1.6-forum-engine-discovery"
 MAX_AGE_DAYS = int(os.getenv("RADAR_PUBLIC_WEB_MAX_AGE_DAYS", "45"))
 TIMEOUT = int(os.getenv("RADAR_HTTP_TIMEOUT", "20"))
 MAX_RESULTS_PER_QUERY = int(os.getenv("RADAR_PUBLIC_WEB_RESULTS_PER_QUERY", "10"))
@@ -330,6 +330,33 @@ def _lead_id(url: str, window: str) -> str:
     return hashlib.sha256(stable.encode("utf-8")).hexdigest()
 
 
+def discover_forumscraper_rows() -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    debug: dict[str, Any] = {}
+
+    for source, root in SOURCE_ROOTS.items():
+        result = forum_engine.discover_forum_threads(
+            root,
+            limit=int(os.getenv("RADAR_FORUM_THREAD_LIMIT", "30") or "30"),
+            timeout=min(TIMEOUT, 20),
+        )
+        debug[source] = {
+            "engine": result.get("engine") or "",
+            "threads": len(result.get("threads") or []),
+            "error": result.get("error") or "",
+        }
+        for url in result.get("threads") or []:
+            rows.append({
+                "source": source,
+                "title": "",
+                "url": url,
+                "snippet": "",
+                "rss_published": "",
+                "discovery": "forumscraper_thread_discovery",
+            })
+    return rows, debug
+
+
 def discover_direct_rows() -> tuple[list[dict[str, Any]], dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     debug: dict[str, Any] = {}
@@ -422,10 +449,16 @@ def run() -> None:
     source_scan_counts = Counter()
     source_new_counts = Counter()
     discovery_stats = Counter()
+    forum_rows, forum_debug = discover_forumscraper_rows()
     direct_rows, direct_debug = discover_direct_rows()
     discovery_rows, discovery_debug = discover_source_rows()
-    discovery_rows = direct_rows + discovery_rows
-    discovery_debug = {"direct": direct_debug, "generic": discovery_debug}
+    discovery_rows = forum_rows + direct_rows + discovery_rows
+    discovery_debug = {
+        "forumscraper": forum_debug,
+        "direct": direct_debug,
+        "generic": discovery_debug,
+    }
+    discovery_stats["forumscraper_rows"] = len(forum_rows)
     seen_urls: set[str] = set()
     seen_windows: set[str] = set()
     near_windows = learning.NearDuplicateIndex(threshold=92.0, min_chars=50, max_items=500)
@@ -735,6 +768,7 @@ def run() -> None:
 
     report = {
         "version": VERSION,
+        "forum_rows": len(forum_rows),
         "direct_rows": len(direct_rows),
         "queries": stats["queries"],
         "search_rows": stats["search_rows"],

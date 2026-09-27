@@ -78,5 +78,45 @@ class ForumEngineTests(unittest.TestCase):
         self.assertIn("want to buy a villa", result["posts"][0]["text"])
         self.assertNotIn("<p>", result["posts"][0]["text"])
 
+
+    def test_discovers_forum_thread_urls(self):
+        class FakeScraper:
+            pass
+
+        class FakeExtractor:
+            def __init__(self, **kwargs):
+                pass
+
+            def guess(self, root_url, **kwargs):
+                return {
+                    "urls": {
+                        "threads": [
+                            "https://forum.example.com/threads/buying-north-cyprus.101/",
+                            "https://forum.example.com/threads/buying-north-cyprus.101/",
+                            "https://forum.example.com/threads/payment-plan.102/",
+                            "not-a-url",
+                        ]
+                    },
+                    "scraper": FakeScraper(),
+                }
+
+        class FakeOutputs:
+            urls = 1
+
+        with patch.object(forum_engine, "_fs_extractor", FakeExtractor), patch.object(
+            forum_engine, "_fs_outputs", FakeOutputs
+        ):
+            result = forum_engine.discover_forum_threads(
+                "https://forum.example.com/",
+                limit=10,
+            )
+
+        self.assertEqual(len(result["threads"]), 2)
+        self.assertEqual(
+            result["threads"][0],
+            "https://forum.example.com/threads/buying-north-cyprus.101/",
+        )
+        self.assertFalse(result["error"])
+
 if __name__ == "__main__":
     unittest.main()
