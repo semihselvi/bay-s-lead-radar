@@ -15,6 +15,13 @@ from google.cloud import firestore
 from google.oauth2 import service_account
 
 from buyer_intent_core import classify_candidate, clean
+from ocean_learning import (
+    rank_queries,
+    update_query_stats,
+    update_source_stats,
+    record_person_event,
+    load_source_scores,
+)
 import global_semantic_buyer_radar as semantic
 import reddit_global_comment_rss as reddit_rss
 
@@ -135,16 +142,19 @@ def bing_rss(query: str, limit: int = 12) -> list[dict]:
         return []
 
 
-def semantic_adapter() -> list[dict]:
+def semantic_adapter(db=None) -> list[dict]:
     out = []
-    for q in semantic.EXA_QUERIES:
-        for row in semantic.exa_search(q):
+    ranked = rank_queries(db, list(semantic.EXA_QUERIES))
+    for q in ranked:
+        qrows = semantic.exa_search(q)
+        for row in qrows:
             out.append({
                 **row,
                 "source": "Exa Semantic",
                 "buyer_signal": "semantic_global_purchase",
                 "credibility_score": 84,
             })
+        update_query_stats(db, q, raw=len(qrows))
     print("OCEAN_SOURCE semantic", len(out))
     return out
 
@@ -163,16 +173,17 @@ def reddit_adapter() -> list[dict]:
     return out
 
 
-def bluesky_adapter() -> list[dict]:
+def bluesky_adapter(db=None) -> list[dict]:
     out = []
     endpoint = "https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts"
-    for q in BLUESKY_QUERIES:
+    for q in rank_queries(db, list(BLUESKY_QUERIES)):
         try:
             r = SESSION.get(endpoint, params={"q": q, "limit": 50, "sort": "latest"}, timeout=25)
             if r.status_code != 200:
                 print("OCEAN_BLUESKY_ERROR", r.status_code, q)
                 continue
-            for row in r.json().get("posts", []) or []:
+            posts = r.json().get("posts", []) or []
+            for row in posts:
                 record = row.get("record") or {}
                 author = row.get("author") or {}
                 uri = str(row.get("uri") or "")
@@ -190,19 +201,23 @@ def bluesky_adapter() -> list[dict]:
                     "buyer_signal": "bluesky_purchase_intent",
                     "credibility_score": 86,
                 })
+            update_query_stats(db, q, raw=len(posts))
         except Exception as exc:
             print("OCEAN_BLUESKY_EXCEPTION", q, type(exc).__name__, exc)
     print("OCEAN_SOURCE bluesky", len(out))
     return out
 
 
-def discover_surface_urls() -> tuple[list[str], list[str]]:
+def discover_surface_urls(db=None) -> tuple[list[str], list[str]]:
     youtube: list[str] = []
     forums: list[str] = []
     seen = set()
     max_queries = int(os.getenv("OCEAN_DISCOVERY_QUERY_LIMIT", "10"))
-    for q in DISCOVERY_QUERIES[:max_queries]:
-        for row in bing_rss(q):
+    ranked = rank_queries(db, list(DISCOVERY_QUERIES))
+    for q in ranked[:max_queries]:
+        qrows = bing_rss(q)
+        update_query_stats(db, q, raw=len(qrows))
+        for row in qrows:
             url = clean(row.get("url", ""))
             if not url or url in seen:
                 continue
@@ -325,14 +340,15 @@ def forum_adapter(urls: list[str]) -> list[dict]:
 
 def run():
     started = now_utc()
-    youtube_urls, forum_urls = discover_surface_urls()
+    db = db_client()
+    youtube_urls, forum_urls = discover_surface_urls(db)
 
     raw = []
     source_errors = []
     adapters = [
-        ("semantic", semantic_adapter),
+        ("semantic", lambda: semantic_adapter(db)),
         ("reddit_comments", reddit_adapter),
-        ("bluesky", bluesky_adapter),
+        ("bluesky", lambda: bluesky_adapter(db)),
         ("youtube_comments", lambda: youtube_adapter(youtube_urls)),
         ("forums", lambda: forum_adapter(forum_urls)),
     ]
@@ -362,9 +378,13 @@ def run():
             qualified.append(lead)
             by_source[lead.get("source", "unknown")] += 1
 
-    db = db_client()
     new = []
     for lead in qualified:
+        journey = record_person_event(db, lead)
+        lead["journey_score"] = int(journey.get("journey_score") or lead.get("intent_score") or 0)
+        lead["journey_events"] = int(journey.get("events") or 1)
+        lead["journey_sources"] = journey.get("sources") or [lead.get("source", "")]
+
         key = candidate_key(lead)
         if db:
             ref = db.collection(NOTIFIED_COLLECTION).document(key)
@@ -379,11 +399,30 @@ def run():
                     "url": lead.get("url", ""),
                     "author": lead.get("author", ""),
                     "classification": lead.get("classification", ""),
+                    "journey_score": lead.get("journey_score"),
+                    "journey_events": lead.get("journey_events"),
                     "notified_at": started.isoformat(),
                 }, merge=True)
             except Exception as exc:
                 print("OCEAN_DEDUPE_WRITE_ERROR", type(exc).__name__, exc)
         new.append(lead)
+
+    for source_name, raw_count in source_counts.items():
+        q_count = int(by_source.get({
+            "semantic": "Exa Semantic",
+            "reddit_comments": "Reddit Comment RSS",
+            "bluesky": "Bluesky Public Search",
+            "youtube_comments": "YouTube Comment",
+            "forums": "forum-dl",
+        }.get(source_name, source_name), 0))
+        n_count = sum(1 for lead in new if lead.get("source") == {
+            "semantic": "Exa Semantic",
+            "reddit_comments": "Reddit Comment RSS",
+            "bluesky": "Bluesky Public Search",
+            "youtube_comments": "YouTube Comment",
+            "forums": "forum-dl",
+        }.get(source_name, source_name))
+        update_source_stats(db, source_name, raw=raw_count, qualified=q_count, new=n_count)
 
     stats = {
         "version": VERSION,
@@ -397,6 +436,8 @@ def run():
         "source_errors": source_errors,
         "youtube_urls": len(youtube_urls),
         "forum_urls": len(forum_urls),
+        "source_learning_scores": load_source_scores(db),
+        "journey_hot": sum(1 for x in new if int(x.get("journey_score") or 0) >= 95),
     }
 
     if db:
@@ -411,9 +452,9 @@ def run():
 
     if new:
         lines = [f"🌊 OCEAN SOURCE HUB | {len(new)} YENİ BUYER"]
-        for lead in sorted(new, key=lambda x: (x["classification"] == "HOT", x["intent_score"]), reverse=True)[:12]:
+        for lead in sorted(new, key=lambda x: (int(x.get("journey_score") or 0), x["classification"] == "HOT", x["intent_score"]), reverse=True)[:12]:
             lines.append(
-                f"\n{lead['classification']} | {lead.get('source','')} | I{lead['intent_score']} C{lead['credibility_score']}"
+                f"\n{lead['classification']} | {lead.get('source','')} | I{lead['intent_score']} J{lead.get('journey_score', lead['intent_score'])} C{lead['credibility_score']}"
                 f"\n👤 {clean(lead.get('author',''))[:80]}"
                 f"\n{clean(lead.get('text',''))[:420]}"
                 f"\n{lead.get('url','')}"
