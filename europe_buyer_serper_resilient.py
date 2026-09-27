@@ -218,7 +218,7 @@ def strict_abroad_audience_match(base, profile: str, item: dict, text: str) -> t
     context bridge.
     """
     spec = base.PROFILES[profile]
-    if profile == "golden_visa":
+    if profile in {"golden_visa", "global_abroad"}:
         return True, True
 
     explicit = bool(spec["audience_re"].search(text))
