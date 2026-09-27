@@ -656,7 +656,16 @@ def main() -> None:
     debug["hub_source_counts"] = hub_meta.get("source_counts", {})
     debug["hub_youtube_urls"] = hub_meta.get("youtube_urls", 0)
     debug["hub_forum_urls"] = hub_meta.get("forum_urls", 0)
-    hub_new = source_hub.process_rows(db_client, now, hub_rows, debug)
+    hub_new = source_hub.process_rows(
+        db_client,
+        now,
+        hub_rows,
+        debug,
+        classify_fn=classify,
+        lead_id_fn=_lead_id,
+        save_new_fn=_save_new,
+        radar_version=VERSION,
+    )
 
     new_leads = telegram_new + web_new + hub_new
     new_leads.sort(
