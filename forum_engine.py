@@ -7,6 +7,12 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
+try:
+    from forumscraper import extractor as _fs_extractor, outputs as _fs_outputs
+except Exception:
+    _fs_extractor = None
+    _fs_outputs = None
+
 
 FORUM_SIGNATURES = (
     ("xenforo", re.compile(r"(?:xenforo|data-xf-|class=[\"'][^\"']*message-body)", re.I)),
@@ -106,6 +112,79 @@ def _first(node: Any, selectors: tuple[str, ...]) -> Any:
     return None
 
 
+
+
+def _clean_html_text(value: str) -> str:
+    raw = str(value or "")
+    if not raw:
+        return ""
+    try:
+        return " ".join(BeautifulSoup(raw, "html.parser").get_text(" ", strip=True).split())
+    except Exception:
+        return " ".join(raw.split())
+
+
+def _forumscraper_posts(html: str, url: str) -> dict[str, Any]:
+    """Best-effort universal forum fallback using TUVIMEN/forumscraper.
+
+    The already-downloaded HTML is supplied to avoid a second network request.
+    Any parser failure is swallowed so the lightweight native parser remains
+    the safe default.
+    """
+    if _fs_extractor is None or _fs_outputs is None or not url or not html:
+        return {"engine": "", "posts": []}
+
+    try:
+        ex = _fs_extractor(
+            requests={
+                "timeout": 20,
+                "retry": 0,
+            }
+        )
+        result = ex.guess(
+            url,
+            html,
+            output=_fs_outputs.data | _fs_outputs.threads,
+            requests={"retry": 0},
+        )
+    except Exception:
+        return {"engine": "", "posts": []}
+
+    if not isinstance(result, dict):
+        return {"engine": "", "posts": []}
+
+    data = result.get("data") or {}
+    threads = data.get("threads") or []
+    if not threads:
+        return {"engine": "", "posts": []}
+
+    thread = threads[0] if isinstance(threads[0], dict) else {}
+    format_version = str(thread.get("format_version") or "")
+    engine = format_version.split("-", 1)[0] if format_version else "forumscraper"
+
+    out: list[dict[str, Any]] = []
+    for index, post in enumerate(thread.get("posts") or []):
+        if not isinstance(post, dict):
+            continue
+        text = _clean_html_text(post.get("text") or "")
+        if len(text) < 20:
+            continue
+        post_id = str(post.get("id") or "")
+        author = str(post.get("user") or post.get("author") or "").strip()
+        published = str(post.get("date") or post.get("published") or "").strip()
+        stable = f"{url}|{post_id or index}|{text[:160]}"
+        out.append({
+            "post_id": post_id,
+            "author": author,
+            "published": published,
+            "text": text,
+            "fingerprint": hashlib.sha256(stable.encode("utf-8", "ignore")).hexdigest(),
+        })
+        if len(out) >= 120:
+            break
+
+    return {"engine": engine or "forumscraper", "posts": out}
+
 def extract_forum_posts(html: str, url: str = "") -> dict[str, Any]:
     soup = BeautifulSoup(str(html or ""), "html.parser")
     engine = detect_forum_engine(html)
@@ -148,5 +227,13 @@ def extract_forum_posts(html: str, url: str = "") -> dict[str, Any]:
             "text": text,
             "fingerprint": hashlib.sha256(stable.encode("utf-8", "ignore")).hexdigest(),
         })
+
+    # If the lightweight parser could not recover structured posts, try the
+    # universal forum parser. This covers XenForo/phpBB/vBulletin/SMF/Invision
+    # without maintaining site-specific selectors for each forum.
+    if not posts:
+        fallback = _forumscraper_posts(html, url)
+        if fallback.get("posts"):
+            return fallback
 
     return {"engine": engine, "posts": posts}
