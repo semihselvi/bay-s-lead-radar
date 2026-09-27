@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import re
 from datetime import datetime, timezone
 
 QUERY_COLLECTION = "bay_s_ocean_query_learning"
@@ -19,15 +20,25 @@ def stable_id(prefix: str, value: str) -> str:
 
 
 def normalize_identity(item: dict) -> str:
-    author = str(item.get("author") or "").strip().casefold()
-    source = str(item.get("source") or "").strip().casefold()
+    author = str(item.get("author") or "").strip().casefold().lstrip("@")
     url = str(item.get("url") or "").strip()
-    if author:
-        return stable_id("person", f"{source}|{author}")
+    text = " ".join(str(item.get("text") or "").split()).casefold()
+
+    email = re.search(r"\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b", text, re.I)
+    if email:
+        return stable_id("person-email", email.group(0).casefold())
+
+    handle = re.search(r"(?<!\w)@([a-z0-9_.-]{4,40})\b", text, re.I)
+    if handle:
+        return stable_id("person-handle", handle.group(1).casefold())
+
+    if author and 4 <= len(author) <= 80 and author not in {"deleted", "anonymous", "unknown", "automoderator"}:
+        return stable_id("person-author", author)
+
     if url:
-        return stable_id("person", url.split("?", 1)[0].rstrip("/"))
-    text = " ".join(str(item.get("text") or "").split()).casefold()[:300]
-    return stable_id("person", text)
+        return stable_id("person-url", url.split("?", 1)[0].rstrip("/"))
+
+    return stable_id("person-text", text[:300])
 
 
 def query_score(data: dict) -> float:
@@ -99,6 +110,21 @@ def update_query_stats(db, query: str, raw: int = 0, qualified: int = 0, new: in
         })
     except Exception as exc:
         print("OCEAN_QUERY_LEARNING_WRITE_ERROR", type(exc).__name__, exc)
+
+
+def update_query_yield(db, query: str, qualified: int = 0, new: int = 0):
+    if not db or not query or (qualified == 0 and new == 0):
+        return
+    ref = db.collection(QUERY_COLLECTION).document(stable_id("query", query))
+    try:
+        ref.set({"query": query, "last_yield_at": now_iso()}, merge=True)
+        from google.cloud import firestore
+        ref.update({
+            "qualified": firestore.Increment(qualified),
+            "new": firestore.Increment(new),
+        })
+    except Exception as exc:
+        print("OCEAN_QUERY_YIELD_WRITE_ERROR", type(exc).__name__, exc)
 
 
 def update_source_stats(db, source: str, raw: int = 0, qualified: int = 0, new: int = 0):
