@@ -219,11 +219,13 @@ RECRUITMENT_PARTNER_RE = re.compile(
 
 PLATFORM_PROMO_RE = re.compile(
     r"(?:"
-    r"everything\s+you\s+need\s+to\s+build\s+your\s+website|"
-    r"create\s+your\s+(?:wordpress\s+)?website|start\s+building\s+today|"
+    r"everything\s+you\s+need\s+to\s+build\s+(?:your|a)\s+website|"
+    r"create\s+your\s+(?:wordpress\s+)?website|website\s+builder|start\s+building\s+today|"
     r"built[-\s]?in\s+hosting|premium\s+themes?|free\s+plan\s+available|"
     r"sign\s+up\s+free|get\s+started\s+free|"
-    r"try\s+.*\s+free|no\s+technical\s+setup\s+required"
+    r"try\s+.*\s+free|free\s+(?:easy[-\s]?to[-\s]?use\s+)?website\s+builder|"
+    r"templates?.{0,80}built[-\s]?in\s+ai|custom\s+domain|"
+    r"no\s+technical\s+setup\s+required"
     r")",
     re.I | re.S,
 )
