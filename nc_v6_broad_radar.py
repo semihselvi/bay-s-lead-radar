@@ -2426,7 +2426,8 @@ def save_and_notify_debug() -> None:
         f"Web provider durumu: {provider_errors}\n"
         f"Gerçek hata: {total_errors}"
     )
-    core.telegram(msg[:3900])
+    if os.getenv("RADAR_NOTIFY_DEBUG", "0").strip() == "1":
+        core.telegram(msg[:3900])
     try:
         for row in sorted(DEBUG["review_samples"], key=lambda x: x.get("score", 0), reverse=True):
             print("LEAD_RADAR_REVIEW_CURRENT", json.dumps(row, ensure_ascii=False))
