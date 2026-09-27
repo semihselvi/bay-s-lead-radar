@@ -12,7 +12,7 @@ import requests
 from google.cloud import firestore
 from google.oauth2 import service_account
 
-VERSION = "1.0-serper-abroad-production"
+VERSION = "1.1-global-ocean-discovery"
 PROFILE = os.getenv("ABROAD_RADAR_PROFILE", "germany_abroad").strip().lower()
 LOOKBACK_DAYS = int(os.getenv("ABROAD_RADAR_LOOKBACK_DAYS", "7"))
 QUERY_LIMIT = int(os.getenv("ABROAD_RADAR_QUERY_LIMIT", "10"))
@@ -99,7 +99,151 @@ PROFILES = {
             'Suisse "Chypre du Nord" acheter immobilier',
         ],
     },
-    "golden_visa": {
+,
+    "uk_abroad": {
+        "icon": "🇬🇧", "title": "UK RESIDENTS BUYING ABROAD", "hl": "en", "gl": "uk",
+        "audience_re": re.compile(r"(?:\bi live in (?:the )?uk\b|\bwe live in (?:the )?uk\b|\bfrom (?:the )?uk\b|\bi live in britain\b|\bwe live in britain\b|\bbritish resident\b)", re.I),
+        "query_anchor": re.compile(r"(?:\buk\b|united kingdom|britain|british)", re.I),
+        "bridge_domains": {"moneysavingexpert.com", "reddit.com", "expat.com", "expatforum.com"},
+        "queries": [
+            'site:reddit.com/r/AskUK "buy property abroad"',
+            'site:reddit.com/r/UKPersonalFinance "property abroad" buy',
+            'site:moneysavingexpert.com "property abroad" buy forum',
+            'UK "looking to buy property abroad"',
+            'UK "second home abroad" buying',
+            'British "want to buy" "property abroad"',
+            '"retire abroad" "buy property" UK',
+            '"Mediterranean property" "looking to buy" UK',
+            '"property abroad" "budget" UK forum',
+            '"North Cyprus" "looking to buy" UK',
+        ],
+    },
+    "ireland_abroad": {
+        "icon": "🇮🇪", "title": "IRELAND RESIDENTS BUYING ABROAD", "hl": "en", "gl": "ie",
+        "audience_re": re.compile(r"(?:\bi live in ireland\b|\bwe live in ireland\b|\bfrom ireland\b|\birish resident\b|\bi am irish\b)", re.I),
+        "query_anchor": re.compile(r"(?:ireland|irish)", re.I),
+        "bridge_domains": {"reddit.com", "expat.com", "expatforum.com"},
+        "queries": [
+            'site:reddit.com/r/ireland "buy property abroad"',
+            'site:reddit.com/r/irishpersonalfinance "property abroad"',
+            'Ireland "looking to buy property abroad"',
+            'Ireland "second home abroad" buy',
+            'Irish "want to buy" property abroad',
+            '"retire abroad" property Ireland',
+            '"Mediterranean property" Ireland buy',
+            '"property abroad" budget Ireland forum',
+            '"holiday home abroad" Ireland buy',
+            '"North Cyprus" Irish buyer property',
+        ],
+    },
+    "poland_abroad": {
+        "icon": "🇵🇱", "title": "POLAND RESIDENTS BUYING ABROAD", "hl": "pl", "gl": "pl",
+        "audience_re": re.compile(r"(?:\bmieszkam w polsce\b|\bmieszkamy w polsce\b|\bjestem z polski\b|\bfrom poland\b|\bi live in poland\b|\bpolish resident\b)", re.I),
+        "query_anchor": re.compile(r"(?:polska|poland|polish)", re.I),
+        "bridge_domains": {"reddit.com", "expat.com", "expatforum.com"},
+        "queries": [
+            'site:reddit.com/r/poland "buy property abroad"',
+            'site:reddit.com/r/Polska "nieruchomość za granicą" kupić',
+            'Polska "chcę kupić nieruchomość za granicą"',
+            'Polska "mieszkanie za granicą" kupić',
+            'Polska "dom za granicą" kupić',
+            '"nieruchomość za granicą" budżet Polska',
+            '"drugi dom za granicą" Polska',
+            '"nieruchomość nad morzem" za granicą Polska',
+            '"Cypr Północny" kupić mieszkanie',
+            '"North Cyprus" Polish buyer property',
+        ],
+    },
+    "sweden_abroad": {
+        "icon": "🇸🇪", "title": "SWEDEN RESIDENTS BUYING ABROAD", "hl": "sv", "gl": "se",
+        "audience_re": re.compile(r"(?:\bjag bor i sverige\b|\bvi bor i sverige\b|\bfrån sverige\b|\bfrom sweden\b|\bi live in sweden\b|\bswedish resident\b)", re.I),
+        "query_anchor": re.compile(r"(?:sverige|sweden|swedish)", re.I),
+        "bridge_domains": {"reddit.com", "expat.com", "expatforum.com"},
+        "queries": [
+            'site:reddit.com/r/sweden "buy property abroad"',
+            'site:reddit.com/r/TillSverige "property abroad" buy',
+            'Sverige "köpa bostad utomlands"',
+            'Sverige "köpa hus utomlands"',
+            'Sverige "lägenhet utomlands" köpa',
+            '"bostad utomlands" budget Sverige',
+            '"andra hem utomlands" Sverige',
+            '"Mediterranean property" Sweden buy',
+            '"Norra Cypern" köpa lägenhet',
+            '"North Cyprus" Swedish buyer property',
+        ],
+    },
+    "italy_abroad": {
+        "icon": "🇮🇹", "title": "ITALY RESIDENTS BUYING ABROAD", "hl": "it", "gl": "it",
+        "audience_re": re.compile(r"(?:\bvivo in italia\b|\bviviamo in italia\b|\bsono italiano\b|\bsono italiana\b|\bfrom italy\b|\bi live in italy\b|\bitalian resident\b)", re.I),
+        "query_anchor": re.compile(r"(?:italia|italy|italian)", re.I),
+        "bridge_domains": {"reddit.com", "expat.com", "expatforum.com"},
+        "queries": [
+            'site:reddit.com/r/italy "buy property abroad"',
+            'Italia "voglio comprare casa all estero"',
+            'Italia "comprare immobile all estero"',
+            'Italia "seconda casa all estero"',
+            '"casa all estero" budget Italia',
+            '"investire in immobili all estero" Italia',
+            '"casa al mare all estero" comprare Italia',
+            '"Mediterranean property" Italy buy',
+            '"Cipro del Nord" comprare casa',
+            '"North Cyprus" Italian buyer property',
+        ],
+    },
+    "spain_abroad": {
+        "icon": "🇪🇸", "title": "SPAIN RESIDENTS BUYING ABROAD", "hl": "es", "gl": "es",
+        "audience_re": re.compile(r"(?:\bvivo en españa\b|\bvivimos en españa\b|\bsoy español\b|\bsoy española\b|\bfrom spain\b|\bi live in spain\b|\bspanish resident\b)", re.I),
+        "query_anchor": re.compile(r"(?:españa|spain|spanish)", re.I),
+        "bridge_domains": {"reddit.com", "expat.com", "expatforum.com"},
+        "queries": [
+            'site:reddit.com/r/spain "buy property abroad"',
+            'España "quiero comprar casa en el extranjero"',
+            'España "comprar vivienda en el extranjero"',
+            'España "segunda residencia en el extranjero"',
+            '"casa en el extranjero" presupuesto España',
+            '"invertir en vivienda en el extranjero" España',
+            '"propiedad mediterránea" comprar España',
+            '"casa barata en el extranjero" España',
+            '"Chipre del Norte" comprar vivienda',
+            '"North Cyprus" Spanish buyer property',
+        ],
+    },
+    "portugal_abroad": {
+        "icon": "🇵🇹", "title": "PORTUGAL RESIDENTS BUYING ABROAD", "hl": "pt", "gl": "pt",
+        "audience_re": re.compile(r"(?:\bvivo em portugal\b|\bvivemos em portugal\b|\bsou português\b|\bsou portuguesa\b|\bfrom portugal\b|\bi live in portugal\b|\bportuguese resident\b)", re.I),
+        "query_anchor": re.compile(r"(?:portugal|portuguese|português|portuguesa)", re.I),
+        "bridge_domains": {"reddit.com", "expat.com", "expatforum.com"},
+        "queries": [
+            'site:reddit.com/r/portugal "buy property abroad"',
+            'Portugal "quero comprar casa no estrangeiro"',
+            'Portugal "comprar imóvel no estrangeiro"',
+            'Portugal "segunda casa no estrangeiro"',
+            '"casa no estrangeiro" orçamento Portugal',
+            '"investir em imóveis no estrangeiro" Portugal',
+            '"casa no mediterrâneo" comprar Portugal',
+            '"property abroad" Portugal budget',
+            '"Chipre do Norte" comprar apartamento',
+            '"North Cyprus" Portuguese buyer property',
+        ],
+    },
+    "uae_abroad": {
+        "icon": "🇦🇪", "title": "UAE RESIDENTS BUYING ABROAD", "hl": "en", "gl": "ae",
+        "audience_re": re.compile(r"(?:\bi live in (?:the )?uae\b|\bwe live in (?:the )?uae\b|\bi live in dubai\b|\bwe live in dubai\b|\buae resident\b|\bdubai resident\b)", re.I),
+        "query_anchor": re.compile(r"(?:\buae\b|dubai|united arab emirates)", re.I),
+        "bridge_domains": {"reddit.com", "expat.com", "expatforum.com"},
+        "queries": [
+            'site:reddit.com/r/dubai "buy property abroad"',
+            'site:reddit.com/r/UAE "property abroad" buy',
+            'Dubai resident "looking to buy property abroad"',
+            'UAE resident "second home abroad"',
+            'Dubai "want to buy" Mediterranean property',
+            'UAE "holiday home abroad" buy',
+            'Dubai "property abroad" budget',
+            'UAE "investment property abroad"',
+            'Dubai "North Cyprus" property buy',
+            'UAE resident "payment plan" property abroad',
+        ],
+    }    "golden_visa": {
         "icon": "🛂", "title": "GOLDEN VISA BUYER INTENT", "hl": "en", "gl": "us",
         "audience_re": None,
         "query_anchor": re.compile(r"golden visa|residency by investment|residence by investment|investor visa", re.I),
@@ -119,16 +263,21 @@ PROFILES = {
     },
 }
 
-PROPERTY_RE = re.compile(r"(?:property|real estate|apartment|flat|house|home|villa|land|second home|holiday home|immobilie|wohnung|haus|ferienwohnung|ferienhaus|auslandsimmobilie|woning|huis|vastgoed|appartement|immobilier|maison|résidence|residence)", re.I)
+PROPERTY_RE = re.compile(r"(?:property|real estate|apartment|flat|house|home|villa|land|second home|holiday home|immobilie|wohnung|haus|ferienwohnung|ferienhaus|auslandsimmobilie|woning|huis|vastgoed|appartement|immobilier|maison|résidence|residence|nieruchomość|mieszkanie|dom|bostad|lägenhet|hus|casa|immobile|abitazione|vivienda|inmueble|imóvel|apartamento)", re.I)
 BUYER_RE = re.compile(
     r"(?:\b(?:i|we)\b.{0,70}\b(?:want|looking|planning|considering|ready|need|seeking)\b.{0,90}\b(?:buy|purchase|invest|property|apartment|house|villa|home)\b|"
     r"\blooking\s+to\s+buy\b|\bwant\s+to\s+buy\b|\bplanning\s+to\s+buy\b|"
     r"\b(?:ich|wir)\b.{0,70}\b(?:möchte|moechte|möchten|moechten|will|wollen|plane|planen|überlege|ueberlege|suche|suchen)\b.{0,90}\b(?:kaufen|investieren|immobilie|wohnung|haus|villa)\b|"
     r"\b(?:ik|wij|we)\b.{0,70}\b(?:wil|willen|plan|plannen|overweeg|overwegen|zoek|zoeken)\b.{0,90}\b(?:kopen|investeren|woning|huis|vastgoed|appartement)\b|"
-    r"\b(?:je|nous)\b.{0,70}\b(?:veux|voulons|souhaite|souhaitons|prévois|prevoyons|cherche|cherchons)\b.{0,90}\b(?:acheter|investir|immobilier|appartement|maison|villa)\b)",
+    r"\b(?:je|nous)\b.{0,70}\b(?:veux|voulons|souhaite|souhaitons|prévois|prevoyons|cherche|cherchons)\b.{0,90}\b(?:acheter|investir|immobilier|appartement|maison|villa)\b|"
+    r"\b(?:chcę|chcemy|szukam|szukamy|planuję|planujemy)\b.{0,90}\b(?:kupić|nieruchomość|mieszkanie|dom)\b|"
+    r"\b(?:jag|vi)\b.{0,70}\b(?:vill|planerar|överväger|söker)\b.{0,90}\b(?:köpa|bostad|lägenhet|hus|fastighet)\b|"
+    r"\b(?:io|noi)\b.{0,70}\b(?:voglio|vogliamo|cerco|cerchiamo|penso|pensiamo)\b.{0,90}\b(?:comprare|acquistare|casa|immobile|appartamento)\b|"
+    r"\b(?:yo|nosotros)\b.{0,70}\b(?:quiero|queremos|busco|buscamos|pienso|pensamos)\b.{0,90}\b(?:comprar|vivienda|casa|apartamento|inmueble)\b|"
+    r"\b(?:eu|nós|nos)\b.{0,70}\b(?:quero|queremos|procuro|procuramos|planejo|planejamos)\b.{0,90}\b(?:comprar|casa|apartamento|imóvel)\b)",
     re.I | re.S,
 )
-FIRST_PERSON_RE = re.compile(r"\b(?:i|we|my|our|ich|wir|mein\w*|unser\w*|ik|wij|mijn|ons|onze|je|nous|mon|ma|notre)\b", re.I)
+FIRST_PERSON_RE = re.compile(r"\b(?:i|we|my|our|ich|wir|mein\w*|unser\w*|ik|wij|mijn|ons|onze|je|nous|mon|ma|notre|chcę|chcemy|szukam|szukamy|jag|vi|io|noi|yo|nosotros|eu|nós|nos)\b", re.I)
 CONCRETE_RE = re.compile(r"(?:[£€$₣]\s*\d[\d\s.,]*(?:\s*[kKmM])?|\bbudget\b|\bmortgage\b|\bdeposit\b|\bpayment plan\b|\beigenkapital\b|\bfinanzierung\b|\bhypotheek\b|\bfinanciering\b|\bapport\b|\bfinancement\b|\bminimum investment\b)", re.I)
 RENT_RE = re.compile(r"(?:for rent|looking to rent|rental|per month|monthly|mieten|miete|zur miete|huren|huur|per maand|à louer|a louer|location mensuelle)", re.I)
 SELLER_RE = re.compile(r"(?:for sale|available now|contact us|whatsapp|estate agent|real estate agent|realtor|broker|developer|listing|our project|our properties|zu verkaufen|makler|immobilienmakler|te koop aangeboden|makelaar|à vendre|a vendre|agent immobilier|promoteur)", re.I)
