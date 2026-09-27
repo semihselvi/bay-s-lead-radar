@@ -8,6 +8,13 @@ name: OCEAN - Global Residents Buying Abroad
     paths:
       - "europe_abroad_buyer_radar.py"
       - "europe_buyer_serper_resilient.py"
+      - "ocean_source_hub.py"
+      - "ocean_learning.py"
+      - "buyer_intent_core.py"
+      - "global_semantic_buyer_radar.py"
+      - "reddit_global_comment_rss.py"
+      - "requirements-ocean.txt"
+      - "test_ocean_learning.py"
       - ".github/workflows/global-abroad-ocean.yml"
   schedule:
     - cron: "40 5,11,17 * * *"
@@ -55,8 +62,8 @@ jobs:
 
       - name: Verify ocean buyer radar
         run: |
-          python -m py_compile europe_abroad_buyer_radar.py europe_abroad_buyer_radar_verified.py europe_buyer_search_fallback.py europe_buyer_serper_resilient.py global_semantic_buyer_radar.py reddit_global_comment_rss.py buyer_intent_core.py ocean_source_hub.py test_buyer_intent_core.py
-          python -m unittest -q test_buyer_intent_core.py
+          python -m py_compile europe_abroad_buyer_radar.py europe_abroad_buyer_radar_verified.py europe_buyer_search_fallback.py europe_buyer_serper_resilient.py global_semantic_buyer_radar.py reddit_global_comment_rss.py buyer_intent_core.py ocean_source_hub.py ocean_learning.py test_buyer_intent_core.py test_ocean_learning.py
+          python -m unittest -q test_buyer_intent_core.py test_ocean_learning.py
           python - <<'PY'
           import europe_abroad_buyer_radar as r
           required = {
