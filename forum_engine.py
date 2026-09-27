@@ -8,7 +8,7 @@ from typing import Any
 from bs4 import BeautifulSoup
 
 try:
-    from forumscraper import extractor as _fs_extractor, outputs as _fs_outputs
+    from forumscraper import Extractor as _fs_extractor, Outputs as _fs_outputs
 except Exception:
     _fs_extractor = None
     _fs_outputs = None
