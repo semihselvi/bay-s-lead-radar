@@ -53,7 +53,7 @@ jobs:
 
       - name: Verify ocean buyer radar
         run: |
-          python -m py_compile europe_abroad_buyer_radar.py europe_abroad_buyer_radar_verified.py europe_buyer_search_fallback.py europe_buyer_serper_resilient.py
+          python -m py_compile europe_abroad_buyer_radar.py europe_abroad_buyer_radar_verified.py europe_buyer_search_fallback.py europe_buyer_serper_resilient.py global_semantic_buyer_radar.py reddit_global_comment_rss.py
           python - <<'PY'
           import europe_abroad_buyer_radar as r
           required = {
@@ -67,6 +67,26 @@ jobs:
               raise SystemExit(f"Missing ocean profiles: {missing}")
           print("Ocean profiles OK:", ", ".join(sorted(required)))
           PY
+
+      - name: Run semantic global buyer discovery
+        if: matrix.profile == 'global_abroad'
+        env:
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SEMANTIC_BUYER_LOOKBACK_DAYS: "30"
+          SEMANTIC_BUYER_MAX_RESULTS: "20"
+        run: python global_semantic_buyer_radar.py
+
+      - name: Run global Reddit comment buyer miner
+        if: matrix.profile == 'global_abroad'
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GLOBAL_REDDIT_COMMENT_LOOKBACK_DAYS: "14"
+        run: python reddit_global_comment_rss.py
 
       - name: Run global abroad buyer discovery
         env:
