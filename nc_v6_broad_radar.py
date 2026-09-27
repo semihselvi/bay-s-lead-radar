@@ -2308,8 +2308,13 @@ def notify_lead(lead: dict[str, Any], prefix: str = "NEW") -> bool:
     if str(lead.get("market") or "") != "north_cyprus":
         return False
     lead_class = str(lead.get("lead_class") or "WATCH")
+    intent_type = str(lead.get("intent_type") or "").upper()
     message_text = str(lead.get("message") or lead.get("text") or "")
-    if str(lead.get("intent_type") or "").upper() == "TENANT" or RENT_DEMAND_RE.search(message_text):
+    # Telegram is now a sales alarm, not a research/debug channel.
+    # Only explicit BUYER leads are pushed to the phone.
+    if intent_type != "BUYER":
+        return False
+    if RENT_DEMAND_RE.search(message_text):
         return False
     emoji = "🔥" if lead_class == "HOT BUYER" else "🟡" if lead_class in {"WARM BUYER", "INVESTOR", "RELOCATION"} else "👀"
     criteria_text = ", ".join(lead.get("important_criteria") or []) or "-"
