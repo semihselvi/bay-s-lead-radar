@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import subprocess
+from pathlib import Path
 import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -525,6 +526,15 @@ def run():
             }, merge=True)
         except Exception as exc:
             print("OCEAN_SCAN_WRITE_ERROR", type(exc).__name__, exc)
+
+    Path("ocean-last-run.json").write_text(
+        json.dumps({
+            "status": "success",
+            "finished_at": now_utc().isoformat(),
+            **stats,
+        }, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
     print("OCEAN_SOURCE_HUB_COMPLETE", json.dumps(stats, ensure_ascii=False))
 
