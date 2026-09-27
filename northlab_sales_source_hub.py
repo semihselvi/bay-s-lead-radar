@@ -10,7 +10,6 @@ from urllib.parse import quote_plus
 import requests
 from bs4 import BeautifulSoup
 
-import northlab_sales_radar as radar
 
 SESSION = requests.Session()
 SESSION.headers.update({
@@ -299,11 +298,21 @@ def collect_all() -> tuple[list[dict], dict]:
     }
 
 
-def process_rows(db_client, now, rows: list[dict], debug: dict) -> list[dict]:
+def process_rows(
+    db_client,
+    now,
+    rows: list[dict],
+    debug: dict,
+    *,
+    classify_fn,
+    lead_id_fn,
+    save_new_fn,
+    radar_version: str,
+) -> list[dict]:
     out = []
     seen = set()
     for row in rows:
-        sig = radar._lead_id(
+        sig = lead_id_fn(
             str(row.get("source") or ""),
             str(row.get("url") or ""),
             str(row.get("author") or ""),
@@ -314,16 +323,16 @@ def process_rows(db_client, now, rows: list[dict], debug: dict) -> list[dict]:
             continue
         seen.add(sig)
 
-        signal, reason = radar.classify(str(row.get("text") or ""))
+        signal, reason = classify_fn(str(row.get("text") or ""))
         if signal is None:
             debug["hub_rejects"][reason] += 1
             continue
 
-        lead = {**row, **signal, "radar_version": radar.VERSION}
+        lead = {**row, **signal, "radar_version": radar_version}
         debug["hub_accepted"] += 1
         debug["accepted_classes"][signal["lead_class"]] += 1
         debug["project_types"].update(signal["project_types"])
         debug["languages"][signal["language"]] += 1
-        if radar._save_new(db_client, lead, now):
+        if save_new_fn(db_client, lead, now):
             out.append(lead)
     return out
