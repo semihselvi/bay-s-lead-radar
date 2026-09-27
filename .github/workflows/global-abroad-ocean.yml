@@ -25,6 +25,7 @@ jobs:
       max-parallel: 4
       matrix:
         profile:
+          - global_abroad
           - uk_abroad
           - ireland_abroad
           - poland_abroad
