@@ -42,6 +42,34 @@ class NorthlabSalesRadarTests(unittest.TestCase):
         )
         self.assertIn("BOOKING", lead["project_types"])
 
+    def test_custom_software_project(self):
+        lead = self.assertLead(
+            "Looking for a developer for a custom software project for our logistics business. Budget €5000.",
+            "HOT PROJECT",
+        )
+        self.assertIn("SOFTWARE", lead["project_types"])
+
+    def test_api_integration_project(self):
+        lead = self.assertLead(
+            "We need an agency for an API integration project for our CRM.",
+            "HOT PROJECT",
+        )
+        self.assertIn("INTEGRATION", lead["project_types"])
+
+    def test_mobile_app_project(self):
+        lead = self.assertLead(
+            "Looking for a developer for a mobile app project for our business.",
+            "HOT PROJECT",
+        )
+        self.assertIn("MOBILE_APP", lead["project_types"])
+
+    def test_generic_developer_request_with_project_context(self):
+        lead = self.assertLead(
+            "Seeking a developer for a web app project. Need someone who can start this week.",
+            "HOT PROJECT",
+        )
+        self.assertIn("SOFTWARE", lead["project_types"])
+
     def test_partner(self):
         self.assertLead(
             "Looking for a white-label development partner for overflow website projects.",
