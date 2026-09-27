@@ -5,6 +5,8 @@ name: NORTHLAB - Sales Opportunity Radar
   push:
     paths:
       - "northlab_sales_radar.py"
+      - "northlab_sales_source_hub.py"
+      - "requirements-ocean.txt"
       - "test_northlab_sales_radar.py"
       - ".github/workflows/northlab-sales-radar.yml"
   schedule:
@@ -32,10 +34,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install -r requirements-ocean.txt
 
       - name: Verify Northlab radar
         run: |
-          python -m py_compile northlab_sales_radar.py test_northlab_sales_radar.py
+          python -m py_compile northlab_sales_radar.py northlab_sales_source_hub.py test_northlab_sales_radar.py
           python -m unittest -q test_northlab_sales_radar.py
 
       - name: Restore dedicated Northlab Telegram session
@@ -77,6 +80,11 @@ jobs:
           NORTHLAB_MAX_ALERTS: "12"
           NORTHLAB_WEB_QUERY_LIMIT: "24"
           NORTHLAB_GLOBAL_RESULTS_PER_QUERY: "30"
+          NORTHLAB_SOURCE_HUB_LOOKBACK_DAYS: "14"
+          NORTHLAB_YOUTUBE_VIDEO_LIMIT: "10"
+          NORTHLAB_YOUTUBE_COMMENTS_PER_VIDEO: "100"
+          NORTHLAB_FORUM_URL_LIMIT: "10"
+          NORTHLAB_FORUM_DL_TIMEOUT: "35"
         run: python northlab_sales_radar.py
 
       - name: Cleanup Telegram session
