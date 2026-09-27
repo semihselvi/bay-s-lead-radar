@@ -21,6 +21,8 @@ from ocean_learning import (
     update_source_stats,
     record_person_event,
     load_source_scores,
+    learn_discovered_source,
+    best_discovered_sources,
 )
 import global_semantic_buyer_radar as semantic
 import reddit_global_comment_rss as reddit_rss
@@ -208,12 +210,51 @@ def bluesky_adapter(db=None) -> list[dict]:
     return out
 
 
+def _source_key_from_url(url: str) -> tuple[str, str]:
+    try:
+        p = urlparse(url)
+        host = p.netloc.casefold().removeprefix("www.")
+        path = p.path.casefold()
+        if "reddit.com" in host and "/r/" in path:
+            parts = [x for x in p.path.split("/") if x]
+            if len(parts) >= 2 and parts[0].lower() == "r":
+                return f"reddit:r/{parts[1]}", "reddit"
+        if host in YOUTUBE_HOSTS:
+            return f"youtube:{host}", "youtube"
+        return f"domain:{host}", "domain"
+    except Exception:
+        return "", ""
+
+
+def learned_source_expansion_queries(db) -> list[str]:
+    queries = []
+    for row in best_discovered_sources(db, limit=12):
+        key = str(row.get("source_key") or "")
+        stype = str(row.get("source_type") or "")
+        if stype == "reddit" and key.startswith("reddit:r/"):
+            subreddit = key.split("reddit:r/", 1)[1]
+            queries.extend([
+                f'site:reddit.com/r/{subreddit} "buy property abroad"',
+                f'site:reddit.com/r/{subreddit} "second home abroad"',
+                f'site:reddit.com/r/{subreddit} "retire abroad" property',
+            ])
+        elif stype == "domain" and key.startswith("domain:"):
+            host = key.split("domain:", 1)[1]
+            queries.extend([
+                f'site:{host} "buy property abroad"',
+                f'site:{host} "second home abroad"',
+            ])
+    # preserve order, dedupe
+    return list(dict.fromkeys(q for q in queries if q))
+
+
 def discover_surface_urls(db=None) -> tuple[list[str], list[str]]:
     youtube: list[str] = []
     forums: list[str] = []
     seen = set()
     max_queries = int(os.getenv("OCEAN_DISCOVERY_QUERY_LIMIT", "10"))
-    ranked = rank_queries(db, list(DISCOVERY_QUERIES))
+    learned_queries = learned_source_expansion_queries(db)
+    ranked = rank_queries(db, list(DISCOVERY_QUERIES) + learned_queries)
     for q in ranked[:max_queries]:
         qrows = bing_rss(q)
         update_query_stats(db, q, raw=len(qrows))
@@ -380,6 +421,18 @@ def run():
 
     new = []
     for lead in qualified:
+        skey, stype = _source_key_from_url(str(lead.get("url") or ""))
+        if skey:
+            learn_discovered_source(
+                db,
+                source_key=skey,
+                source_type=stype,
+                url=str(lead.get("url") or ""),
+                qualified=1,
+                new=0,
+            )
+
+    for lead in qualified:
         journey = record_person_event(db, lead)
         lead["journey_score"] = int(journey.get("journey_score") or lead.get("intent_score") or 0)
         lead["journey_events"] = int(journey.get("events") or 1)
@@ -406,6 +459,16 @@ def run():
             except Exception as exc:
                 print("OCEAN_DEDUPE_WRITE_ERROR", type(exc).__name__, exc)
         new.append(lead)
+        skey, stype = _source_key_from_url(str(lead.get("url") or ""))
+        if skey:
+            learn_discovered_source(
+                db,
+                source_key=skey,
+                source_type=stype,
+                url=str(lead.get("url") or ""),
+                qualified=0,
+                new=1,
+            )
 
     for source_name, raw_count in source_counts.items():
         q_count = int(by_source.get({
@@ -438,6 +501,7 @@ def run():
         "forum_urls": len(forum_urls),
         "source_learning_scores": load_source_scores(db),
         "journey_hot": sum(1 for x in new if int(x.get("journey_score") or 0) >= 95),
+        "learned_sources": best_discovered_sources(db, limit=12),
     }
 
     if db:
