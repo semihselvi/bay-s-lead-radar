@@ -469,6 +469,87 @@ async def scan_telegram(db_client, now: datetime, debug: dict[str, Any]) -> list
             except Exception as exc:
                 debug["errors"].append(f"telegram_group:{group}:{type(exc).__name__}")
             await asyncio.sleep(0.10)
+
+        from telethon.tl.functions.messages import SearchGlobalRequest
+        from telethon.tl.types import InputMessagesFilterEmpty, InputPeerEmpty
+
+        global_limit = int(os.getenv("NORTHLAB_GLOBAL_RESULTS_PER_QUERY", "30"))
+        for query in GLOBAL_TELEGRAM_QUERIES:
+            debug["telegram_global_queries"] += 1
+            try:
+                response = await client(
+                    SearchGlobalRequest(
+                        q=query,
+                        filter=InputMessagesFilterEmpty(),
+                        min_date=cutoff,
+                        max_date=None,
+                        offset_rate=0,
+                        offset_peer=InputPeerEmpty(),
+                        offset_id=0,
+                        limit=global_limit,
+                    )
+                )
+            except Exception as exc:
+                debug["errors"].append(f"telegram_global:{query}:{type(exc).__name__}")
+                continue
+
+            chats = {getattr(x, "id", None): x for x in getattr(response, "chats", [])}
+            for msg in getattr(response, "messages", []):
+                text = str(getattr(msg, "message", "") or "").strip()
+                if not text:
+                    continue
+                debug["telegram_global_messages"] += 1
+
+                dt = getattr(msg, "date", None)
+                if dt and dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if dt and dt < cutoff:
+                    continue
+
+                key = hashlib.sha256(_norm(text).encode("utf-8", "ignore")).hexdigest()
+                if key in seen_text:
+                    debug["rejects"]["duplicate_text"] += 1
+                    continue
+                seen_text.add(key)
+
+                try:
+                    await msg.get_sender()
+                except Exception:
+                    pass
+                author = core.tg_sender(msg)
+                if BOT_AUTHOR_RE.search(str(author or "")):
+                    debug["rejects"]["bot_author"] += 1
+                    continue
+
+                signal, reason = classify(text)
+                if signal is None:
+                    debug["rejects"][reason] += 1
+                    continue
+
+                peer = getattr(msg, "peer_id", None)
+                channel_id = getattr(peer, "channel_id", None)
+                chat = chats.get(channel_id)
+                username = getattr(chat, "username", None)
+                group = getattr(chat, "title", None) or username or str(channel_id or "")
+                lead = {
+                    "source": "Telegram Global",
+                    "platform": "Telegram",
+                    "group": group,
+                    "author": author,
+                    "text": text,
+                    "url": f"https://t.me/{username}/{msg.id}" if username else "",
+                    "message_time": dt.isoformat() if dt else "",
+                    "source_query": query,
+                    "radar_version": VERSION,
+                    **signal,
+                }
+                debug["accepted_classes"][signal["lead_class"]] += 1
+                debug["project_types"].update(signal["project_types"])
+                debug["languages"][signal["language"]] += 1
+                if _save_new(db_client, lead, now):
+                    out.append(lead)
+            await asyncio.sleep(0.20)
+
     finally:
         try:
             await client.disconnect()
@@ -546,6 +627,8 @@ def main() -> None:
         "version": VERSION,
         "telegram_groups": 0,
         "telegram_messages": 0,
+        "telegram_global_queries": 0,
+        "telegram_global_messages": 0,
         "web_raw": 0,
         "web_accepted": 0,
         "rejects": Counter(),
@@ -598,6 +681,7 @@ def main() -> None:
             "🧪 NORTHLAB SALES RADAR DEBUG | SON TARAMA\n\n"
             f"Telegram grup: {debug['telegram_groups']}\n"
             f"Telegram mesaj: {debug['telegram_messages']}\n"
+            f"Global arama: {debug['telegram_global_queries']} sorgu | {debug['telegram_global_messages']} mesaj\n"
             f"Yeni fırsat: {len(new_leads)} | Bildirim: {alerts}\n"
             f"Sınıflar: {classes}\n"
             f"İş tipleri: {types}\n"
