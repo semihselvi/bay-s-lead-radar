@@ -34,6 +34,12 @@ jobs:
           - spain_abroad
           - portugal_abroad
           - uae_abroad
+          - uae_arabic_abroad
+          - norway_abroad
+          - denmark_abroad
+          - finland_abroad
+          - czechia_abroad
+          - estonia_abroad
 
     steps:
       - uses: actions/checkout@v6
@@ -53,6 +59,8 @@ jobs:
           required = {
               "uk_abroad", "ireland_abroad", "poland_abroad", "sweden_abroad",
               "italy_abroad", "spain_abroad", "portugal_abroad", "uae_abroad",
+              "uae_arabic_abroad", "norway_abroad", "denmark_abroad",
+              "finland_abroad", "czechia_abroad", "estonia_abroad",
           }
           missing = sorted(required - set(r.PROFILES))
           if missing:
