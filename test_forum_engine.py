@@ -5,6 +5,10 @@ import forum_engine
 
 
 class ForumEngineTests(unittest.TestCase):
+    def test_real_forumscraper_symbols_are_available(self):
+        self.assertIsNotNone(forum_engine._fs_extractor)
+        self.assertIsNotNone(forum_engine._fs_outputs)
+
     def test_detects_xenforo_and_extracts_post(self):
         html = """
         <html><body data-template="thread_view" data-xf-init="test">
