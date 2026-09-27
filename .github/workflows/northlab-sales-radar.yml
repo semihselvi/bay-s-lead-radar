@@ -75,7 +75,8 @@ jobs:
           NORTHLAB_TELEGRAM_HOURS: "24"
           NORTHLAB_PER_GROUP_LIMIT: "100"
           NORTHLAB_MAX_ALERTS: "12"
-          NORTHLAB_WEB_QUERY_LIMIT: "16"
+          NORTHLAB_WEB_QUERY_LIMIT: "24"
+          NORTHLAB_GLOBAL_RESULTS_PER_QUERY: "30"
         run: python northlab_sales_radar.py
 
       - name: Cleanup Telegram session
