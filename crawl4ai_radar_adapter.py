@@ -92,3 +92,57 @@ def enrich_rows(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[
             item["_crawl4ai_enriched"] = True
         enriched.append(item)
     return enriched, stats
+
+async def _deep_discover(root_url: str, max_depth: int, max_pages: int) -> list[str]:
+    from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
+    from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
+
+    config = CrawlerRunConfig(
+        deep_crawl_strategy=BFSDeepCrawlStrategy(max_depth=max_depth, max_pages=max_pages),
+        stream=False,
+    )
+    async with AsyncWebCrawler() as crawler:
+        results = await crawler.arun(url=root_url, config=config)
+
+    if not isinstance(results, list):
+        results = [results]
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for result in results:
+        url = str(getattr(result, "url", "") or "").strip()
+        if url and url not in seen:
+            seen.add(url)
+            out.append(url)
+        links = getattr(result, "links", {}) or {}
+        for row in links.get("internal", []) or []:
+            href = str((row or {}).get("href") or "").strip()
+            if href and href.startswith(("http://", "https://")) and href not in seen:
+                seen.add(href)
+                out.append(href)
+        if len(out) >= max_pages:
+            break
+    return out[:max_pages]
+
+
+def discover_urls(
+    root_url: str,
+    *,
+    max_depth: int = 2,
+    max_pages: int = 40,
+) -> tuple[list[str], dict[str, int | str]]:
+    stats: dict[str, int | str] = {
+        "requested": 1,
+        "discovered": 0,
+        "relevant": 0,
+        "error": "",
+    }
+    try:
+        urls = asyncio.run(_deep_discover(root_url, max_depth=max_depth, max_pages=max_pages))
+    except Exception as exc:
+        stats["error"] = f"{type(exc).__name__}:{exc}"
+        return [], stats
+
+    stats["discovered"] = len(urls)
+    return urls, stats
+
