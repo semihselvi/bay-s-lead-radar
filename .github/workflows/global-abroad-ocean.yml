@@ -71,9 +71,20 @@ jobs:
         id: ocean_verify
         continue-on-error: true
         run: |
-          python -m py_compile europe_abroad_buyer_radar.py europe_abroad_buyer_radar_verified.py europe_buyer_search_fallback.py europe_buyer_serper_resilient.py global_semantic_buyer_radar.py reddit_global_comment_rss.py buyer_intent_core.py ocean_source_hub.py ocean_learning.py test_buyer_intent_core.py test_ocean_learning.py
-          python -m unittest -q test_buyer_intent_core.py test_ocean_learning.py
-          python - <<'PY'
+          set +e
+          {
+            echo "=== PY_COMPILE ==="
+            python -m py_compile europe_abroad_buyer_radar.py europe_abroad_buyer_radar_verified.py europe_buyer_search_fallback.py europe_buyer_serper_resilient.py global_semantic_buyer_radar.py reddit_global_comment_rss.py buyer_intent_core.py ocean_source_hub.py ocean_learning.py test_buyer_intent_core.py test_ocean_learning.py
+            rc1=$?
+            echo "compile_rc=$rc1"
+
+            echo "=== UNIT_TESTS ==="
+            python -m unittest -q test_buyer_intent_core.py test_ocean_learning.py
+            rc2=$?
+            echo "tests_rc=$rc2"
+
+            echo "=== PROFILE_CHECK ==="
+            python - <<'PY'
           import europe_abroad_buyer_radar as r
           required = {
               "uk_abroad", "ireland_abroad", "poland_abroad", "sweden_abroad",
@@ -86,6 +97,12 @@ jobs:
               raise SystemExit(f"Missing ocean profiles: {missing}")
           print("Ocean profiles OK:", ", ".join(sorted(required)))
           PY
+            rc3=$?
+            echo "profiles_rc=$rc3"
+            echo "=== VERIFY SUMMARY ==="
+            echo "compile=$rc1 tests=$rc2 profiles=$rc3"
+          } 2>&1 | tee ocean-verify.log
+          test "$rc1" -eq 0 -a "$rc2" -eq 0 -a "$rc3" -eq 0
 
       - name: Run unified Ocean Source Hub
         id: ocean_hub
@@ -113,13 +130,18 @@ jobs:
           p=Path("ocean-last-run.json")
           verify="${{ steps.ocean_verify.outcome }}"
           hub="${{ steps.ocean_hub.outcome }}"
+          verify_log=""
+          lp=Path("ocean-verify.log")
+          if lp.exists():
+              verify_log="\n".join(lp.read_text(encoding="utf-8", errors="replace").splitlines()[-80:])
           if verify != "success" or hub != "success":
               p.write_text(json.dumps({
                   "status":"failed",
                   "finished_at":datetime.now(timezone.utc).isoformat(),
                   "verify_outcome":verify,
                   "hub_outcome":hub,
-                  "reason":"Ocean verification or Source Hub failed"
+                  "reason":"Ocean verification or Source Hub failed",
+                  "verify_log":verify_log
               }, ensure_ascii=False, indent=2), encoding="utf-8")
           elif not p.exists():
               p.write_text(json.dumps({
