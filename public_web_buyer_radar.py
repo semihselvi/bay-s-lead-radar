@@ -21,11 +21,13 @@ import forum_engine
 import adaptive_radar_learning as learning
 import crawl4ai_radar_adapter as crawl4ai_adapter
 
-VERSION = "1.6-forum-engine-discovery"
+VERSION = "1.7-productive-source-focus"
 MAX_AGE_DAYS = int(os.getenv("RADAR_PUBLIC_WEB_MAX_AGE_DAYS", "45"))
 TIMEOUT = int(os.getenv("RADAR_HTTP_TIMEOUT", "20"))
 MAX_RESULTS_PER_QUERY = int(os.getenv("RADAR_PUBLIC_WEB_RESULTS_PER_QUERY", "10"))
-MAX_FETCHES = int(os.getenv("RADAR_PUBLIC_WEB_MAX_FETCHES", "60"))
+MAX_FETCHES = int(os.getenv("RADAR_PUBLIC_WEB_MAX_FETCHES", "84"))
+SOURCE_FETCH_QUOTA = int(os.getenv("RADAR_PUBLIC_WEB_SOURCE_FETCH_QUOTA", "12"))
+DIRECT_FEED_ENTRY_LIMIT = int(os.getenv("RADAR_PUBLIC_WEB_DIRECT_FEED_LIMIT", "20"))
 
 
 SOURCE_ROOTS = {
@@ -35,11 +37,18 @@ SOURCE_ROOTS = {
 }
 
 DIRECT_FEEDS = {
-    # BritishExpats documents RSS2 support and forum-specific filtering.
+    # Public first-party / community feeds. These are evaluated before broad search.
     "BritishExpats": "https://britishexpats.com/forum/external.php?type=rss2&forumids=117",
+    "Reddit NorthCyprus Posts": "https://www.reddit.com/r/NorthCyprus/new/.rss",
+    "Reddit NorthCyprus Comments": "https://www.reddit.com/r/NorthCyprus/comments/.rss",
+    "Reddit Cyprus Comments": "https://www.reddit.com/r/cyprus/comments/.rss",
 }
 
-SOURCE_IMPLICIT_NC = {"Kibkom"}
+SOURCE_IMPLICIT_NC = {
+    "Kibkom",
+    "Reddit NorthCyprus Posts",
+    "Reddit NorthCyprus Comments",
+}
 
 DIRECT_FORUM_LISTINGS = {
     # Dedicated North Cyprus sub-forum.
@@ -55,32 +64,32 @@ DISCOVERY_MAX_CRAWL_PAGES = int(os.getenv("RADAR_PUBLIC_WEB_DISCOVERY_CRAWL_PAGE
 SOURCE_QUERIES = {
     "Expat.com": (
         "site:expat.com/en/forum/europe/cyprus \"North Cyprus\" (\"looking to buy\" OR \"buying property\" OR \"want to buy\" OR \"planning to buy\")",
-        "site:expat.com/en/forum/europe/cyprus \"Northern Cyprus\" (\"property\" OR \"apartment\" OR \"villa\") (\"looking\" OR \"buy\")",
+        "site:expat.com/en/forum/europe/cyprus \"Northern Cyprus\" (property OR apartment OR villa) (\"looking to buy\" OR \"thinking of buying\" OR \"interested in buying\")",
+    ),
+    "Expat.com Spain": (
+        "site:expat.com/en/forum/europe/spain (\"North Cyprus\" OR \"Northern Cyprus\") (\"buy property\" OR \"looking to buy\" OR \"buy apartment\")",
+    ),
+    "Expat.com France": (
+        "site:expat.com/en/forum/europe/france (\"North Cyprus\" OR \"Northern Cyprus\" OR \"Chypre du Nord\") (\"buy property\" OR \"looking to buy\" OR \"acheter\")",
     ),
     "Kibkom": (
         "site:kibkomnorthcyprusforum.com (\"looking to buy\" OR \"want to buy\" OR \"buying\") (property OR apartment OR villa)",
         "site:kibkomnorthcyprusforum.com (Girne OR Kyrenia OR Iskele OR Famagusta) (\"looking for\" OR \"want to buy\")",
     ),
-    "TripAdvisor": (
-        "site:tripadvisor.com/ShowTopic (Lapta OR Kyrenia OR \"North Cyprus\") (\"looking to buy\" OR \"thinking of buying\" OR \"want to buy\")",
+    "Reddit NorthCyprus": (
+        "site:reddit.com/r/NorthCyprus (\"looking to buy\" OR \"want to buy\" OR \"planning on buying\" OR \"buying property\")",
+        "site:reddit.com/r/NorthCyprus (apartment OR villa OR property) (budget OR title OR deed OR payment plan) buy",
+    ),
+    "Reddit Cyprus": (
+        "site:reddit.com/r/cyprus (\"North Cyprus\" OR \"Northern Cyprus\") (\"looking to buy\" OR \"want to buy\" OR \"buying property\")",
     ),
     "BritishExpats": (
         "site:britishexpats.com/forum \"North Cyprus\" (\"looking to buy\" OR \"buy property\" OR \"thinking of buying\")",
     ),
-    "Quora": (
-        "site:quora.com \"North Cyprus\" (\"buy property\" OR \"buy apartment\" OR \"buying a property\")",
-    ),
-    "Facebook Public": (
-        "site:facebook.com/groups \"North Cyprus\" (\"looking to buy\" OR \"want to buy\" OR \"buy apartment\")",
-        "site:facebook.com/groups \"Северный Кипр\" (\"хочу купить\" OR \"куплю квартиру\" OR \"ищу квартиру\")",
-        "site:facebook.com/groups \"Kuzey Kıbrıs\" (\"ev almak istiyorum\" OR \"daire almak istiyorum\" OR \"satılık daire arıyorum\")",
-    ),
-    "YouTube Public": (
-        "site:youtube.com/watch \"North Cyprus\" (\"buy property\" OR \"buy apartment\")",
-        "site:youtube.com/watch \"Северный Кипр\" (\"купить квартиру\" OR \"недвижимость\")",
+    "TripAdvisor": (
+        "site:tripadvisor.com/ShowTopic (Lapta OR Kyrenia OR \"North Cyprus\") (\"looking to buy\" OR \"thinking of buying\" OR \"want to buy\")",
     ),
 }
-
 BUY_ANCHOR_RE = re.compile(
     r"(?:"
     r"looking\s+to\s+buy|want(?:ing)?\s+to\s+buy|planning\s+to\s+buy|"
@@ -180,6 +189,22 @@ def _page_published(soup: BeautifulSoup) -> datetime | None:
     if time_node and time_node.get("datetime"):
         return _parse_date(str(time_node.get("datetime")))
     return None
+
+
+def _fallback_page_from_row(row: dict[str, Any], url: str) -> dict[str, Any]:
+    title = _norm(row.get("title") or "")
+    snippet = _norm(
+        BeautifulSoup(str(row.get("snippet") or ""), "html.parser").get_text(" ", strip=True)
+    )
+    return {
+        "url": url,
+        "title": title,
+        "text": _norm(f"{title} {snippet}"),
+        "published": _parse_date(str(row.get("rss_published") or "")),
+        "extractor": "feed_or_search_snippet",
+        "forum_engine": "generic",
+        "forum_posts": [],
+    }
 
 
 def fetch_page(url: str) -> dict[str, Any]:
@@ -371,12 +396,15 @@ def discover_direct_rows() -> tuple[list[dict[str, Any]], dict[str, Any]]:
             debug[f"{source}:feed"] = {"error": f"{type(exc).__name__}:{exc}"}
             continue
         debug[f"{source}:feed"] = {"entries": len(entries), "url": feed_url}
-        for entry in entries:
+        for entry in entries[:DIRECT_FEED_ENTRY_LIMIT]:
+            inline_text = BeautifulSoup(
+                str(entry.get("text") or ""), "html.parser"
+            ).get_text(" ", strip=True)
             rows.append({
                 "source": source,
                 "title": entry.get("title") or "",
                 "url": entry.get("url") or "",
-                "snippet": entry.get("text") or "",
+                "snippet": _norm(inline_text),
                 "rss_published": entry.get("published") or "",
                 "discovery": "direct_rss",
             })
@@ -469,11 +497,13 @@ def run() -> None:
     source_stats = Counter()
     source_scan_counts = Counter()
     source_new_counts = Counter()
+    source_fetch_attempts = Counter()
     discovery_stats = Counter()
     forum_rows, forum_debug = discover_forumscraper_rows()
     direct_rows, direct_debug = discover_direct_rows()
     discovery_rows, discovery_debug = discover_source_rows()
-    discovery_rows = forum_rows + direct_rows + discovery_rows
+    # Productive/direct sources must consume the fetch budget before broad crawling.
+    discovery_rows = direct_rows + forum_rows + discovery_rows
     discovery_debug = {
         "forumscraper": forum_debug,
         "direct": direct_debug,
@@ -493,15 +523,22 @@ def run() -> None:
         url = str(row.get("url") or "")
         if not url or url in seen_urls or fetched >= MAX_FETCHES:
             continue
+        if source_fetch_attempts[source] >= SOURCE_FETCH_QUOTA:
+            discovery_stats["source_quota_skipped"] += 1
+            continue
         seen_urls.add(url)
         fetched += 1
+        source_fetch_attempts[source] += 1
         discovery_stats["native_candidate_urls"] += 1
 
         try:
             page = fetch_page(url)
         except Exception as exc:
             rejects[f"native_fetch_{type(exc).__name__}"] += 1
-            continue
+            page = _fallback_page_from_row(row, url)
+            if not page.get("text"):
+                continue
+            discovery_stats["native_feed_fallback"] += 1
 
         stats["pages"] += 1
         discovery_stats[f"extractor_{page.get('extractor','unknown')}"] += 1
