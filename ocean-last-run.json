@@ -1,9 +1,47 @@
 {
-  "status": "failed",
-  "finished_at": "2026-09-28T12:55:06.892283+00:00",
-  "verify_outcome": "success",
-  "hub_outcome": "failure",
-  "reason": "Ocean verification or Source Hub failed",
-  "verify_log": "=== PY_COMPILE ===\ncompile_rc=0\n=== UNIT_TESTS ===\n----------------------------------------------------------------------\nRan 7 tests in 0.001s\n\nOK\ntests_rc=0\n=== PROFILE_CHECK ===\nOcean profiles OK: czechia_abroad, denmark_abroad, estonia_abroad, finland_abroad, ireland_abroad, italy_abroad, norway_abroad, poland_abroad, portugal_abroad, spain_abroad, sweden_abroad, uae_abroad, uae_arabic_abroad, uk_abroad\nprofiles_rc=0\n=== VERIFY SUMMARY ===\ncompile=0 tests=0 profiles=0",
-  "hub_log": "Traceback (most recent call last):\n  File \"/home/runner/work/bay-s-lead-radar/bay-s-lead-radar/ocean_source_hub.py\", line 81, in <module>\n    VIDEO_PROPERTY_CONTEXT_RE = re.compile(\n                                ^^\nNameError: name 're' is not defined. Did you forget to import 're'?"
+  "status": "success",
+  "finished_at": "2026-09-28T13:02:05.982577+00:00",
+  "version": "1.0-ocean-source-hub",
+  "raw": 25,
+  "unique": 25,
+  "qualified": 1,
+  "new": 1,
+  "source_counts": {
+    "semantic": 0,
+    "reddit_comments": 25,
+    "bluesky": 0,
+    "youtube_comments": 0,
+    "forums": 0
+  },
+  "qualified_by_source": {
+    "Reddit Comment RSS": 1
+  },
+  "reject_reasons": {
+    "no_explicit_purchase_intent": 19,
+    "no_property": 5,
+    "accepted": 1
+  },
+  "source_errors": [],
+  "youtube_urls": 0,
+  "forum_urls": 2,
+  "source_learning_scores": {
+    "reddit_comments": 35.9,
+    "forums": 0.0,
+    "youtube_comments": 0.0,
+    "bluesky": 0.0,
+    "semantic": 0.0
+  },
+  "journey_hot": 0,
+  "learned_sources": [
+    {
+      "new": 1,
+      "qualified": 1,
+      "seen": 2,
+      "source_key": "reddit:r/expats",
+      "url": "https://www.reddit.com/r/expats/comments/1wsb0u4/any_expats_reach_their_50s_and_60s_and_end_up/pcken1a/",
+      "source_type": "reddit",
+      "last_seen_at": "2026-09-28T13:02:03.247724+00:00",
+      "score": 94.0
+    }
+  ]
 }
