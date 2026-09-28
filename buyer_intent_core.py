@@ -46,6 +46,14 @@ RENT_RE = re.compile(
     re.I,
 )
 
+PURCHASE_VERB_RE = re.compile(
+    r"(?:\bbuy\b|\bbuying\b|\bpurchase\b|\bpurchasing\b|\binvest\b|\binvesting\b|"
+    r"\bkaufen\b|\berwerben\b|\bkupić\b|\bköpa\b|\bcomprare\b|\bacquistare\b|"
+    r"\bcomprar\b|\bкупить\b|\bприобрест\w*\b|\bsatın almak\b|\bsatin almak\b|"
+    r"شراء)",
+    re.I,
+)
+
 SELLER_RE = re.compile(
     r"(?:\bfor sale\b|\breal estate agent\b|\bestate agent\b|\brealtor\b|\bbroker\b|"
     r"\bdeveloper\b|\bcontact me\b|\bdm me\b|\bwhatsapp\b|\bour project\b|\bour properties\b|"
@@ -73,7 +81,7 @@ def classify_candidate(item: dict):
     if SELLER_RE.search(text):
         return None, "seller_or_agent"
     explicit_buy = bool(BUY_RE.search(text))
-    if RENT_RE.search(text) and not explicit_buy:
+    if RENT_RE.search(text) and not PURCHASE_VERB_RE.search(text):
         return None, "rental"
     if PAST_RE.search(text) and not explicit_buy:
         return None, "past_purchase"
