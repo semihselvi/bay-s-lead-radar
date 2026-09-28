@@ -1,8 +1,9 @@
 {
   "status": "failed",
-  "finished_at": "2026-09-28T12:08:46.446184+00:00",
+  "finished_at": "2026-09-28T12:55:06.892283+00:00",
   "verify_outcome": "success",
   "hub_outcome": "failure",
   "reason": "Ocean verification or Source Hub failed",
-  "verify_log": "=== PY_COMPILE ===\ncompile_rc=0\n=== UNIT_TESTS ===\n----------------------------------------------------------------------\nRan 7 tests in 0.001s\n\nOK\ntests_rc=0\n=== PROFILE_CHECK ===\nOcean profiles OK: czechia_abroad, denmark_abroad, estonia_abroad, finland_abroad, ireland_abroad, italy_abroad, norway_abroad, poland_abroad, portugal_abroad, spain_abroad, sweden_abroad, uae_abroad, uae_arabic_abroad, uk_abroad\nprofiles_rc=0\n=== VERIFY SUMMARY ===\ncompile=0 tests=0 profiles=0"
+  "verify_log": "=== PY_COMPILE ===\ncompile_rc=0\n=== UNIT_TESTS ===\n----------------------------------------------------------------------\nRan 7 tests in 0.001s\n\nOK\ntests_rc=0\n=== PROFILE_CHECK ===\nOcean profiles OK: czechia_abroad, denmark_abroad, estonia_abroad, finland_abroad, ireland_abroad, italy_abroad, norway_abroad, poland_abroad, portugal_abroad, spain_abroad, sweden_abroad, uae_abroad, uae_arabic_abroad, uk_abroad\nprofiles_rc=0\n=== VERIFY SUMMARY ===\ncompile=0 tests=0 profiles=0",
+  "hub_log": "Traceback (most recent call last):\n  File \"/home/runner/work/bay-s-lead-radar/bay-s-lead-radar/ocean_source_hub.py\", line 81, in <module>\n    VIDEO_PROPERTY_CONTEXT_RE = re.compile(\n                                ^^\nNameError: name 're' is not defined. Did you forget to import 're'?"
 }
