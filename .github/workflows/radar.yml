@@ -133,6 +133,8 @@ jobs:
           RADAR_PUBLIC_WEB_MAX_AGE_DAYS: "45"
           RADAR_PUBLIC_WEB_RESULTS_PER_QUERY: "10"
           RADAR_PUBLIC_WEB_MAX_FETCHES: "60"
+          RADAR_CRAWL4AI_DISCOVERY_DEPTH: "2"
+          RADAR_CRAWL4AI_DISCOVERY_MAX_PAGES: "40"
         run: python public_web_buyer_radar.py
 
       - name: Mine Russian public buyer sources
