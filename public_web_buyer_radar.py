@@ -95,6 +95,8 @@ BUY_ANCHOR_RE = re.compile(
     r"looking\s+to\s+buy|want(?:ing)?\s+to\s+buy|planning\s+to\s+buy|"
     r"thinking\s+of\s+buying|considering\s+buying|interested\s+in\s+buying|"
     r"buy(?:ing)?\s+(?:a\s+)?(?:property|apartment|flat|house|villa|studio)|"
+    r"(?:looking\s+for|seeking)\s+(?:a\s+|an\s+)?(?:new\s+build|property|apartment|flat|house|villa|bungalow)|"
+    r"house\s+hunting|property\s+hunting|"
     r"хочу\s+купить|хотим\s+купить|куплю|планир\w*\s+купить|"
     r"ищу\s+.{0,80}(?:для\s+покупк\w*|купить)|"
     r"(?:ev|daire|villa)\s+almak\s+istiyorum|"
@@ -407,6 +409,7 @@ def discover_direct_rows() -> tuple[list[dict[str, Any]], dict[str, Any]]:
                 "snippet": _norm(inline_text),
                 "rss_published": entry.get("published") or "",
                 "discovery": "direct_rss",
+                "implicit_nc": source.startswith("Reddit NorthCyprus"),
             })
 
     for source, cfg in DIRECT_FORUM_LISTINGS.items():
@@ -429,6 +432,7 @@ def discover_direct_rows() -> tuple[list[dict[str, Any]], dict[str, Any]]:
                 "snippet": "",
                 "rss_published": "",
                 "discovery": "direct_forum_listing",
+                "implicit_nc": "north-cyprus" in str(cfg.get("url") or "").casefold(),
             })
 
     return rows, debug
@@ -575,7 +579,10 @@ def run() -> None:
                     continue
                 seen_windows.add(wkey)
     
-                signal, reason = classify_window(window, implicit_north_cyprus=source in SOURCE_IMPLICIT_NC)
+                signal, reason = classify_window(
+                    window,
+                    implicit_north_cyprus=bool(row.get("implicit_nc")) or source in SOURCE_IMPLICIT_NC,
+                )
                 if signal is None:
                     rejects[f"native_{reason}"] += 1
                     continue
