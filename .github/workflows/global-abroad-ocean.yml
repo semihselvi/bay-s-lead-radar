@@ -119,7 +119,9 @@ jobs:
           OCEAN_YOUTUBE_COMMENTS_PER_VIDEO: "120"
           OCEAN_FORUM_URL_LIMIT: "10"
           OCEAN_FORUM_DL_TIMEOUT: "35"
-        run: python ocean_source_hub.py
+        run: |
+          set -o pipefail
+          python ocean_source_hub.py 2>&1 | tee ocean-hub.log
 
       - name: Persist Ocean run status
         if: always() && matrix.profile == 'global_abroad'
@@ -135,6 +137,10 @@ jobs:
           lp=Path("ocean-verify.log")
           if lp.exists():
               verify_log="\n".join(lp.read_text(encoding="utf-8", errors="replace").splitlines()[-80:])
+          hub_log=""
+          hp=Path("ocean-hub.log")
+          if hp.exists():
+              hub_log="\n".join(hp.read_text(encoding="utf-8", errors="replace").splitlines()[-120:])
           if verify != "success" or hub != "success":
               p.write_text(json.dumps({
                   "status":"failed",
@@ -142,7 +148,8 @@ jobs:
                   "verify_outcome":verify,
                   "hub_outcome":hub,
                   "reason":"Ocean verification or Source Hub failed",
-                  "verify_log":verify_log
+                  "verify_log":verify_log,
+                  "hub_log":hub_log
               }, ensure_ascii=False, indent=2), encoding="utf-8")
           elif not p.exists():
               p.write_text(json.dumps({
