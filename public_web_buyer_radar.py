@@ -19,6 +19,7 @@ import nc_v6_broad_radar as v6
 import web_source_discovery as discovery
 import forum_engine
 import adaptive_radar_learning as learning
+import crawl4ai_radar_adapter as crawl4ai_adapter
 
 VERSION = "1.6-forum-engine-discovery"
 MAX_AGE_DAYS = int(os.getenv("RADAR_PUBLIC_WEB_MAX_AGE_DAYS", "45"))
@@ -421,23 +422,41 @@ def discover_source_rows() -> tuple[list[dict[str, Any]], dict[str, Any]]:
             continue
 
         urls = discovery.merged_candidate_urls(result)
+        crawl_urls: list[str] = []
+        crawl_stats: dict[str, Any] = {}
+        if len(urls) < DISCOVERY_MAX_PAGES_PER_SOURCE:
+            try:
+                discovered, crawl_stats = crawl4ai_adapter.discover_urls(
+                    root,
+                    max_depth=int(os.getenv("RADAR_CRAWL4AI_DISCOVERY_DEPTH", "2") or "2"),
+                    max_pages=int(os.getenv("RADAR_CRAWL4AI_DISCOVERY_MAX_PAGES", "40") or "40"),
+                )
+                for url in discovered:
+                    if discovery.same_site(url, root) and discovery.relevant_url(url):
+                        crawl_urls.append(url)
+            except Exception as exc:
+                crawl_stats = {"error": f"{type(exc).__name__}:{exc}"}
+
+        merged = list(dict.fromkeys([*urls, *crawl_urls]))
         debug[source] = {
             "feeds": len(result.get("feeds", []) or []),
             "sitemaps": len(result.get("sitemaps", []) or []),
             "feed_urls": len(result.get("feed_urls", []) or []),
             "sitemap_urls": len(result.get("sitemap_urls", []) or []),
             "crawl_urls": len(result.get("crawl_urls", []) or []),
-            "candidate_urls": len(urls),
+            "crawl4ai_urls": len(crawl_urls),
+            "crawl4ai_stats": crawl_stats,
+            "candidate_urls": len(merged),
             "errors": list(result.get("errors", []) or [])[:8],
         }
-        for url in urls:
+        for url in merged:
             rows.append({
                 "source": source,
                 "title": "",
                 "url": url,
                 "snippet": "",
                 "rss_published": "",
-                "discovery": "native_feed_sitemap_crawl",
+                "discovery": "crawl4ai_deep_discovery" if url in crawl_urls and url not in urls else "native_feed_sitemap_crawl",
             })
     return rows, debug
 
