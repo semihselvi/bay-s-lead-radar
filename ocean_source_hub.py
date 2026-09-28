@@ -78,6 +78,25 @@ FORUM_HINTS = (
 
 YOUTUBE_HOSTS = {"youtube.com", "www.youtube.com", "youtu.be", "m.youtube.com"}
 
+VIDEO_PROPERTY_CONTEXT_RE = re.compile(
+    r"(?:buy(?:ing)?\s+(?:a\s+)?(?:property|home|house|apartment)|property\s+abroad|"
+    r"overseas\s+property|second\s+home|holiday\s+home|real\s+estate\s+abroad|"
+    r"off[-\s]?plan|payment\s+plan|retire\s+abroad|mediterranean\s+property|"
+    r"immobilie\s+im\s+ausland|nieruchomość\s+za\s+granicą|köpa\s+bostad\s+utomlands|"
+    r"comprare\s+casa\s+all\s+estero|comprar\s+vivienda\s+en\s+el\s+extranjero|"
+    r"شراء\s+عقار\s+في\s+الخارج)",
+    re.I,
+)
+
+COMMENT_CANDIDATE_RE = re.compile(
+    r"(?:\bi\b|\bwe\b|\bmy\b|\bour\b|\bbudget\b|[£€$]\s*\d|"
+    r"\bwant\b|\blooking\b|\bplanning\b|\bconsidering\b|\bbuy\b|\bpurchase\b|"
+    r"\binvest\b|\bretire\b|\bmortgage\b|\bdeposit\b|\bpayment\s+plan\b|"
+    r"\bich\b|\bwir\b|\bchcę\b|\bjag\b|\bio\b|\byo\b|\beu\b|"
+    r"\bя\b|\bмы\b|أريد|نريد)",
+    re.I,
+)
+
 
 def now_utc():
     return datetime.now(timezone.utc)
@@ -271,7 +290,14 @@ def discover_surface_urls(db=None) -> tuple[list[str], list[str]]:
             except Exception:
                 continue
             if host in YOUTUBE_HOSTS and ("/watch" in path or host == "youtu.be"):
-                youtube.append(url)
+                context = clean(f"{row.get('title','')} {row.get('text','')}")
+                if VIDEO_PROPERTY_CONTEXT_RE.search(context):
+                    youtube.append({
+                        "url": url,
+                        "title": clean(row.get("title") or ""),
+                        "context": context[:800],
+                        "discovery_query": clean(row.get("discovery_query") or q),
+                    })
             elif any(h in host or h in path for h in FORUM_HINTS):
                 forums.append(url)
     ylimit = int(os.getenv("OCEAN_YOUTUBE_VIDEO_LIMIT", "12"))
@@ -280,7 +306,7 @@ def discover_surface_urls(db=None) -> tuple[list[str], list[str]]:
     return youtube[:ylimit], forums[:flimit]
 
 
-def youtube_adapter(video_urls: list[str]) -> list[dict]:
+def youtube_adapter(video_urls: list[dict]) -> list[dict]:
     try:
         from youtube_comment_downloader import YoutubeCommentDownloader, SORT_BY_RECENT
     except Exception as exc:
@@ -290,14 +316,17 @@ def youtube_adapter(video_urls: list[str]) -> list[dict]:
     out = []
     per_video = int(os.getenv("OCEAN_YOUTUBE_COMMENTS_PER_VIDEO", "120"))
     downloader = YoutubeCommentDownloader()
-    for url in video_urls:
+    for video in video_urls:
+        url = clean((video or {}).get("url") or "")
+        if not url:
+            continue
         try:
             count = 0
             for row in downloader.get_comments_from_url(url, sort_by=SORT_BY_RECENT):
                 if count >= per_video:
                     break
                 text = clean(row.get("text") or "")
-                if not text:
+                if not text or not COMMENT_CANDIDATE_RE.search(text):
                     continue
                 out.append({
                     "source": "YouTube Comment",
@@ -306,6 +335,10 @@ def youtube_adapter(video_urls: list[str]) -> list[dict]:
                     "url": url,
                     "author": clean(row.get("author") or ""),
                     "published": str(row.get("time_parsed") or row.get("time") or ""),
+                    "discovery_query": clean((video or {}).get("discovery_query") or ""),
+                    "context_property": True,
+                    "context_title": clean((video or {}).get("title") or ""),
+                    "context_text": clean((video or {}).get("context") or "")[:800],
                     "buyer_signal": "youtube_comment_purchase_intent",
                     "credibility_score": 80,
                 })
