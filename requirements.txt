@@ -9,3 +9,5 @@ trafilatura>=1.12,<3
 rapidfuzz>=3.14,<4
 
 forumscraper
+
+crawl4ai>=0.9.4,<1
