@@ -72,19 +72,20 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          {
-            echo "=== PY_COMPILE ==="
-            python -m py_compile europe_abroad_buyer_radar.py europe_abroad_buyer_radar_verified.py europe_buyer_search_fallback.py europe_buyer_serper_resilient.py global_semantic_buyer_radar.py reddit_global_comment_rss.py buyer_intent_core.py ocean_source_hub.py ocean_learning.py test_buyer_intent_core.py test_ocean_learning.py
-            rc1=$?
-            echo "compile_rc=$rc1"
+          exec > >(tee ocean-verify.log) 2>&1
 
-            echo "=== UNIT_TESTS ==="
-            python -m unittest -q test_buyer_intent_core.py test_ocean_learning.py
-            rc2=$?
-            echo "tests_rc=$rc2"
+          echo "=== PY_COMPILE ==="
+          python -m py_compile europe_abroad_buyer_radar.py europe_abroad_buyer_radar_verified.py europe_buyer_search_fallback.py europe_buyer_serper_resilient.py global_semantic_buyer_radar.py reddit_global_comment_rss.py buyer_intent_core.py ocean_source_hub.py ocean_learning.py test_buyer_intent_core.py test_ocean_learning.py
+          rc1=$?
+          echo "compile_rc=$rc1"
 
-            echo "=== PROFILE_CHECK ==="
-            python - <<'PY'
+          echo "=== UNIT_TESTS ==="
+          python -m unittest -q test_buyer_intent_core.py test_ocean_learning.py
+          rc2=$?
+          echo "tests_rc=$rc2"
+
+          echo "=== PROFILE_CHECK ==="
+          python - <<'PY'
           import europe_abroad_buyer_radar as r
           required = {
               "uk_abroad", "ireland_abroad", "poland_abroad", "sweden_abroad",
@@ -97,11 +98,11 @@ jobs:
               raise SystemExit(f"Missing ocean profiles: {missing}")
           print("Ocean profiles OK:", ", ".join(sorted(required)))
           PY
-            rc3=$?
-            echo "profiles_rc=$rc3"
-            echo "=== VERIFY SUMMARY ==="
-            echo "compile=$rc1 tests=$rc2 profiles=$rc3"
-          } 2>&1 | tee ocean-verify.log
+          rc3=$?
+          echo "profiles_rc=$rc3"
+          echo "=== VERIFY SUMMARY ==="
+          echo "compile=$rc1 tests=$rc2 profiles=$rc3"
+
           test "$rc1" -eq 0 -a "$rc2" -eq 0 -a "$rc3" -eq 0
 
       - name: Run unified Ocean Source Hub
