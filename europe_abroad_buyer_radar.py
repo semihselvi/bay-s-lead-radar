@@ -99,7 +99,6 @@ PROFILES = {
             'Suisse "Chypre du Nord" acheter immobilier',
         ],
     },
-,
     "uk_abroad": {
         "icon": "🇬🇧", "title": "UK RESIDENTS BUYING ABROAD", "hl": "en", "gl": "uk",
         "audience_re": re.compile(r"(?:\bi live in (?:the )?uk\b|\bwe live in (?:the )?uk\b|\bfrom (?:the )?uk\b|\bi live in britain\b|\bwe live in britain\b|\bbritish resident\b)", re.I),
@@ -243,7 +242,8 @@ PROFILES = {
             'Dubai "North Cyprus" property buy',
             'UAE resident "payment plan" property abroad',
         ],
-    }    "global_abroad": {
+    },
+    "global_abroad": {
         "icon": "🌍", "title": "GLOBAL BUYERS LOOKING ABROAD", "hl": "en", "gl": "us",
         "audience_re": None,
         "query_anchor": re.compile(r"(?:property abroad|buy abroad|second home abroad|retire abroad|mediterranean property|overseas property)", re.I),
