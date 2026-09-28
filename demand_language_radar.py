@@ -14,7 +14,7 @@ import adaptive_radar_learning as learning
 import main as core
 
 
-VERSION = "1.0-demand-language"
+VERSION = "1.1-concern-query-learning"
 LOOKBACK_DAYS = int(os.getenv("RADAR_CONCERN_LOOKBACK_DAYS", "14") or "14")
 
 SEEDS = (
@@ -38,6 +38,81 @@ CONTENT_TITLES = {
     "foreign_buyer_rules": "Yabancı alıcı Kuzey Kıbrıs'ta satın alırken hangi kuralları bilmeli?",
     "residency": "Gayrimenkul alımı ile oturma izni arasındaki ilişki nedir?",
 }
+
+
+CONCERN_QUERY_TEMPLATES = {
+    "payment_plan": (
+        ("en", "North Cyprus looking to buy property payment plan"),
+        ("en", "North Cyprus apartment down payment installments"),
+        ("ru", "Северный Кипр хочу купить квартиру рассрочка"),
+        ("ru", "Северный Кипр квартира первоначальный взнос"),
+        ("tr", "Kuzey Kıbrıs daire almak istiyorum taksit"),
+        ("tr", "Kuzey Kıbrıs ev almak istiyorum peşinat"),
+    ),
+    "residency": (
+        ("en", "North Cyprus looking to buy property residence permit"),
+        ("en", "North Cyprus buy apartment residency"),
+        ("ru", "Северный Кипр хочу купить квартиру ВНЖ"),
+        ("tr", "Kuzey Kıbrıs ev almak istiyorum oturma izni"),
+    ),
+    "title_deed": (
+        ("en", "North Cyprus looking to buy property title deed"),
+        ("en", "North Cyprus apartment title deed buy"),
+        ("ru", "Северный Кипр хочу купить квартиру титул"),
+        ("tr", "Kuzey Kıbrıs daire almak istiyorum koçan"),
+        ("tr", "Kuzey Kıbrıs ev satın almak tapu"),
+    ),
+    "foreign_buyer_rules": (
+        ("en", "North Cyprus foreign buyer looking to buy property"),
+        ("en", "North Cyprus can foreigners buy apartment"),
+        ("ru", "Северный Кипр иностранец хочу купить квартиру"),
+        ("tr", "Kuzey Kıbrıs yabancı ev satın almak istiyorum"),
+    ),
+    "developer_trust": (
+        ("en", "North Cyprus looking to buy property reliable developer"),
+        ("en", "North Cyprus buy apartment trusted developer"),
+        ("ru", "Северный Кипр хочу купить квартиру надежный застройщик"),
+        ("tr", "Kuzey Kıbrıs daire almak istiyorum güvenilir müteahhit"),
+    ),
+    "off_plan_risk": (
+        ("en", "North Cyprus looking to buy off plan property"),
+        ("en", "North Cyprus buy apartment completion date"),
+        ("ru", "Северный Кипр хочу купить квартиру на стадии строительства"),
+        ("tr", "Kuzey Kıbrıs inşaattan daire almak istiyorum"),
+    ),
+}
+
+
+def concern_query_terms(feedback: dict[str, Any]) -> list[dict[str, Any]]:
+    """Turn observed buyer concerns into safe, purchase-intent search language."""
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    counts = dict(feedback.get("counts") or {})
+
+    for label, count_raw in sorted(counts.items(), key=lambda x: (-int(x[1] or 0), x[0])):
+        count = int(count_raw or 0)
+        if count <= 0:
+            continue
+        score = min(94.0, 45.0 + count * 4.0)
+        for language, term in CONCERN_QUERY_TEMPLATES.get(label, ()):
+            key = term.casefold()
+            if key in seen or not learning.safe_demand_query(term, surface="web"):
+                continue
+            seen.add(key)
+            surfaces = ["web"]
+            if learning.safe_demand_query(term, surface="telegram"):
+                surfaces.append("telegram")
+            out.append({
+                "term": term,
+                "language": language,
+                "seed": f"buyer_concern:{label}",
+                "bucket": "observed_buyer_concern",
+                "value": count,
+                "score": score,
+                "surfaces": surfaces,
+                "source": "buyer_concern_learning",
+            })
+    return out
 
 
 def _value_score(value: Any, *, bucket: str) -> float:
@@ -126,7 +201,7 @@ def save_terms(db: Any, terms: list[dict[str, Any]]) -> int:
         ref.set({
             "term": term,
             "language": row.get("language") or old.get("language") or "",
-            "source": "google_trends_related",
+            "source": row.get("source") or "google_trends_related",
             "bucket": row.get("bucket") or "",
             "value": row.get("value", 0),
             "score": max(float(old.get("score", 0) or 0), float(row.get("score", 0) or 0)),
@@ -224,15 +299,30 @@ def run() -> None:
     except Exception:
         pass
 
-    terms, trend_errors = collect_trend_terms()
-    saved = save_terms(db, terms)
     feedback = build_content_feedback(recent_concerns(db))
+    concern_terms = concern_query_terms(feedback)
+
+    # Trends is optional enrichment only. Real observed buyer concerns are the
+    # primary query-learning signal, so a Trends outage cannot stop learning.
+    trend_terms, trend_errors = collect_trend_terms()
+    combined: dict[str, dict[str, Any]] = {}
+    for row in [*concern_terms, *trend_terms]:
+        key = str(row.get("term") or "").casefold()
+        if not key:
+            continue
+        previous = combined.get(key)
+        if previous is None or float(row.get("score", 0) or 0) > float(previous.get("score", 0) or 0):
+            combined[key] = row
+    terms = sorted(combined.values(), key=lambda x: (-float(x.get("score", 0) or 0), str(x.get("term") or "").casefold()))
+    saved = save_terms(db, terms)
     save_content_feedback(db, feedback)
 
     marker.set({
         "date": today,
         "terms_found": len(terms),
         "terms_saved": saved,
+        "concern_terms": len(concern_terms),
+        "trend_terms": len(trend_terms),
         "trend_errors": trend_errors[:20],
         "content_topics": len(feedback.get("topics") or []),
         "completed_at": datetime.now(timezone.utc).isoformat(),
@@ -247,6 +337,7 @@ def run() -> None:
     core.telegram(
         "🧠 PRIME RADAR | TALEP DİLİ\n\n"
         f"Yeni/yenilenen arama terimi: {saved}\n"
+        f"Concern kaynaklı terim: {len(concern_terms)} | Trends terimi: {len(trend_terms)}\n"
         f"Öne çıkan terimler: {top_terms}\n"
         f"Buyer concern: {feedback.get('concern_rows', 0)}\n"
         f"İçerik sinyalleri: {top_topics}\n"
@@ -257,6 +348,8 @@ def run() -> None:
         "version": VERSION,
         "terms_found": len(terms),
         "terms_saved": saved,
+        "concern_terms": concern_terms,
+        "trend_terms": trend_terms,
         "trend_errors": trend_errors,
         "content_feedback": feedback,
     }, ensure_ascii=False))
