@@ -85,10 +85,18 @@ def _text(node: Any) -> str:
 def _parse_dt(node: Any) -> str:
     if node is None:
         return ""
+
+    values = []
     for attr in ("datetime", "data-time", "data-timestamp", "content", "title"):
         value = str(node.get(attr) or "").strip() if hasattr(node, "get") else ""
-        if not value:
-            continue
+        if value:
+            values.append(value)
+
+    visible = _text(node)
+    if visible:
+        values.append(visible)
+
+    for value in values:
         if value.isdigit():
             try:
                 ts = int(value)
@@ -101,6 +109,18 @@ def _parse_dt(node: Any) -> str:
             return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc).isoformat()
         except Exception:
             pass
+        for fmt in (
+            "%d %B %Y %H:%M:%S",
+            "%d %B %Y %H:%M",
+            "%d %B %Y",
+            "%d %b %Y %H:%M:%S",
+            "%d %b %Y %H:%M",
+            "%d %b %Y",
+        ):
+            try:
+                return datetime.strptime(value, fmt).replace(tzinfo=timezone.utc).isoformat()
+            except Exception:
+                pass
     return ""
 
 
