@@ -111,13 +111,23 @@ jobs:
           from datetime import datetime, timezone
           from pathlib import Path
           p=Path("ocean-last-run.json")
-          if not p.exists():
+          verify="${{ steps.ocean_verify.outcome }}"
+          hub="${{ steps.ocean_hub.outcome }}"
+          if verify != "success" or hub != "success":
               p.write_text(json.dumps({
                   "status":"failed",
                   "finished_at":datetime.now(timezone.utc).isoformat(),
-                  "verify_outcome":"${{ steps.ocean_verify.outcome }}",
-                  "hub_outcome":"${{ steps.ocean_hub.outcome }}",
-                  "reason":"Ocean did not produce a success status file"
+                  "verify_outcome":verify,
+                  "hub_outcome":hub,
+                  "reason":"Ocean verification or Source Hub failed"
+              }, ensure_ascii=False, indent=2), encoding="utf-8")
+          elif not p.exists():
+              p.write_text(json.dumps({
+                  "status":"failed",
+                  "finished_at":datetime.now(timezone.utc).isoformat(),
+                  "verify_outcome":verify,
+                  "hub_outcome":hub,
+                  "reason":"Ocean Source Hub reported success but wrote no status file"
               }, ensure_ascii=False, indent=2), encoding="utf-8")
           PY
           git config user.name "github-actions[bot]"
