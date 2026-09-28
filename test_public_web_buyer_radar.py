@@ -64,6 +64,13 @@ class PublicWebBuyerRadarTests(unittest.TestCase):
         self.assertIsNone(signal)
         self.assertEqual(reason, "no_north_context")
 
+    def test_absolute_expat_date_is_parsed(self):
+        dt = web._parse_date("04 July 2025 05:40:40")
+        self.assertIsNotNone(dt)
+        self.assertEqual(dt.year, 2025)
+        self.assertEqual(dt.month, 7)
+        self.assertEqual(dt.day, 4)
+
     def test_relative_forum_dates_are_parsed(self):
         four_weeks = web._parse_date("4 weeks ago")
         three_years = web._parse_date("3 years ago")
