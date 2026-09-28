@@ -28,6 +28,14 @@ class BuyerIntentCoreTests(unittest.TestCase):
         self.assertIsNone(lead)
         self.assertEqual(reason, "seller_or_agent")
 
+    def test_rejects_generic_investing_back_home(self):
+        lead, reason = classify_candidate({
+            "source": "Reddit Comment RSS",
+            "text": "I learned investing to prepare for the future. I tell people to build something either here or back home, like a degree, business or investing.",
+        })
+        self.assertIsNone(lead)
+        self.assertIn(reason, {"no_property", "generic_investing", "no_explicit_purchase_intent"})
+
     def test_accepts_non_english_purchase(self):
         lead, reason = classify_candidate({
             "source": "test",
