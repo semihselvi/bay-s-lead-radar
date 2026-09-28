@@ -75,17 +75,25 @@ def clean(value: str) -> str:
 
 
 def classify_candidate(item: dict):
-    text = clean(f"{item.get('title','')} {item.get('text','')}")
+    body = clean(item.get("text", ""))
+    text = clean(f"{item.get('title','')} {body}")
     if not text:
         return None, "empty"
     if SELLER_RE.search(text):
         return None, "seller_or_agent"
-    explicit_buy = bool(BUY_RE.search(text))
-    if RENT_RE.search(text) and not PURCHASE_VERB_RE.search(text):
+
+    # For YouTube comments, the video itself can establish property context,
+    # but BUY intent must come from the comment author, not the video title.
+    intent_text = body if item.get("source") == "YouTube Comment" else text
+    explicit_buy = bool(BUY_RE.search(intent_text))
+
+    if RENT_RE.search(intent_text) and not PURCHASE_VERB_RE.search(intent_text):
         return None, "rental"
-    if PAST_RE.search(text) and not explicit_buy:
+    if PAST_RE.search(intent_text) and not explicit_buy:
         return None, "past_purchase"
-    if not PROPERTY_RE.search(text):
+
+    has_property = bool(PROPERTY_RE.search(text) or item.get("context_property"))
+    if not has_property:
         return None, "no_property"
     if not explicit_buy:
         return None, "no_explicit_purchase_intent"
