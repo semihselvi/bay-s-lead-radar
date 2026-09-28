@@ -818,6 +818,32 @@ def run() -> None:
     }
     print("PUBLIC_WEB_BUYER_RADAR", json.dumps(report, ensure_ascii=False))
 
+    try:
+        crawl4ai_total = 0
+        crawl4ai_parts = []
+        generic_debug = (discovery_debug.get("generic") or {}) if isinstance(discovery_debug, dict) else {}
+        for source, row in generic_debug.items():
+            count = int((row or {}).get("crawl4ai_urls", 0) or 0)
+            crawl4ai_total += count
+            if count:
+                crawl4ai_parts.append(f"{source}:{count}")
+
+        top_rejects = ", ".join(f"{k}:{v}" for k, v in rejects.most_common(6)) or "-"
+        source_hits = ", ".join(f"{k}:{v}" for k, v in source_stats.most_common(6)) or "-"
+        core_msg = (
+            "🌐 PRIME RADAR | PUBLIC WEB\n\n"
+            f"Crawl4AI yeni URL: {crawl4ai_total}"
+            + (f" ({', '.join(crawl4ai_parts[:6])})" if crawl4ai_parts else "")
+            + "\n"
+            f"Taranan sayfa: {stats['pages']} | Geçerli BUYER: {stats['valid_buyers']}\n"
+            f"Yeni: {stats['new']} | Bilinen: {stats['known']} | REVIEW: {stats['review_unknown_age']}\n"
+            f"Kaynak BUYER: {source_hits}\n"
+            f"Eleme: {top_rejects}"
+        )
+        v6.core.telegram(core_msg[:3900])
+    except Exception as exc:
+        print("PUBLIC_WEB_TELEGRAM_DEBUG_ERROR", type(exc).__name__, str(exc))
+
 
 if __name__ == "__main__":
     run()
