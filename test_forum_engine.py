@@ -122,5 +122,11 @@ class ForumEngineTests(unittest.TestCase):
         )
         self.assertFalse(result["error"])
 
+    def test_parse_visible_expat_timestamp(self):
+        from bs4 import BeautifulSoup
+        node = BeautifulSoup('<span class="date">04 July 2025 05:40:40</span>', "html.parser").select_one(".date")
+        parsed = forum_engine._parse_dt(node)
+        self.assertTrue(parsed.startswith("2025-07-04T05:40:40"))
+
 if __name__ == "__main__":
     unittest.main()
