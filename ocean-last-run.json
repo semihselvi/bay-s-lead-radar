@@ -1,7 +1,8 @@
 {
   "status": "failed",
-  "finished_at": "2026-09-28T11:53:23.684215+00:00",
+  "finished_at": "2026-09-28T11:56:00.241626+00:00",
   "verify_outcome": "failure",
   "hub_outcome": "skipped",
-  "reason": "Ocean verification or Source Hub failed"
+  "reason": "Ocean verification or Source Hub failed",
+  "verify_log": "=== PY_COMPILE ===\ncompile_rc=0\n=== UNIT_TESTS ===\n======================================================================\nFAIL: test_rejects_rental (test_buyer_intent_core.BuyerIntentCoreTests.test_rejects_rental)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/home/runner/work/bay-s-lead-radar/bay-s-lead-radar/test_buyer_intent_core.py\", line 20, in test_rejects_rental\n    self.assertIsNone(lead)\nAssertionError: {'source': 'test', 'text': 'I am looking to rent an apartment abroad for 6 months.', 'classification': 'WARM', 'intent_score': 85, 'credibility_score': 82, 'buyer_stage': 'DIRECT', 'buyer_signal': 'ocean_purchase_intent', 'market': 'global_abroad', 'route_to': 'Prime Kıbrıs', 'scanned_at': '2026-09-28T11:55:59.736100+00:00'} is not None\n\n----------------------------------------------------------------------\nRan 7 tests in 0.001s\n\nFAILED (failures=1)\ntests_rc=1\n=== PROFILE_CHECK ===\nOcean profiles OK: czechia_abroad, denmark_abroad, estonia_abroad, finland_abroad, ireland_abroad, italy_abroad, norway_abroad, poland_abroad, portugal_abroad, spain_abroad, sweden_abroad, uae_abroad, uae_arabic_abroad, uk_abroad\nprofiles_rc=0\n=== VERIFY SUMMARY ===\ncompile=0 tests=1 profiles=0"
 }
