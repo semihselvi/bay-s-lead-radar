@@ -59,11 +59,17 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - run: |
-          pip install -r requirements.txt
-          pip install -r requirements-ocean.txt
+      - name: Install core dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install optional Ocean adapters
+        continue-on-error: true
+        run: |
+          pip install -r requirements-ocean.txt || true
 
       - name: Verify ocean buyer radar
+        id: ocean_verify
+        continue-on-error: true
         run: |
           python -m py_compile europe_abroad_buyer_radar.py europe_abroad_buyer_radar_verified.py europe_buyer_search_fallback.py europe_buyer_serper_resilient.py global_semantic_buyer_radar.py reddit_global_comment_rss.py buyer_intent_core.py ocean_source_hub.py ocean_learning.py test_buyer_intent_core.py test_ocean_learning.py
           python -m unittest -q test_buyer_intent_core.py test_ocean_learning.py
@@ -83,7 +89,7 @@ jobs:
 
       - name: Run unified Ocean Source Hub
         id: ocean_hub
-        if: matrix.profile == 'global_abroad'
+        if: matrix.profile == 'global_abroad' && steps.ocean_verify.outcome == 'success'
         continue-on-error: true
         env:
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
@@ -109,7 +115,9 @@ jobs:
               p.write_text(json.dumps({
                   "status":"failed",
                   "finished_at":datetime.now(timezone.utc).isoformat(),
-                  "reason":"Ocean Source Hub step did not produce a status file"
+                  "verify_outcome":"${{ steps.ocean_verify.outcome }}",
+                  "hub_outcome":"${{ steps.ocean_hub.outcome }}",
+                  "reason":"Ocean did not produce a success status file"
               }, ensure_ascii=False, indent=2), encoding="utf-8")
           PY
           git config user.name "github-actions[bot]"
@@ -119,8 +127,8 @@ jobs:
           git pull --rebase origin main || true
           git push origin HEAD:main || true
 
-      - name: Fail job if Ocean Source Hub failed
-        if: matrix.profile == 'global_abroad' && steps.ocean_hub.outcome == 'failure'
+      - name: Fail job if Ocean verification or Source Hub failed
+        if: matrix.profile == 'global_abroad' && (steps.ocean_verify.outcome == 'failure' || steps.ocean_hub.outcome == 'failure')
         run: exit 1
 
       - name: Run global abroad buyer discovery
