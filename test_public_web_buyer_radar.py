@@ -64,6 +64,14 @@ class PublicWebBuyerRadarTests(unittest.TestCase):
         self.assertIsNone(signal)
         self.assertEqual(reason, "no_north_context")
 
+    def test_relative_forum_dates_are_parsed(self):
+        four_weeks = web._parse_date("4 weeks ago")
+        three_years = web._parse_date("3 years ago")
+        self.assertIsNotNone(four_weeks)
+        self.assertIsNotNone(three_years)
+        self.assertLessEqual((datetime.now(timezone.utc) - four_weeks).days, 29)
+        self.assertGreaterEqual((datetime.now(timezone.utc) - three_years).days, 1090)
+
     def test_freshness_buckets(self):
         fresh = datetime.now(timezone.utc) - timedelta(days=3)
         warm = datetime.now(timezone.utc) - timedelta(days=20)
