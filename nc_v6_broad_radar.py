@@ -16,6 +16,7 @@ from telethon import functions as tg_functions
 
 import telegram_public_graph as tpg
 import adaptive_radar_learning as learning
+import crawl4ai_radar_adapter as crawl4ai_adapter
 
 radar = batch_guard.radar
 core = radar.core
@@ -767,6 +768,11 @@ DEBUG: dict[str, Any] = {
     "web_accepted": 0,
     "web_reject_reasons": Counter(),
     "web_provider_errors": Counter(),
+    "crawl4ai_requested": 0,
+    "crawl4ai_fetched": 0,
+    "crawl4ai_cache": 0,
+    "crawl4ai_failed": 0,
+    "crawl4ai_recovered_geo": 0,
     "errors": [],
 }
 
@@ -2255,14 +2261,32 @@ def search_debug(query: str, include_domains: list[str] | None = None):
             DEBUG["web_provider_errors"]["exa_serper_empty_or_quota"] += 1
         rows = _bing_rss_search(query, include_domains)
 
-    filtered = []
+    strong_rows = []
+    weak_rows = []
     for row in rows:
         blob = f"{row.get('title','')} {row.get('text','')}"
         url = str(row.get("url") or "").casefold()
-        if not (has_nc_geo(blob) or "/r/northcyprus/" in url or "northcyprus" in url or "north-cyprus" in url):
+        if has_nc_geo(blob) or "/r/northcyprus/" in url or "northcyprus" in url or "north-cyprus" in url:
+            strong_rows.append(row)
+        else:
+            weak_rows.append(row)
+
+    enriched_weak, crawl_stats = crawl4ai_adapter.enrich_rows(weak_rows)
+    DEBUG["crawl4ai_requested"] += int(crawl_stats.get("requested", 0))
+    DEBUG["crawl4ai_fetched"] += int(crawl_stats.get("fetched", 0))
+    DEBUG["crawl4ai_cache"] += int(crawl_stats.get("cache", 0))
+    DEBUG["crawl4ai_failed"] += int(crawl_stats.get("failed", 0))
+
+    filtered = list(strong_rows)
+    for row in enriched_weak:
+        blob = f"{row.get('title','')} {row.get('text','')}"
+        url = str(row.get("url") or "").casefold()
+        if has_nc_geo(blob) or "/r/northcyprus/" in url or "northcyprus" in url or "north-cyprus" in url:
+            if row.get("_crawl4ai_enriched"):
+                DEBUG["crawl4ai_recovered_geo"] += 1
+            filtered.append(row)
+        else:
             DEBUG["web_reject_reasons"]["search_irrelevant_no_nc_context"] += 1
-            continue
-        filtered.append(row)
 
     for row in filtered:
         DEBUG["web_raw_by_source"][str(row.get("source") or "unknown")] += 1
@@ -2459,6 +2483,7 @@ def save_and_notify_debug() -> None:
         f"Web kabul: {DEBUG['web_accepted']}\n"
         f"Web eleme nedenleri: {web_rejects}\n"
         f"Web provider durumu: {provider_errors}\n"
+        f"Crawl4AI: istek {DEBUG['crawl4ai_requested']} | açıldı {DEBUG['crawl4ai_fetched']} | cache {DEBUG['crawl4ai_cache']} | fail {DEBUG['crawl4ai_failed']} | NC kurtardı {DEBUG['crawl4ai_recovered_geo']}\n"
         f"Gerçek hata: {total_errors}"
     )
     core.telegram(msg[:3900])
