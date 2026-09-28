@@ -1,8 +1,33 @@
 {
-  "status": "failed",
-  "finished_at": "2026-09-28T12:04:11.397180+00:00",
-  "verify_outcome": "failure",
-  "hub_outcome": "skipped",
-  "reason": "Ocean verification or Source Hub failed",
-  "verify_log": "=== PY_COMPILE ===\ncompile_rc=0\n=== UNIT_TESTS ===\n----------------------------------------------------------------------\nRan 7 tests in 0.001s\n\nOK\ntests_rc=0\n=== PROFILE_CHECK ===\nOcean profiles OK: czechia_abroad, denmark_abroad, estonia_abroad, finland_abroad, ireland_abroad, italy_abroad, norway_abroad, poland_abroad, portugal_abroad, spain_abroad, sweden_abroad, uae_abroad, uae_arabic_abroad, uk_abroad\nprofiles_rc=0\n=== VERIFY SUMMARY ===\ncompile=0 tests=0 profiles=0"
+  "status": "success",
+  "finished_at": "2026-09-28T12:06:07.658709+00:00",
+  "version": "1.0-ocean-source-hub",
+  "raw": 217,
+  "unique": 216,
+  "qualified": 0,
+  "new": 0,
+  "source_counts": {
+    "semantic": 0,
+    "reddit_comments": 25,
+    "bluesky": 0,
+    "youtube_comments": 192,
+    "forums": 0
+  },
+  "qualified_by_source": {},
+  "reject_reasons": {
+    "no_explicit_purchase_intent": 33,
+    "no_property": 183
+  },
+  "source_errors": [],
+  "youtube_urls": 3,
+  "forum_urls": 0,
+  "source_learning_scores": {
+    "reddit_comments": 0.0,
+    "forums": 0.0,
+    "youtube_comments": 0.0,
+    "bluesky": 0.0,
+    "semantic": 0.0
+  },
+  "journey_hot": 0,
+  "learned_sources": []
 }
