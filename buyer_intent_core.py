@@ -13,6 +13,22 @@ PROPERTY_RE = re.compile(
     re.I,
 )
 
+STRONG_PROPERTY_RE = re.compile(
+    r"(?:property|real estate|apartment|flat|house|villa|condo|land|second home|holiday home|"
+    r"immobilie|wohnung|haus|nieruchomość|mieszkanie|bostad|lägenhet|casa|immobile|vivienda|inmueble|"
+    r"imóvel|apartamento|bolig|lejlighed|asunto|talo|nemovitost|byt|kinnisvara|korter|عقار|شقة|منزل|"
+    r"недвижимост\w*|квартир\w*|апартамент\w*|вилл\w*|дом\w*|gayrimenkul|daire)",
+    re.I,
+)
+
+PROPERTY_PURCHASE_LINK_RE = re.compile(
+    r"(?:"
+    r"(?:buy|buying|purchase|purchasing|invest|investing).{0,90}(?:property|real estate|apartment|flat|house|villa|condo|land|second home|holiday home)|"
+    r"(?:property|real estate|apartment|flat|house|villa|condo|land|second home|holiday home).{0,90}(?:buy|buying|purchase|purchasing|invest|investing)"
+    r")",
+    re.I | re.S,
+)
+
 BUY_RE = re.compile(
     r"(?:"
     r"\b(?:i|we)\b.{0,100}\b(?:want|looking|planning|considering|ready|need|seeking|interested|researching|thinking)\b.{0,130}\b(?:buy|buying|purchase|purchasing|invest|investing|property|apartment|house|villa|home)\b|"
@@ -92,11 +108,25 @@ def classify_candidate(item: dict):
     if PAST_RE.search(intent_text) and not explicit_buy:
         return None, "past_purchase"
 
-    has_property = bool(PROPERTY_RE.search(text) or item.get("context_property"))
+    has_property = bool(
+        STRONG_PROPERTY_RE.search(text)
+        or PROPERTY_PURCHASE_LINK_RE.search(intent_text)
+        or item.get("context_property")
+    )
     if not has_property:
         return None, "no_property"
     if not explicit_buy:
         return None, "no_explicit_purchase_intent"
+
+    # Generic finance/investing talk must not become a property buyer merely
+    # because it also contains an unrelated phrase such as "back home".
+    if not item.get("context_property") and not PROPERTY_PURCHASE_LINK_RE.search(intent_text):
+        if re.search(r"\binvest(?:ing|ment)?\b", intent_text, re.I) and not re.search(
+            r"\b(?:buy|buying|purchase|purchasing|kaufen|kupić|köpa|comprare|comprar|купить|satın almak|satin almak|شراء)\b",
+            intent_text,
+            re.I,
+        ):
+            return None, "generic_investing"
 
     concrete = bool(CONCRETE_RE.search(text))
     return {
