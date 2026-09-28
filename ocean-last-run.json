@@ -1,11 +1,11 @@
 {
   "status": "success",
-  "finished_at": "2026-09-28T13:02:05.982577+00:00",
+  "finished_at": "2026-09-28T14:22:37.163535+00:00",
   "version": "1.0-ocean-source-hub",
   "raw": 25,
   "unique": 25,
-  "qualified": 1,
-  "new": 1,
+  "qualified": 0,
+  "new": 0,
   "source_counts": {
     "semantic": 0,
     "reddit_comments": 25,
@@ -13,34 +13,31 @@
     "youtube_comments": 0,
     "forums": 0
   },
-  "qualified_by_source": {
-    "Reddit Comment RSS": 1
-  },
+  "qualified_by_source": {},
   "reject_reasons": {
-    "no_explicit_purchase_intent": 19,
-    "no_property": 5,
-    "accepted": 1
+    "no_explicit_purchase_intent": 20,
+    "no_property": 5
   },
   "source_errors": [],
   "youtube_urls": 0,
   "forum_urls": 2,
   "source_learning_scores": {
-    "reddit_comments": 35.9,
-    "forums": 0.0,
-    "youtube_comments": 0.0,
-    "bluesky": 0.0,
-    "semantic": 0.0
+    "reddit_comments": 34.43333333333334,
+    "forums": -10.0,
+    "youtube_comments": -10.0,
+    "bluesky": -10.0,
+    "semantic": -10.0
   },
   "journey_hot": 0,
   "learned_sources": [
     {
       "new": 1,
-      "qualified": 1,
-      "seen": 2,
-      "source_key": "reddit:r/expats",
-      "url": "https://www.reddit.com/r/expats/comments/1wsb0u4/any_expats_reach_their_50s_and_60s_and_end_up/pcken1a/",
       "source_type": "reddit",
       "last_seen_at": "2026-09-28T13:02:03.247724+00:00",
+      "qualified": 1,
+      "source_key": "reddit:r/expats",
+      "url": "https://www.reddit.com/r/expats/comments/1wsb0u4/any_expats_reach_their_50s_and_60s_and_end_up/pcken1a/",
+      "seen": 2,
       "score": 94.0
     }
   ]
