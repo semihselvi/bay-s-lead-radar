@@ -150,6 +150,19 @@ def _parse_date(value: str) -> datetime | None:
     except Exception:
         pass
 
+    for fmt in (
+        "%d %B %Y %H:%M:%S",
+        "%d %B %Y %H:%M",
+        "%d %B %Y",
+        "%d %b %Y %H:%M:%S",
+        "%d %b %Y %H:%M",
+        "%d %b %Y",
+    ):
+        try:
+            return datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
+        except Exception:
+            pass
+
     # Forums such as Expat.com expose human relative dates instead of ISO dates.
     low = raw.casefold()
     now = datetime.now(timezone.utc)
