@@ -148,7 +148,39 @@ def _parse_date(value: str) -> datetime | None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(timezone.utc)
     except Exception:
+        pass
+
+    # Forums such as Expat.com expose human relative dates instead of ISO dates.
+    low = raw.casefold()
+    now = datetime.now(timezone.utc)
+    if low in {"today", "just now"}:
+        return now
+    if low == "yesterday":
+        return now - timedelta(days=1)
+
+    m = re.search(
+        r"\b(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago\b",
+        low,
+    )
+    if not m:
         return None
+    amount = int(m.group(1))
+    unit = m.group(2)
+    if unit == "second":
+        return now - timedelta(seconds=amount)
+    if unit == "minute":
+        return now - timedelta(minutes=amount)
+    if unit == "hour":
+        return now - timedelta(hours=amount)
+    if unit == "day":
+        return now - timedelta(days=amount)
+    if unit == "week":
+        return now - timedelta(weeks=amount)
+    if unit == "month":
+        return now - timedelta(days=amount * 30)
+    if unit == "year":
+        return now - timedelta(days=amount * 365)
+    return None
 
 
 def bing_rss(query: str) -> list[dict[str, Any]]:
@@ -519,6 +551,7 @@ def run() -> None:
     near_windows = learning.NearDuplicateIndex(threshold=92.0, min_chars=50, max_items=500)
     fetched = 0
     accepted: list[dict[str, Any]] = []
+    review_candidates: list[dict[str, Any]] = []
 
     # First-party discovery: RSS/Atom, sitemap and bounded internal crawl.
     # These URLs do not depend on Bing/Google indexing.
@@ -633,6 +666,7 @@ def run() -> None:
                     lead["lead_class"] = "REVIEW"
                     lead["review_reason"] = "unknown_page_age"
                     db.collection("bay_s_public_web_review").document(lead_id).set(lead, merge=True)
+                    review_candidates.append(lead)
                     stats["review_unknown_age"] += 1
                     discovery_stats["native_review_unknown_age"] += 1
                     continue
@@ -790,6 +824,7 @@ def run() -> None:
                             lead["lead_class"] = "REVIEW"
                             lead["review_reason"] = "unknown_page_age"
                             db.collection("bay_s_public_web_review").document(lead_id).set(lead, merge=True)
+                            review_candidates.append(lead)
                             stats["review_unknown_age"] += 1
                             continue
     
@@ -848,6 +883,16 @@ def run() -> None:
         "discovery_stats": dict(discovery_stats),
         "discovery_debug": discovery_debug,
         "reject_reasons": dict(rejects),
+        "review_leads": [
+            {
+                "source": x.get("source"),
+                "author": x.get("author"),
+                "title": x.get("title"),
+                "url": x.get("url"),
+                "message": str(x.get("message") or "")[:500],
+            }
+            for x in review_candidates[:10]
+        ],
         "new_leads": [
             {
                 "source": x.get("source"),
@@ -874,6 +919,16 @@ def run() -> None:
 
         top_rejects = ", ".join(f"{k}:{v}" for k, v in rejects.most_common(6)) or "-"
         source_hits = ", ".join(f"{k}:{v}" for k, v in source_stats.most_common(6)) or "-"
+        review_lines = []
+        for lead in review_candidates[:3]:
+            review_lines.append(
+                "\nREVIEW | tarih doğrulanamadı"
+                f" | {str(lead.get('source') or '')[:60]}"
+                f"\n👤 {str(lead.get('author') or '-')[:80]}"
+                f"\n{str(lead.get('message') or '')[:360]}"
+                f"\n{str(lead.get('url') or '')[:500]}"
+            )
+
         core_msg = (
             "🌐 PRIME RADAR | PUBLIC WEB\n\n"
             f"Crawl4AI yeni URL: {crawl4ai_total}"
@@ -883,6 +938,7 @@ def run() -> None:
             f"Yeni: {stats['new']} | Bilinen: {stats['known']} | REVIEW: {stats['review_unknown_age']}\n"
             f"Kaynak BUYER: {source_hits}\n"
             f"Eleme: {top_rejects}"
+            + "".join(review_lines)
         )
         v6.core.telegram(core_msg[:3900])
     except Exception as exc:
