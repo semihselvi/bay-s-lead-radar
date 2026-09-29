@@ -90,6 +90,17 @@ class PublicWebBuyerRadarTests(unittest.TestCase):
         self.assertIsNotNone(dt)
         self.assertEqual((dt.year, dt.month, dt.day), (2025, 7, 4))
 
+    def test_visible_relative_last_year_is_stale(self):
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(
+            "<html><body>Revlon80 New member last year #1 "
+            "We are seriously considering buying a villa.</body></html>",
+            "html.parser",
+        )
+        dt = web._visible_forum_date(soup)
+        self.assertIsNotNone(dt)
+        self.assertEqual(web._freshness(dt)[0], "stale")
+
     def test_freshness_buckets(self):
         fresh = datetime.now(timezone.utc) - timedelta(days=3)
         warm = datetime.now(timezone.utc) - timedelta(days=20)
