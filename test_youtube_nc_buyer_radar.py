@@ -38,10 +38,18 @@ class YouTubeNCBuyerRadarTests(unittest.TestCase):
         self.assertEqual(y.video_id("https://youtu.be/abcdefghijk"), "abcdefghijk")
         self.assertEqual(y.video_id("https://www.youtube.com/shorts/abcdefghijk"), "abcdefghijk")
 
-    def test_direct_search_parser_extracts_embedded_video_ids(self):
+    def test_direct_search_parser_reads_renderer_upload_age(self):
         class FakeResponse:
             status_code = 200
-            text = '{"videoId":"abcdefghijk"} xxx {"videoId":"abcdefghijk"} {"videoId":"ZYXWVUTSRQP"}'
+            text = (
+                '{"videoRenderer":{"videoId":"abcdefghijk",'
+                '"title":{"runs":[{"text":"North Cyprus Property 2026"}]},'
+                '"publishedTimeText":{"simpleText":"3 days ago"},'
+                '"descriptionSnippet":{"runs":[{"text":"Apartment in Iskele"}]}}}'
+                '{"videoRenderer":{"videoId":"ZYXWVUTSRQP",'
+                '"title":{"runs":[{"text":"Older North Cyprus Villa"}]},'
+                '"publishedTimeText":{"simpleText":"2 years ago"}}}'
+            )
 
         seen = {"url": ""}
         old_get = y.requests.get
@@ -50,12 +58,39 @@ class YouTubeNCBuyerRadarTests(unittest.TestCase):
                 seen["url"] = url
                 return FakeResponse()
             y.requests.get = fake_get
-            rows = y.youtube_direct_search("North Cyprus property", limit=10, fresh_first=True)
+            rows = y.youtube_direct_search("North Cyprus property", limit=10)
         finally:
             y.requests.get = old_get
 
         self.assertEqual([row["video_id"] for row in rows], ["abcdefghijk", "ZYXWVUTSRQP"])
-        self.assertIn("sp=CAI%253D", seen["url"])
+        self.assertEqual(rows[0]["video_age_days"], 3)
+        self.assertEqual(rows[1]["video_age_days"], 730)
+        self.assertNotIn("sp=", seen["url"])
+
+    def test_video_ranking_prefers_recent_market_property_content(self):
+        rows = [
+            {
+                "video_id": "abcdefghijk",
+                "title": "North Cyprus apartment in Iskele",
+                "context": "property investment",
+                "video_age_days": 8,
+            },
+            {
+                "video_id": "ZYXWVUTSRQP",
+                "title": "North Cyprus property guide",
+                "context": "real estate",
+                "video_age_days": 420,
+            },
+            {
+                "video_id": "123456789ab",
+                "title": "Random travel clip",
+                "context": "",
+                "video_age_days": 1,
+            },
+        ]
+        ranked = y._rank_video_candidates(rows, 3)
+        self.assertEqual(ranked[0]["video_id"], "abcdefghijk")
+        self.assertEqual(ranked[-1]["video_id"], "123456789ab")
 
 
 if __name__ == "__main__":
