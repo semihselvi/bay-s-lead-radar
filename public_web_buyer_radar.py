@@ -1002,9 +1002,11 @@ def run() -> None:
             f"Eleme: {top_rejects}"
             + "".join(review_lines)
         )
-        v6.core.telegram(core_msg[:3900])
+        # Zero-result/public-web diagnostics stay in logs. Actual new buyers
+        # are already sent above via notify_lead().
+        print("PUBLIC_WEB_DEBUG", core_msg.replace("\n", " | "))
     except Exception as exc:
-        print("PUBLIC_WEB_TELEGRAM_DEBUG_ERROR", type(exc).__name__, str(exc))
+        print("PUBLIC_WEB_DEBUG_ERROR", type(exc).__name__, str(exc))
 
 
 if __name__ == "__main__":
