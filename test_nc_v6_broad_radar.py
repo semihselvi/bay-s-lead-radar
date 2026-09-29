@@ -412,6 +412,16 @@ class BroadIntentTests(unittest.TestCase):
         self.assertIsNotNone(review)
         self.assertEqual(reason, "accepted")
 
+    def test_review_rejects_business_investor_solicitation(self):
+        review, reason = v6.evaluate_review_candidate({
+            "message": "Ищу инвестора / стратегического соинвестора в международный проект. "
+                       "Открыт первый инвестиционный раунд, модель включает недвижимость и сервис.",
+            "group": "Русские на Северном Кипре",
+            "author": "@founder",
+        })
+        self.assertIsNone(review)
+        self.assertEqual(reason, "business_investor_solicitation")
+
 
     def test_serper_credit_exhaustion_disables_rest_of_run(self):
         module = v6.radar.v53

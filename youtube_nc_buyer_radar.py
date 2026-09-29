@@ -13,7 +13,7 @@ import requests
 from google.cloud import firestore
 from google.oauth2 import service_account
 
-VERSION = "1.1-youtube-direct-search"
+VERSION = "1.2-youtube-fresh-search"
 LOOKBACK_DAYS = int(os.getenv("NC_YOUTUBE_COMMENT_LOOKBACK_DAYS", "45"))
 VIDEO_LIMIT = int(os.getenv("NC_YOUTUBE_VIDEO_LIMIT", "10"))
 COMMENTS_PER_VIDEO = int(os.getenv("NC_YOUTUBE_COMMENTS_PER_VIDEO", "120"))
@@ -197,7 +197,7 @@ def video_id(url: str) -> str:
         return ""
 
 
-def youtube_direct_search(query: str, limit: int = 12) -> list[dict]:
+def youtube_direct_search(query: str, limit: int = 12, *, fresh_first: bool = True) -> list[dict]:
     """Fallback video discovery without a YouTube API key.
 
     YouTube's search HTML embeds videoId values in the initial page payload.
@@ -205,6 +205,10 @@ def youtube_direct_search(query: str, limit: int = 12) -> list[dict]:
     happens on the public comments themselves.
     """
     url = "https://www.youtube.com/results?search_query=" + urllib.parse.quote_plus(query)
+    if fresh_first:
+        # YouTube's upload-date filter. If the platform ignores it, results still
+        # remain valid public video URLs and the comment-age gate protects freshness.
+        url += "&sp=CAI%253D"
     try:
         r = requests.get(
             url,
@@ -226,7 +230,7 @@ def youtube_direct_search(query: str, limit: int = 12) -> list[dict]:
             ids.append(vid)
             if len(ids) >= limit:
                 break
-        print("NC_YOUTUBE_DIRECT_OK", len(ids), query)
+        print("NC_YOUTUBE_DIRECT_OK", len(ids), "fresh" if fresh_first else "relevance", query)
         return [{
             "video_id": vid,
             "url": f"https://www.youtube.com/watch?v={vid}",
@@ -263,8 +267,13 @@ def discover_videos() -> list[dict]:
 
     bing_count = len(found)
     if len(found) < VIDEO_LIMIT:
-        for q in YOUTUBE_DIRECT_QUERIES:
-            for row in youtube_direct_search(q, limit=max(4, VIDEO_LIMIT)):
+        year = str(now_utc().year)
+        fresh_queries = list(dict.fromkeys([
+            *(f"{q} {year}" for q in YOUTUBE_DIRECT_QUERIES),
+            *YOUTUBE_DIRECT_QUERIES,
+        ]))
+        for q in fresh_queries:
+            for row in youtube_direct_search(q, limit=max(4, VIDEO_LIMIT), fresh_first=True):
                 vid = row.get("video_id") or video_id(row.get("url", ""))
                 if not vid:
                     continue
