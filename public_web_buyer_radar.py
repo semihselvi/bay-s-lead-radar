@@ -21,7 +21,7 @@ import forum_engine
 import adaptive_radar_learning as learning
 import crawl4ai_radar_adapter as crawl4ai_adapter
 
-VERSION = "1.7-productive-source-focus"
+VERSION = "1.8-forum-date-recovery"
 MAX_AGE_DAYS = int(os.getenv("RADAR_PUBLIC_WEB_MAX_AGE_DAYS", "45"))
 TIMEOUT = int(os.getenv("RADAR_HTTP_TIMEOUT", "20"))
 MAX_RESULTS_PER_QUERY = int(os.getenv("RADAR_PUBLIC_WEB_RESULTS_PER_QUERY", "10"))
@@ -238,6 +238,33 @@ def _page_published(soup: BeautifulSoup) -> datetime | None:
     return None
 
 
+def _visible_forum_date(soup: BeautifulSoup, url: str = "") -> datetime | None:
+    """Recover a visible forum-post timestamp when structured metadata is absent.
+
+    Expat.com exposes timestamps as visible text such as
+    '04 July 2025 05:40:40'. Requiring a clock component avoids confusing
+    profile dates like 'Member since 02 July 2025' with the post date.
+    """
+    text = _norm(soup.get_text(" ", strip=True))
+    if not text:
+        return None
+
+    month = (
+        "January|February|March|April|May|June|July|August|September|October|November|December|"
+        "Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec"
+    )
+    patterns = [
+        rf"\b\d{{1,2}}\s+(?:{month})\s+\d{{4}}\s+\d{{1,2}}:\d{{2}}(?::\d{{2}})?\b",
+        r"\b\d{4}-\d{2}-\d{2}[ T]\d{1,2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?\b",
+    ]
+    for pattern in patterns:
+        for match in re.finditer(pattern, text, re.I):
+            dt = _parse_date(match.group(0))
+            if dt:
+                return dt
+    return None
+
+
 def _fallback_page_from_row(row: dict[str, Any], url: str) -> dict[str, Any]:
     title = _norm(row.get("title") or "")
     snippet = _norm(
@@ -287,11 +314,12 @@ def fetch_page(url: str) -> dict[str, Any]:
         text = _norm(soup.get_text(" ", strip=True))
 
     forum = forum_engine.extract_forum_posts(response.text, str(response.url))
+    published = _page_published(soup) or _visible_forum_date(soup, str(response.url))
     return {
         "url": str(response.url),
         "title": title,
         "text": text[:120000],
-        "published": _page_published(soup),
+        "published": published,
         "extractor": "trafilatura" if extracted else "beautifulsoup",
         "forum_engine": forum.get("engine", "generic"),
         "forum_posts": forum.get("posts", []),
@@ -306,7 +334,7 @@ def _page_units(page: dict[str, Any]) -> list[dict[str, Any]]:
         text = _norm(post.get("text") or "")
         if not text:
             continue
-        published = _parse_date(str(post.get("published") or ""))
+        published = _parse_date(str(post.get("published") or "")) or page.get("published")
         units.append({
             "text": text,
             "author": str(post.get("author") or ""),
