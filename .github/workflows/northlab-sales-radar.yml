@@ -91,6 +91,28 @@ jobs:
           NORTHLAB_FORUM_DL_TIMEOUT: "35"
         run: python northlab_sales_radar.py
 
+      - name: Persist Northlab last run status
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+          p=Path("northlab-last-run.json")
+          if not p.exists():
+              p.write_text(json.dumps({
+                  "status":"failed",
+                  "finished_at":datetime.now(timezone.utc).isoformat(),
+                  "reason":"Northlab radar wrote no status file"
+              }, ensure_ascii=False, indent=2), encoding="utf-8")
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add northlab-last-run.json
+          git commit -m "Update Northlab last run status" || true
+          git pull --rebase origin main || true
+          git push origin HEAD:main || true
+
       - name: Cleanup Telegram session
         if: always()
         run: rm -rf telegram_radar_session
