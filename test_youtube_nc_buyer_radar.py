@@ -34,6 +34,24 @@ class YouTubeNCBuyerRadarTests(unittest.TestCase):
         self.assertEqual(y.parse_comment_age("3 weeks ago"), 21)
         self.assertEqual(y.parse_comment_age("2 months ago"), 60)
 
+    def test_video_id_supports_shorts_and_youtu_be(self):
+        self.assertEqual(y.video_id("https://youtu.be/abcdefghijk"), "abcdefghijk")
+        self.assertEqual(y.video_id("https://www.youtube.com/shorts/abcdefghijk"), "abcdefghijk")
+
+    def test_direct_search_parser_extracts_embedded_video_ids(self):
+        class FakeResponse:
+            status_code = 200
+            text = '{"videoId":"abcdefghijk"} xxx {"videoId":"abcdefghijk"} {"videoId":"ZYXWVUTSRQP"}'
+
+        old_get = y.requests.get
+        try:
+            y.requests.get = lambda *args, **kwargs: FakeResponse()
+            rows = y.youtube_direct_search("North Cyprus property", limit=10)
+        finally:
+            y.requests.get = old_get
+
+        self.assertEqual([row["video_id"] for row in rows], ["abcdefghijk", "ZYXWVUTSRQP"])
+
 
 if __name__ == "__main__":
     unittest.main()
