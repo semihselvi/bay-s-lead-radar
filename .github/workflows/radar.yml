@@ -1,4 +1,5 @@
 name: NC - North Cyprus Buyer Radar
+# production classifier: freshness-surge-2026-09-29
 # production classifier: source-surge-2026-09-29
 # production repair: youtube-praise-test-2026-09-29
 # production classifier: reddit-fresh-comment-revival-1.4
@@ -93,7 +94,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           NC_YOUTUBE_COMMENT_LOOKBACK_DAYS: "45"
-          NC_YOUTUBE_VIDEO_LIMIT: "10"
+          NC_YOUTUBE_VIDEO_LIMIT: "15"
           NC_YOUTUBE_COMMENTS_PER_VIDEO: "120"
         run: python youtube_nc_buyer_radar.py
 
@@ -140,6 +141,7 @@ jobs:
           RADAR_V5_TELEGRAM_BACKFILL_LIMIT: "12"
           RADAR_V5_WEB_MAX_AGE_DAYS: "90"
           RADAR_LEARNED_TELEGRAM_QUERIES: "20"
+          RADAR_PUBLIC_PEER_SCAN_LIMIT: "90"
           RADAR_CRAWL4AI_RUN_BUDGET: "40"
           RADAR_CRAWL4AI_PER_CALL: "4"
         run: python nc_v6_broad_radar.py
