@@ -601,10 +601,9 @@ def run():
         f" | <=180g {sum(1 for v in videos if isinstance(v.get('video_age_days'), int) and v['video_age_days'] <= 180)}\n"
         f"Eleme: {dict(rejects)}"
     )
-    try:
-        notify(debug[:3900])
-    except Exception:
-        pass
+    # Keep zero-result scan diagnostics in GitHub/Firestore only.
+    # Telegram is reserved for actionable NEW BUYER alerts.
+    print("NC_YOUTUBE_DEBUG", debug.replace("\n", " | "))
 
     if new:
         lines = [f"🔥 PRIME RADAR | YOUTUBE | {len(new)} YENİ BUYER"]
