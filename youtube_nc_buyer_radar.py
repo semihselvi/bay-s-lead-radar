@@ -84,7 +84,8 @@ RENT_RE = re.compile(
 
 PRAISE_ONLY_RE = re.compile(
     r"^(?:great|nice|amazing|excellent|good|love it|beautiful|thanks?|thank you|wow|super|bravo|"
-    r"класс|супер|спасибо|harika|güzel|teşekkürler|toll|danke)[!.\s❤️🔥👏]*$",
+    r"класс|супер|спасибо|harika|güzel|teşekkürler|toll|danke)"
+    r"(?:\s+(?:video|vid|content|property|place|project|work))?[!.\s❤️🔥👏]*$",
     re.I,
 )
 
