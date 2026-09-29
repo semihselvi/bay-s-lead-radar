@@ -17,7 +17,7 @@ from bs4 import BeautifulSoup
 import main
 import reddit_nc_buyer_miner as base
 
-VERSION = "1.3-reddit-free-rss-bing"
+VERSION = "1.4-reddit-fresh-comment-revival"
 INDEX_LOOKBACK_DAYS = int(os.getenv("NC_REDDIT_INDEX_LOOKBACK_DAYS", "30"))
 INDEX_QUERY_LIMIT = int(os.getenv("NC_REDDIT_INDEX_QUERY_LIMIT", "12"))
 INDEX_COLLECTION = "bay_s_nc_reddit_index_notified"
@@ -30,6 +30,8 @@ SESSION.headers.update({
 })
 
 REDDIT_RSS_FEEDS = [
+    ("NorthCyprus comments", "https://www.reddit.com/r/NorthCyprus/comments/.rss"),
+    ("Cyprus comments", "https://www.reddit.com/r/cyprus/comments/.rss"),
     ("NorthCyprus new", "https://www.reddit.com/r/NorthCyprus/new/.rss"),
     ("NorthCyprus property search", "https://www.reddit.com/r/NorthCyprus/search.rss?q=property&restrict_sr=1&sort=new&t=month"),
     ("Cyprus North property search", "https://www.reddit.com/r/cyprus/search.rss?q=%22north%20cyprus%22%20property&restrict_sr=1&sort=new&t=month"),
@@ -129,6 +131,17 @@ CONCRETE_RE = re.compile(
     re.I,
 )
 
+COMMENT_PROPERTY_RE = re.compile(
+    r"(?:"
+    r"\bproperty\b|\breal\s+estate\b|\bapartment\b|\bflat\b|\bhouse\b|\bhome\b|\bvilla\b|\bland\b|"
+    r"\btitle\s+deed\b|\bexchange\s+title\b|\bpre[- ]?1974\b|\boff[- ]?plan\b|"
+    r"\bнедвижимост\w*\b|\bквартир\w*\b|\bдом\w*\b|\bвилл\w*\b|"
+    r"\bgayrimenkul\b|\bdaire\b|\bev\b|\bvilla\b|"
+    r"\bimmobilie\w*\b|\bwohnung\w*\b|\bhaus\b"
+    r")",
+    re.I,
+)
+
 
 def clean(text: str) -> str:
     return " ".join(str(text or "").split())
@@ -141,6 +154,20 @@ def _reddit_thread_url(url: str) -> bool:
         return False
     host = p.netloc.casefold().removeprefix("www.")
     return host in {"reddit.com", "old.reddit.com"} and "/comments/" in p.path.casefold()
+
+
+def _reddit_comment_url(url: str) -> bool:
+    """True for a permalink to a specific Reddit comment, not just a thread."""
+    try:
+        p = urlparse(str(url or ""))
+    except Exception:
+        return False
+    host = p.netloc.casefold().removeprefix("www.")
+    if host not in {"reddit.com", "old.reddit.com"}:
+        return False
+    parts = [part for part in p.path.split("/") if part]
+    # /r/<sub>/comments/<post_id>/<slug>/<comment_id>/
+    return len(parts) >= 6 and parts[0].casefold() == "r" and parts[2].casefold() == "comments"
 
 
 def _north_context(url: str, text: str, query: str) -> bool:
@@ -166,6 +193,35 @@ def classify_index_result(row: dict, query: str):
     title_direct = bool(DIRECT_TITLE_RE.search(title))
     title_research = bool(RESEARCH_TITLE_RE.search(title))
     snippet_direct = bool(FIRST_PERSON_BUY_RE.search(snippet))
+    comment_row = row.get("_entry_kind") == "comment" or _reddit_comment_url(url)
+
+    # Fresh Reddit comment feeds and indexed comment permalinks are valuable
+    # because active buyers often revive an older property thread. For comments,
+    # judge the comment author's own words instead of requiring a buyer-shaped
+    # thread title. Keep this path deliberately strict to preserve precision.
+    if comment_row:
+        if RENT_ONLY_RE.search(snippet):
+            return None, "rental"
+        if RENT_RE.search(snippet) and not snippet_direct:
+            return None, "rental"
+        if PAST_OWNER_RE.search(snippet) and not snippet_direct:
+            return None, "past_owner"
+        if SELLER_RE.search(snippet):
+            return None, "seller_or_listing"
+        if not snippet_direct:
+            return None, "comment_no_direct_buy"
+        if not COMMENT_PROPERTY_RE.search(snippet):
+            return None, "comment_no_property_context"
+
+        concrete = bool(CONCRETE_RE.search(snippet))
+        return {
+            "classification": "HOT" if concrete else "WARM",
+            "buyer_stage": "DIRECT",
+            "intent_score": 96 if concrete else 91,
+            "credibility_score": 90,
+            "market_fit_score": 100,
+            "buyer_signal": "reddit_fresh_comment_direct",
+        }, "accepted"
 
     # A clear rental-only statement is decisive, including ambiguous titles such
     # as "Looking to buy or rent". Background rent mentions do not kill an
@@ -273,6 +329,7 @@ def _reddit_rss_rows(label: str, url: str) -> list[dict]:
                     "date": published,
                     "_query": label,
                     "_source": "Reddit Native RSS",
+                    "_entry_kind": "comment" if "/comments/.rss" in url else "post",
                 })
 
         print("NC_REDDIT_RSS_OK", label, "results=", len(rows))
