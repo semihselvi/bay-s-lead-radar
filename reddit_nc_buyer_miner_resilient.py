@@ -187,13 +187,14 @@ def classify_index_result(row: dict, query: str):
         return None, "not_reddit_thread"
     if not _north_context(url, combined, query):
         return None, "no_north_context"
-    if SELLER_RE.search(combined):
+
+    comment_row = row.get("_entry_kind") == "comment" or _reddit_comment_url(url)
+    if SELLER_RE.search(snippet if comment_row else combined):
         return None, "seller_or_listing"
 
     title_direct = bool(DIRECT_TITLE_RE.search(title))
     title_research = bool(RESEARCH_TITLE_RE.search(title))
     snippet_direct = bool(FIRST_PERSON_BUY_RE.search(snippet))
-    comment_row = row.get("_entry_kind") == "comment" or _reddit_comment_url(url)
 
     # Fresh Reddit comment feeds and indexed comment permalinks are valuable
     # because active buyers often revive an older property thread. For comments,
