@@ -1,0 +1,79 @@
+name: NC - Telegram Buyer Fast Scan
+
+"on":
+  workflow_dispatch:
+  schedule:
+    - cron: "10 */2 * * *"
+
+concurrency:
+  group: nc-lead-radar-production
+  cancel-in-progress: false
+
+jobs:
+  telegram-fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+
+    steps:
+      - name: Checkout NC production branch
+        uses: actions/checkout@v6
+        with:
+          ref: production/radar
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Restore dedicated Prime Telegram session
+        env:
+          TELEGRAM_STRING_SESSION: ${{ secrets.TELEGRAM_STRING_SESSION_PRIME }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from telethon.sessions import StringSession, SQLiteSession
+
+          value=os.environ.get("TELEGRAM_STRING_SESSION","").strip()
+          if not value:
+              raise SystemExit("ERROR: TELEGRAM_STRING_SESSION_PRIME missing")
+
+          src=StringSession(value)
+          base=Path("telegram_radar_session/radar_session")
+          base.parent.mkdir(parents=True, exist_ok=True)
+          dst=SQLiteSession(str(base))
+          dst.set_dc(src.dc_id, src.server_address, src.port)
+          dst.auth_key=src.auth_key
+          dst.save()
+          dst.close()
+          print("Dedicated Prime Telegram session restored")
+          PY
+
+      - name: Run Telegram-first buyer scan
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION_PATH: telegram_radar_session/radar_session.session
+          RADAR_SALES_ONLY: "1"
+          RADAR_V5_TELEGRAM_HOURS: "6"
+          RADAR_GLOBAL_TELEGRAM_DAYS: "7"
+          RADAR_PUBLIC_PEER_SCAN_LIMIT: "90"
+          RADAR_LEARNED_TELEGRAM_QUERIES: "20"
+          RADAR_SOURCE_EXPANSION_SEEDS: "8"
+          RADAR_SOURCE_EXPANSION_CANDIDATES: "24"
+          RADAR_CRAWL4AI_RUN_BUDGET: "8"
+          RADAR_CRAWL4AI_PER_CALL: "2"
+        run: python nc_v6_broad_radar.py
+
+      - name: Cleanup Telegram session
+        if: always()
+        run: rm -rf telegram_radar_session
