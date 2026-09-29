@@ -70,6 +70,56 @@ class RedditIndexFallbackTests(unittest.TestCase):
 
 
 
+    def test_accepts_fresh_comment_buyer_even_when_thread_title_is_generic(self):
+        signal, reason = miner.classify_index_result(
+            {
+                "title": "u/newbuyer on North Cyprus property discussion",
+                "snippet": "I am looking to buy a 2+1 apartment in Iskele with a budget of £160000. Which areas should I view?",
+                "link": "https://www.reddit.com/r/NorthCyprus/comments/abc123/thread_title/def456/",
+                "_entry_kind": "comment",
+            },
+            "NorthCyprus comments",
+        )
+        self.assertEqual(reason, "accepted")
+        self.assertIsNotNone(signal)
+        self.assertEqual(signal["buyer_stage"], "DIRECT")
+        self.assertEqual(signal["classification"], "HOT")
+        self.assertEqual(signal["buyer_signal"], "reddit_fresh_comment_direct")
+
+    def test_rejects_fresh_comment_generic_investing_without_property(self):
+        signal, reason = miner.classify_index_result(
+            {
+                "title": "u/investor on discussion",
+                "snippet": "I am looking to invest this year and want to buy soon.",
+                "link": "https://www.reddit.com/r/NorthCyprus/comments/abc123/thread_title/def456/",
+                "_entry_kind": "comment",
+            },
+            "NorthCyprus comments",
+        )
+        self.assertIsNone(signal)
+        self.assertEqual(reason, "comment_no_property_context")
+
+    def test_rejects_fresh_comment_rental_only(self):
+        signal, reason = miner.classify_index_result(
+            {
+                "title": "u/tenant on property discussion",
+                "snippet": "I am only looking to rent an apartment in Iskele for six months, not buy.",
+                "link": "https://www.reddit.com/r/NorthCyprus/comments/abc123/thread_title/def456/",
+                "_entry_kind": "comment",
+            },
+            "NorthCyprus comments",
+        )
+        self.assertIsNone(signal)
+        self.assertEqual(reason, "rental")
+
+    def test_comment_permalink_detection(self):
+        self.assertTrue(miner._reddit_comment_url(
+            "https://www.reddit.com/r/NorthCyprus/comments/abc123/thread_title/def456/"
+        ))
+        self.assertFalse(miner._reddit_comment_url(
+            "https://www.reddit.com/r/NorthCyprus/comments/abc123/thread_title/"
+        ))
+
     def test_feed_date_recent_guard(self):
         fresh = datetime.now(timezone.utc).isoformat()
         old = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
