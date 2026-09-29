@@ -1,11 +1,11 @@
 {
   "status": "success",
-  "finished_at": "2026-09-29T04:26:00.340620+00:00",
+  "finished_at": "2026-09-29T11:33:45.698615+00:00",
   "version": "1.0-ocean-source-hub",
   "raw": 25,
   "unique": 25,
-  "qualified": 0,
-  "new": 0,
+  "qualified": 1,
+  "new": 1,
   "source_counts": {
     "semantic": 0,
     "reddit_comments": 25,
@@ -13,16 +13,19 @@
     "youtube_comments": 0,
     "forums": 0
   },
-  "qualified_by_source": {},
+  "qualified_by_source": {
+    "Reddit Comment RSS": 1
+  },
   "reject_reasons": {
-    "no_property": 14,
-    "no_explicit_purchase_intent": 11
+    "no_explicit_purchase_intent": 4,
+    "no_property": 20,
+    "accepted": 1
   },
   "source_errors": [],
   "youtube_urls": 0,
-  "forum_urls": 1,
+  "forum_urls": 0,
   "source_learning_scores": {
-    "reddit_comments": 33.260000000000005,
+    "reddit_comments": 65.93333333333334,
     "forums": -10.0,
     "youtube_comments": -10.0,
     "bluesky": -10.0,
@@ -31,14 +34,14 @@
   "journey_hot": 0,
   "learned_sources": [
     {
-      "qualified": 1,
-      "url": "https://www.reddit.com/r/expats/comments/1wsb0u4/any_expats_reach_their_50s_and_60s_and_end_up/pcken1a/",
+      "url": "https://www.reddit.com/r/expats/comments/1wsc9hb/employer_cancelled_my_netherlands_relocation/pcrijmx/",
+      "qualified": 2,
+      "last_seen_at": "2026-09-29T11:33:43.897494+00:00",
       "source_key": "reddit:r/expats",
-      "last_seen_at": "2026-09-28T13:02:03.247724+00:00",
-      "seen": 2,
-      "new": 1,
       "source_type": "reddit",
-      "score": 94.0
+      "new": 2,
+      "seen": 4,
+      "score": 128.0
     }
   ]
 }
