@@ -21,7 +21,7 @@ import forum_engine
 import adaptive_radar_learning as learning
 import crawl4ai_radar_adapter as crawl4ai_adapter
 
-VERSION = "1.8-forum-date-recovery"
+VERSION = "1.9-relative-forum-date-recovery"
 MAX_AGE_DAYS = int(os.getenv("RADAR_PUBLIC_WEB_MAX_AGE_DAYS", "45"))
 TIMEOUT = int(os.getenv("RADAR_HTTP_TIMEOUT", "20"))
 MAX_RESULTS_PER_QUERY = int(os.getenv("RADAR_PUBLIC_WEB_RESULTS_PER_QUERY", "10"))
@@ -170,6 +170,12 @@ def _parse_date(value: str) -> datetime | None:
         return now
     if low == "yesterday":
         return now - timedelta(days=1)
+    if low in {"last week", "a week ago"}:
+        return now - timedelta(days=7)
+    if low in {"last month", "a month ago"}:
+        return now - timedelta(days=30)
+    if low in {"last year", "a year ago"}:
+        return now - timedelta(days=365)
 
     m = re.search(
         r"\b(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago\b",
@@ -259,6 +265,21 @@ def _visible_forum_date(soup: BeautifulSoup, url: str = "") -> datetime | None:
     ]
     for pattern in patterns:
         for match in re.finditer(pattern, text, re.I):
+            dt = _parse_date(match.group(0))
+            if dt:
+                return dt
+
+    # Some forums render only relative age ("last year", "3 weeks ago").
+    # Treat these as the post's visible freshness signal when no exact clock
+    # timestamp exists. This is intentionally conservative: "last year" is
+    # enough to reject a 45-day lead.
+    relative_patterns = [
+        r"\b(?:last week|last month|last year|yesterday)\b",
+        r"\b\d+\s+(?:second|minute|hour|day|week|month|year)s?\s+ago\b",
+    ]
+    for pattern in relative_patterns:
+        match = re.search(pattern, text, re.I)
+        if match:
             dt = _parse_date(match.group(0))
             if dt:
                 return dt
