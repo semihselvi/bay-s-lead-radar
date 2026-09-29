@@ -22,7 +22,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.26-demand-language-loop"
+VERSION = "6.28-buyer-only-outbound-firewall"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -2401,6 +2401,45 @@ core.telegram_buyer_scan = broad_telegram_scan
 
 
 # ---------------------------------------------------------------------------
+# PURCHASE-ONLY OUTBOUND FIREWALL
+# ---------------------------------------------------------------------------
+
+_original_core_telegram = core.telegram
+
+
+def _buyer_only_message_allowed(message: str) -> bool:
+    """Block all non-actionable/diagnostic Telegram traffic at the last hop."""
+    text = str(message or "")
+    upper = text.upper()
+
+    blocked = (
+        "TENANT",
+        "LONG_TERM_TENANT",
+        "SHORT_TERM_TENANT",
+        "SHARED_RENTAL",
+        "TALEP VAR",
+        "BAY-S NC RECOVERY",
+        "BAY-S RADAR V5",
+        "LEAD RADAR DEBUG",
+        "PUBLIC WEB",
+        "YOUTUBE BUYER",
+    )
+    if any(token in upper for token in blocked):
+        return False
+    return True
+
+
+def buyer_only_telegram(message: str):
+    if not _buyer_only_message_allowed(message):
+        print("BUYER_ONLY_OUTBOUND_BLOCKED", _clip(message, 220).replace("\n", " | ") if "_clip" in globals() else str(message or "")[:220].replace("\n", " | "))
+        return None
+    return _original_core_telegram(message)
+
+
+core.telegram = buyer_only_telegram
+
+
+# ---------------------------------------------------------------------------
 # Notification / debug report
 # ---------------------------------------------------------------------------
 
@@ -2413,10 +2452,19 @@ def notify_lead(lead: dict[str, Any], prefix: str = "NEW") -> bool:
     if str(lead.get("market") or "") != "north_cyprus":
         return False
     lead_class = str(lead.get("lead_class") or "WATCH")
+    intent_type = str(lead.get("intent_type") or "").upper()
     message_text = str(lead.get("message") or lead.get("text") or "")
-    if str(lead.get("intent_type") or "").upper() == "TENANT" or RENT_DEMAND_RE.search(message_text):
+
+    # Semih wants purchase leads only: no tenants, relocation, generic investors,
+    # REVIEW/WATCH, or ambiguous demand may reach Telegram.
+    if intent_type != "BUYER":
         return False
-    emoji = "🔥" if lead_class == "HOT BUYER" else "🟡" if lead_class in {"WARM BUYER", "INVESTOR", "RELOCATION"} else "👀"
+    if lead_class not in {"HOT BUYER", "WARM BUYER"}:
+        return False
+    if RENT_DEMAND_RE.search(message_text):
+        return False
+
+    emoji = "🔥" if lead_class == "HOT BUYER" else "🟡"
     criteria_text = ", ".join(lead.get("important_criteria") or []) or "-"
     reasons = ", ".join(lead.get("lead_reasons") or []) or "-"
     msg = (
@@ -2532,7 +2580,8 @@ def save_and_notify_debug() -> None:
         f"Crawl4AI: istek {DEBUG['crawl4ai_requested']} | açıldı {DEBUG['crawl4ai_fetched']} | cache {DEBUG['crawl4ai_cache']} | fail {DEBUG['crawl4ai_failed']} | NC kurtardı {DEBUG['crawl4ai_recovered_geo']}\n"
         f"Gerçek hata: {total_errors}"
     )
-    core.telegram(msg[:3900])
+    # Debug funnel stays in logs/Firestore. Telegram is buyer-alert-only.
+    print("LEAD_RADAR_DEBUG_TEXT", msg.replace("\n", " | "))
     try:
         for row in sorted(DEBUG["review_samples"], key=lambda x: x.get("score", 0), reverse=True):
             print("LEAD_RADAR_REVIEW_CURRENT", json.dumps(row, ensure_ascii=False))
