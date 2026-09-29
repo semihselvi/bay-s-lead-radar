@@ -375,16 +375,27 @@ def _rank_video_candidates(rows: list[dict], limit: int) -> list[dict]:
             context,
             re.I,
         ))
-        # Local content match first, then known/recent age.
+        # Local market/property fit is primary. Within the same fit bucket,
+        # prefer recent videos and keep unknown/old videos as fallback only.
         context_penalty = 0 if (market_hint and property_hint) else 1 if market_hint else 2
-        age_rank = age if known else 99999
-        return (context_penalty, 0 if known else 1, age_rank, row.get("title", ""))
+        if age is None:
+            age_bucket = 4
+            age_rank = 99999
+        elif age <= 45:
+            age_bucket = 0
+            age_rank = age
+        elif age <= 180:
+            age_bucket = 1
+            age_rank = age
+        elif age <= 365:
+            age_bucket = 2
+            age_rank = age
+        else:
+            age_bucket = 5
+            age_rank = age
+        return (context_penalty, age_bucket, age_rank, row.get("title", ""))
 
-    ranked = sorted(dedup.values(), key=rank)
-    fresh = [row for row in ranked if isinstance(row.get("video_age_days"), int) and row["video_age_days"] <= 365]
-    unknown = [row for row in ranked if row.get("video_age_days") is None]
-    older = [row for row in ranked if isinstance(row.get("video_age_days"), int) and row["video_age_days"] > 365]
-    return (fresh + unknown + older)[:limit]
+    return sorted(dedup.values(), key=rank)[:limit]
 
 
 def discover_videos() -> list[dict]:
