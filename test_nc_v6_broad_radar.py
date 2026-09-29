@@ -753,5 +753,22 @@ class BroadIntentTests(unittest.TestCase):
         self.assertEqual(out["freshness"], "15_30d")
         self.assertLess(out["intent_score"], 90)
 
+    def test_buyer_only_message_firewall_blocks_rental_recovery_and_debug(self):
+        self.assertFalse(v6._buyer_only_message_allowed(
+            "🕰 BAY-S NC RECOVERY 7G | 0 BUYER + 3 TENANT"
+        ))
+        self.assertFalse(v6._buyer_only_message_allowed(
+            "ℹ️ BAY-S RADAR V5 North Cyprus foreign-buyer taraması tamamlandı."
+        ))
+        self.assertFalse(v6._buyer_only_message_allowed(
+            "🧪 LEAD RADAR DEBUG | SON TARAMA"
+        ))
+
+    def test_buyer_only_message_firewall_allows_real_buyer_alert(self):
+        self.assertTrue(v6._buyer_only_message_allowed(
+            "🔥 LEAD RADAR | HOT BUYER [NEW] Kullanıcı: Madina"
+        ))
+
+
 if __name__ == "__main__":
     unittest.main()
