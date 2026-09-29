@@ -1,5 +1,8 @@
 name: NORTHLAB - Sales Opportunity Radar
 
+permissions:
+  contents: write
+
 concurrency:
   group: northlab-sales-radar
   cancel-in-progress: true
