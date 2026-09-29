@@ -79,6 +79,17 @@ class PublicWebBuyerRadarTests(unittest.TestCase):
         self.assertLessEqual((datetime.now(timezone.utc) - four_weeks).days, 29)
         self.assertGreaterEqual((datetime.now(timezone.utc) - three_years).days, 1090)
 
+    def test_visible_expat_timestamp_is_recovered_not_member_since(self):
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(
+            "<html><body>Member since 02 July 2025 Revlon80 New member "
+            "04 July 2025 05:40:40 Hi all, seriously considering buying a villa.</body></html>",
+            "html.parser",
+        )
+        dt = web._visible_forum_date(soup, "https://www.expat.com/en/forum/europe/cyprus/north-cyprus/1100730.html")
+        self.assertIsNotNone(dt)
+        self.assertEqual((dt.year, dt.month, dt.day), (2025, 7, 4))
+
     def test_freshness_buckets(self):
         fresh = datetime.now(timezone.utc) - timedelta(days=3)
         warm = datetime.now(timezone.utc) - timedelta(days=20)
