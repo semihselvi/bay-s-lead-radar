@@ -2,6 +2,9 @@ name: NORTHLAB - Lead Radar Core
 
 "on":
   workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/telegram-buyer-fast.yml"
   schedule:
     - cron: "10 */2 * * *"
 
