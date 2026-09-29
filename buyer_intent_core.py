@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
-VERSION = "1.0-ocean-intent-core"
+VERSION = "1.1-ocean-reddit-body-buy-gate"
 
 PROPERTY_RE = re.compile(
     r"(?:property|real estate|apartment|flat|house|home|villa|condo|land|second home|holiday home|"
@@ -98,10 +98,18 @@ def classify_candidate(item: dict):
     if SELLER_RE.search(text):
         return None, "seller_or_agent"
 
-    # For YouTube comments, the video itself can establish property context,
-    # but BUY intent must come from the comment author, not the video title.
-    intent_text = body if item.get("source") == "YouTube Comment" else text
+    # For comment sources, BUY intent must come from the comment author's own
+    # words. Thread/video titles can establish context but must never manufacture
+    # a buyer out of an unrelated reply.
+    comment_source = item.get("source") in {"YouTube Comment", "Reddit Comment RSS"}
+    intent_text = body if comment_source else text
     explicit_buy = bool(BUY_RE.search(intent_text))
+
+    # Ocean is intentionally high-precision. Reddit comments must contain an
+    # actual purchase verb in the comment body; phrases such as "go back home"
+    # or a buyer-shaped parent thread title are not enough.
+    if item.get("source") == "Reddit Comment RSS" and not PURCHASE_VERB_RE.search(intent_text):
+        return None, "reddit_no_purchase_verb"
 
     if RENT_RE.search(intent_text) and not PURCHASE_VERB_RE.search(intent_text):
         return None, "rental"

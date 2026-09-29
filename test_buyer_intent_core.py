@@ -36,6 +36,25 @@ class BuyerIntentCoreTests(unittest.TestCase):
         self.assertIsNone(lead)
         self.assertIn(reason, {"no_property", "generic_investing", "no_explicit_purchase_intent"})
 
+    def test_rejects_reddit_relocation_advice_false_positive(self):
+        lead, reason = classify_candidate({
+            "source": "Reddit Comment RSS",
+            "title": "Employer cancelled my Netherlands relocation",
+            "text": "Save yourself the hustle, even selling everything it’s better to go back home",
+            "url": "https://www.reddit.com/r/expats/comments/example/comment/",
+        })
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "reddit_no_purchase_verb")
+
+    def test_reddit_comment_still_accepts_explicit_property_purchase(self):
+        lead, reason = classify_candidate({
+            "source": "Reddit Comment RSS",
+            "title": "Moving abroad",
+            "text": "I want to buy an apartment abroad and my budget is €150,000.",
+        })
+        self.assertIsNotNone(lead)
+        self.assertEqual(reason, "accepted")
+
     def test_accepts_non_english_purchase(self):
         lead, reason = classify_candidate({
             "source": "test",
