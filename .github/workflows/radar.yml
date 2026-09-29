@@ -1,4 +1,5 @@
 name: NC - North Cyprus Buyer Radar
+# production classifier: reddit-fresh-comment-revival-1.4
 # production source: youtube-buyer-comments-1.0
 # production repair: expat-date-parser-2026-09-28
 # production classifier: productive-source-focus-1.7
