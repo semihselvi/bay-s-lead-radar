@@ -1,6 +1,6 @@
 {
   "status": "success",
-  "finished_at": "2026-09-29T11:41:02.229346+00:00",
+  "finished_at": "2026-09-29T17:00:59.251610+00:00",
   "version": "1.0-ocean-source-hub",
   "raw": 25,
   "unique": 25,
@@ -15,13 +15,14 @@
   },
   "qualified_by_source": {},
   "reject_reasons": {
-    "reddit_no_purchase_verb": 25
+    "reddit_no_purchase_verb": 24,
+    "no_explicit_purchase_intent": 1
   },
   "source_errors": [],
   "youtube_urls": 0,
-  "forum_urls": 2,
+  "forum_urls": 0,
   "source_learning_scores": {
-    "reddit_comments": 65.5142857142857,
+    "reddit_comments": 65.2,
     "forums": -10.0,
     "youtube_comments": -10.0,
     "bluesky": -10.0,
@@ -30,13 +31,13 @@
   "journey_hot": 0,
   "learned_sources": [
     {
-      "last_seen_at": "2026-09-29T11:33:43.897494+00:00",
-      "seen": 4,
-      "qualified": 2,
-      "source_type": "reddit",
-      "new": 2,
       "source_key": "reddit:r/expats",
       "url": "https://www.reddit.com/r/expats/comments/1wsc9hb/employer_cancelled_my_netherlands_relocation/pcrijmx/",
+      "last_seen_at": "2026-09-29T11:33:43.897494+00:00",
+      "qualified": 2,
+      "new": 2,
+      "seen": 4,
+      "source_type": "reddit",
       "score": 128.0
     }
   ]
