@@ -581,10 +581,13 @@ def run():
         "Öğrenen kaynak: " + str(len(stats.get("learned_sources") or []))
         + " | Journey HOT: " + str(stats.get("journey_hot", 0)),
     ]
-    try:
-        notify("\n".join(debug_lines))
-    except Exception as exc:
-        print("OCEAN_DEBUG_NOTIFY_ERROR", type(exc).__name__, exc)
+    # Keep zero-yield Ocean scans in logs/status only. Telegram is reserved
+    # for actionable candidates or adapter/source failures.
+    if qualified or source_errors:
+        try:
+            notify("\n".join(debug_lines))
+        except Exception as exc:
+            print("OCEAN_DEBUG_NOTIFY_ERROR", type(exc).__name__, exc)
 
     if new:
         lines = [f"🌊 OCEAN SOURCE HUB | {len(new)} YENİ BUYER"]
