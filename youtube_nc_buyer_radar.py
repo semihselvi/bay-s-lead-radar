@@ -13,7 +13,7 @@ import requests
 from google.cloud import firestore
 from google.oauth2 import service_account
 
-VERSION = "1.2-youtube-fresh-search"
+VERSION = "1.3-youtube-local-fresh-ranking"
 LOOKBACK_DAYS = int(os.getenv("NC_YOUTUBE_COMMENT_LOOKBACK_DAYS", "45"))
 VIDEO_LIMIT = int(os.getenv("NC_YOUTUBE_VIDEO_LIMIT", "10"))
 COMMENTS_PER_VIDEO = int(os.getenv("NC_YOUTUBE_COMMENTS_PER_VIDEO", "120"))
@@ -197,23 +197,101 @@ def video_id(url: str) -> str:
         return ""
 
 
-def youtube_direct_search(query: str, limit: int = 12, *, fresh_first: bool = True) -> list[dict]:
-    """Fallback video discovery without a YouTube API key.
 
-    YouTube's search HTML embeds videoId values in the initial page payload.
-    We only use those IDs as public video URLs; buyer classification still
-    happens on the public comments themselves.
+def _balanced_json_object(text: str, object_start: int) -> str:
+    """Return one JSON object starting at object_start using brace balancing."""
+    if object_start < 0 or object_start >= len(text) or text[object_start] != "{":
+        return ""
+    depth = 0
+    in_string = False
+    escaped = False
+    for idx in range(object_start, len(text)):
+        ch = text[idx]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[object_start: idx + 1]
+    return ""
+
+
+def _renderer_text(renderer: dict, key: str) -> str:
+    value = renderer.get(key) or {}
+    if isinstance(value, dict):
+        simple = clean(value.get("simpleText") or "")
+        if simple:
+            return simple
+        runs = value.get("runs") or []
+        if isinstance(runs, list):
+            return clean(" ".join(str(row.get("text") or "") for row in runs if isinstance(row, dict)))
+    return ""
+
+
+def _extract_video_renderers(html: str, query: str, limit: int = 36) -> list[dict]:
+    rows = []
+    seen = set()
+    marker = '"videoRenderer":'
+    pos = 0
+    while len(rows) < limit:
+        hit = html.find(marker, pos)
+        if hit < 0:
+            break
+        object_start = html.find("{", hit + len(marker))
+        if object_start < 0:
+            break
+        raw = _balanced_json_object(html, object_start)
+        pos = object_start + max(1, len(raw))
+        if not raw:
+            continue
+        try:
+            renderer = json.loads(raw)
+        except Exception:
+            continue
+        vid = clean(renderer.get("videoId") or "")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{11}", vid) or vid in seen:
+            continue
+        seen.add(vid)
+        title = _renderer_text(renderer, "title")
+        published = _renderer_text(renderer, "publishedTimeText")
+        description = _renderer_text(renderer, "descriptionSnippet")
+        age_days = parse_comment_age(published)
+        rows.append({
+            "video_id": vid,
+            "url": f"https://www.youtube.com/watch?v={vid}",
+            "title": title,
+            "context": clean(f"{title} {description}")[:900],
+            "query": query,
+            "discovery": "youtube_video_renderer",
+            "video_published": published,
+            "video_age_days": age_days,
+        })
+    return rows
+
+
+def youtube_direct_search(query: str, limit: int = 24) -> list[dict]:
+    """Discover public YouTube videos and read visible upload age locally.
+
+    YouTube removed/reworked reliable upload-date sorting in 2026, so Radar
+    does not trust the old sp= upload-date parameter. Instead it parses
+    publishedTimeText from each public search result and ranks videos itself.
     """
     url = "https://www.youtube.com/results?search_query=" + urllib.parse.quote_plus(query)
-    if fresh_first:
-        # YouTube's upload-date filter. If the platform ignores it, results still
-        # remain valid public video URLs and the comment-age gate protects freshness.
-        url += "&sp=CAI%253D"
     try:
         r = requests.get(
             url,
             headers={
-                "User-Agent": "Mozilla/5.0 (compatible; PrimeKibrisRadar/1.1)",
+                "User-Agent": "Mozilla/5.0 (compatible; PrimeKibrisRadar/1.3)",
                 "Accept-Language": "en-US,en;q=0.9",
             },
             timeout=20,
@@ -221,75 +299,168 @@ def youtube_direct_search(query: str, limit: int = 12, *, fresh_first: bool = Tr
         if r.status_code != 200:
             print("NC_YOUTUBE_DIRECT_HTTP", r.status_code, query)
             return []
-        ids = []
-        seen = set()
-        for vid in re.findall(r'"videoId":"([A-Za-z0-9_-]{11})"', r.text):
-            if vid in seen:
-                continue
-            seen.add(vid)
-            ids.append(vid)
-            if len(ids) >= limit:
-                break
-        print("NC_YOUTUBE_DIRECT_OK", len(ids), "fresh" if fresh_first else "relevance", query)
-        return [{
-            "video_id": vid,
-            "url": f"https://www.youtube.com/watch?v={vid}",
-            "title": "",
-            "context": query,
-            "query": query,
-            "discovery": "youtube_direct_search",
-        } for vid in ids]
+
+        rows = _extract_video_renderers(r.text, query, limit=limit)
+        if not rows:
+            # Defensive fallback if YouTube changes the renderer wrapper.
+            seen = set()
+            for vid in re.findall(r'"videoId":"([A-Za-z0-9_-]{11})"', r.text):
+                if vid in seen:
+                    continue
+                seen.add(vid)
+                rows.append({
+                    "video_id": vid,
+                    "url": f"https://www.youtube.com/watch?v={vid}",
+                    "title": "",
+                    "context": "",
+                    "query": query,
+                    "discovery": "youtube_regex_fallback",
+                    "video_published": "",
+                    "video_age_days": None,
+                })
+                if len(rows) >= limit:
+                    break
+
+        recent = sum(
+            1 for row in rows
+            if isinstance(row.get("video_age_days"), int) and row["video_age_days"] <= 180
+        )
+        print("NC_YOUTUBE_DIRECT_OK", len(rows), "recent180", recent, query)
+        return rows
     except Exception as exc:
         print("NC_YOUTUBE_DIRECT_ERROR", type(exc).__name__, query, exc)
         return []
 
 
+def _rank_video_candidates(rows: list[dict], limit: int) -> list[dict]:
+    dedup = {}
+    for row in rows:
+        vid = clean(row.get("video_id") or "") or video_id(row.get("url", ""))
+        if not vid:
+            continue
+        candidate = dict(row)
+        candidate["video_id"] = vid
+        candidate["url"] = f"https://www.youtube.com/watch?v={vid}"
+        age = candidate.get("video_age_days")
+        if not isinstance(age, int):
+            age = None
+            candidate["video_age_days"] = None
+
+        existing = dedup.get(vid)
+        if existing is None:
+            dedup[vid] = candidate
+            continue
+        old_age = existing.get("video_age_days")
+        # Prefer the observation that carries a usable upload age/title.
+        if old_age is None and age is not None:
+            dedup[vid] = candidate
+        elif not existing.get("title") and candidate.get("title"):
+            dedup[vid] = candidate
+
+    def rank(row: dict):
+        age = row.get("video_age_days")
+        known = isinstance(age, int)
+        context = clean(f"{row.get('title','')} {row.get('context','')}")
+        market_hint = bool(re.search(
+            r"(?:north(?:ern)?\s+cyprus|kuzey\s+kıbrıs|kuzey\s+kibris|северн\w*\s+кипр|nordzypern|"
+            r"\biskele\b|\bİskele\b|\bkyrenia\b|\bgirne\b|\bfamagusta\b|\bmağusa\b|\bmagusa\b|"
+            r"\blong beach\b|\besentepe\b|\btatl[ıi]su\b|\bbafra\b|\blapta\b|\balsancak\b|"
+            r"\bискеле\b|\bкирен\w*\b|\bфамагуст\w*\b|\bлонг бич\b)",
+            context,
+            re.I,
+        ))
+        property_hint = bool(re.search(
+            r"(?:property|real estate|apartment|flat|villa|house|home|investment|title deed|off[- ]?plan|"
+            r"недвижим|квартир|апартамент|вилл|дом|gayrimenkul|daire|ev|villa|immobil|wohnung|haus)",
+            context,
+            re.I,
+        ))
+        # Local content match first, then known/recent age.
+        context_penalty = 0 if (market_hint and property_hint) else 1 if market_hint else 2
+        age_rank = age if known else 99999
+        return (context_penalty, 0 if known else 1, age_rank, row.get("title", ""))
+
+    ranked = sorted(dedup.values(), key=rank)
+    fresh = [row for row in ranked if isinstance(row.get("video_age_days"), int) and row["video_age_days"] <= 365]
+    unknown = [row for row in ranked if row.get("video_age_days") is None]
+    older = [row for row in ranked if isinstance(row.get("video_age_days"), int) and row["video_age_days"] > 365]
+    return (fresh + unknown + older)[:limit]
+
+
 def discover_videos() -> list[dict]:
-    found = {}
+    pool = []
+    year = str(now_utc().year)
+    month_year = now_utc().strftime("%B %Y")
+
+    # Collect enough candidates to rank by actual visible upload age instead of
+    # trusting YouTube's search order.
+    direct_queries = list(dict.fromkeys([
+        *(f"{q} {month_year}" for q in YOUTUBE_DIRECT_QUERIES[:5]),
+        *(f"{q} {year}" for q in YOUTUBE_DIRECT_QUERIES),
+        *YOUTUBE_DIRECT_QUERIES,
+    ]))
+
+    for q in direct_queries:
+        pool.extend(youtube_direct_search(q, limit=24))
+        recent_count = sum(
+            1 for row in pool
+            if isinstance(row.get("video_age_days"), int) and row["video_age_days"] <= 180
+        )
+        if recent_count >= max(VIDEO_LIMIT * 2, 20):
+            break
+
+    direct_count = len({row.get("video_id") for row in pool if row.get("video_id")})
+
+    # Search-engine discovery remains a fallback/secondary source.
     for q in DISCOVERY_QUERIES:
-        for row in bing_rss(q):
+        try:
+            search_rows = bing_rss(q)
+        except Exception:
+            search_rows = []
+        for row in search_rows:
             vid = video_id(row.get("url", ""))
             if not vid:
                 continue
             context = clean(f"{row.get('title','')} {row.get('snippet','')}")
             if not VIDEO_CONTEXT_RE.search(context):
                 continue
-            found.setdefault(vid, {
+            pool.append({
                 "video_id": vid,
                 "url": f"https://www.youtube.com/watch?v={vid}",
                 "title": row.get("title", ""),
                 "context": context[:800],
                 "query": q,
+                "discovery": "bing_rss",
+                "video_published": "",
+                "video_age_days": None,
             })
-            if len(found) >= VIDEO_LIMIT:
-                print("NC_YOUTUBE_DISCOVERY", json.dumps({"bing": len(found), "direct": 0, "total": len(found)}))
-                return list(found.values())
 
-    bing_count = len(found)
-    if len(found) < VIDEO_LIMIT:
-        year = str(now_utc().year)
-        fresh_queries = list(dict.fromkeys([
-            *(f"{q} {year}" for q in YOUTUBE_DIRECT_QUERIES),
-            *YOUTUBE_DIRECT_QUERIES,
-        ]))
-        for q in fresh_queries:
-            for row in youtube_direct_search(q, limit=max(4, VIDEO_LIMIT), fresh_first=True):
-                vid = row.get("video_id") or video_id(row.get("url", ""))
-                if not vid:
-                    continue
-                found.setdefault(vid, row)
-                if len(found) >= VIDEO_LIMIT:
-                    break
-            if len(found) >= VIDEO_LIMIT:
-                break
-
+    videos = _rank_video_candidates(pool, VIDEO_LIMIT)
+    recent45 = sum(
+        1 for row in videos
+        if isinstance(row.get("video_age_days"), int) and row["video_age_days"] <= 45
+    )
+    recent180 = sum(
+        1 for row in videos
+        if isinstance(row.get("video_age_days"), int) and row["video_age_days"] <= 180
+    )
     print("NC_YOUTUBE_DISCOVERY", json.dumps({
-        "bing": bing_count,
-        "direct": max(0, len(found) - bing_count),
-        "total": len(found),
-    }))
-    return list(found.values())
-
+        "pool": len(pool),
+        "direct_unique": direct_count,
+        "selected": len(videos),
+        "video_recent45": recent45,
+        "video_recent180": recent180,
+        "samples": [
+            {
+                "id": row.get("video_id"),
+                "age": row.get("video_age_days"),
+                "published": row.get("video_published"),
+                "title": clean(row.get("title") or "")[:100],
+            }
+            for row in videos[:8]
+        ],
+    }, ensure_ascii=False))
+    return videos
 
 def db_client():
     raw = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
@@ -415,6 +586,8 @@ def run():
     debug = (
         "🎥 PRIME RADAR | YOUTUBE BUYER\n\n"
         f"Video: {len(videos)} | Yorum: {scanned} | Geçerli BUYER: {len(qualified)} | Yeni: {len(new)}\n"
+        f"Taze video: <=45g {sum(1 for v in videos if isinstance(v.get('video_age_days'), int) and v['video_age_days'] <= 45)}"
+        f" | <=180g {sum(1 for v in videos if isinstance(v.get('video_age_days'), int) and v['video_age_days'] <= 180)}\n"
         f"Eleme: {dict(rejects)}"
     )
     try:
