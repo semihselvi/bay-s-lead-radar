@@ -43,14 +43,19 @@ class YouTubeNCBuyerRadarTests(unittest.TestCase):
             status_code = 200
             text = '{"videoId":"abcdefghijk"} xxx {"videoId":"abcdefghijk"} {"videoId":"ZYXWVUTSRQP"}'
 
+        seen = {"url": ""}
         old_get = y.requests.get
         try:
-            y.requests.get = lambda *args, **kwargs: FakeResponse()
-            rows = y.youtube_direct_search("North Cyprus property", limit=10)
+            def fake_get(url, *args, **kwargs):
+                seen["url"] = url
+                return FakeResponse()
+            y.requests.get = fake_get
+            rows = y.youtube_direct_search("North Cyprus property", limit=10, fresh_first=True)
         finally:
             y.requests.get = old_get
 
         self.assertEqual([row["video_id"] for row in rows], ["abcdefghijk", "ZYXWVUTSRQP"])
+        self.assertIn("sp=CAI%253D", seen["url"])
 
 
 if __name__ == "__main__":
