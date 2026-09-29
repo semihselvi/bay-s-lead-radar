@@ -13,7 +13,7 @@ import requests
 from google.cloud import firestore
 from google.oauth2 import service_account
 
-VERSION = "1.0-nc-youtube-buyer"
+VERSION = "1.1-youtube-direct-search"
 LOOKBACK_DAYS = int(os.getenv("NC_YOUTUBE_COMMENT_LOOKBACK_DAYS", "45"))
 VIDEO_LIMIT = int(os.getenv("NC_YOUTUBE_VIDEO_LIMIT", "10"))
 COMMENTS_PER_VIDEO = int(os.getenv("NC_YOUTUBE_COMMENTS_PER_VIDEO", "120"))
@@ -30,6 +30,19 @@ DISCOVERY_QUERIES = [
     'site:youtube.com/watch "Kuzey Kıbrıs" gayrimenkul yatırım',
     'site:youtube.com/watch "Kuzey Kıbrıs" daire satın almak',
     'site:youtube.com/watch "Nordzypern" Immobilie kaufen',
+]
+
+YOUTUBE_DIRECT_QUERIES = [
+    "North Cyprus property investment",
+    "North Cyprus buy apartment",
+    "Northern Cyprus real estate",
+    "North Cyprus off plan property",
+    "North Cyprus title deed property",
+    "Северный Кипр недвижимость купить",
+    "Северный Кипр квартира инвестиции",
+    "Kuzey Kıbrıs gayrimenkul yatırım",
+    "Kuzey Kıbrıs daire satın almak",
+    "Nordzypern Immobilie kaufen",
 ]
 
 VIDEO_CONTEXT_RE = re.compile(
@@ -172,11 +185,59 @@ def bing_rss(query: str, limit: int = 12) -> list[dict]:
 def video_id(url: str) -> str:
     try:
         p = urllib.parse.urlparse(url)
-        if "youtu.be" in p.netloc:
-            return p.path.strip("/")
+        host = p.netloc.casefold()
+        if "youtu.be" in host:
+            return p.path.strip("/").split("/", 1)[0]
+        if "/shorts/" in p.path:
+            return p.path.split("/shorts/", 1)[1].split("/", 1)[0]
+        if "/embed/" in p.path:
+            return p.path.split("/embed/", 1)[1].split("/", 1)[0]
         return urllib.parse.parse_qs(p.query).get("v", [""])[0]
     except Exception:
         return ""
+
+
+def youtube_direct_search(query: str, limit: int = 12) -> list[dict]:
+    """Fallback video discovery without a YouTube API key.
+
+    YouTube's search HTML embeds videoId values in the initial page payload.
+    We only use those IDs as public video URLs; buyer classification still
+    happens on the public comments themselves.
+    """
+    url = "https://www.youtube.com/results?search_query=" + urllib.parse.quote_plus(query)
+    try:
+        r = requests.get(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (compatible; PrimeKibrisRadar/1.1)",
+                "Accept-Language": "en-US,en;q=0.9",
+            },
+            timeout=20,
+        )
+        if r.status_code != 200:
+            print("NC_YOUTUBE_DIRECT_HTTP", r.status_code, query)
+            return []
+        ids = []
+        seen = set()
+        for vid in re.findall(r'"videoId":"([A-Za-z0-9_-]{11})"', r.text):
+            if vid in seen:
+                continue
+            seen.add(vid)
+            ids.append(vid)
+            if len(ids) >= limit:
+                break
+        print("NC_YOUTUBE_DIRECT_OK", len(ids), query)
+        return [{
+            "video_id": vid,
+            "url": f"https://www.youtube.com/watch?v={vid}",
+            "title": "",
+            "context": query,
+            "query": query,
+            "discovery": "youtube_direct_search",
+        } for vid in ids]
+    except Exception as exc:
+        print("NC_YOUTUBE_DIRECT_ERROR", type(exc).__name__, query, exc)
+        return []
 
 
 def discover_videos() -> list[dict]:
@@ -197,7 +258,27 @@ def discover_videos() -> list[dict]:
                 "query": q,
             })
             if len(found) >= VIDEO_LIMIT:
+                print("NC_YOUTUBE_DISCOVERY", json.dumps({"bing": len(found), "direct": 0, "total": len(found)}))
                 return list(found.values())
+
+    bing_count = len(found)
+    if len(found) < VIDEO_LIMIT:
+        for q in YOUTUBE_DIRECT_QUERIES:
+            for row in youtube_direct_search(q, limit=max(4, VIDEO_LIMIT)):
+                vid = row.get("video_id") or video_id(row.get("url", ""))
+                if not vid:
+                    continue
+                found.setdefault(vid, row)
+                if len(found) >= VIDEO_LIMIT:
+                    break
+            if len(found) >= VIDEO_LIMIT:
+                break
+
+    print("NC_YOUTUBE_DISCOVERY", json.dumps({
+        "bing": bing_count,
+        "direct": max(0, len(found) - bing_count),
+        "total": len(found),
+    }))
     return list(found.values())
 
 
