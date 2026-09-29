@@ -1057,6 +1057,17 @@ def _base_candidate(group: str, entity: Any, msg: Any, started: datetime) -> dic
     }
 
 
+BUSINESS_INVESTOR_SOLICIT_RE = re.compile(
+    r"(?:"
+    r"\b(?:looking for|seeking)\s+(?:an?\s+)?(?:investor|co[- ]?investor|strategic investor)\b|"
+    r"\binvestment\s+round\b|\bseeking\s+funding\b|"
+    r"\bищу\s+(?:инвестора|соинвестора)\b|\bинвестиционн\w*\s+раунд\b|"
+    r"\byatırımcı\s+arıyorum\b|\bsermaye\s+arıyorum\b"
+    r")",
+    re.I,
+)
+
+
 def evaluate_review_candidate(candidate: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
     text = str(candidate.get("message") or "")
     if not text:
@@ -1076,6 +1087,8 @@ def evaluate_review_candidate(candidate: dict[str, Any]) -> tuple[dict[str, Any]
         return None, "discussion_or_hypothetical"
     if COMMERCIAL_PROVIDER_RE.search(text):
         return None, "commercial_provider"
+    if BUSINESS_INVESTOR_SOLICIT_RE.search(text):
+        return None, "business_investor_solicitation"
 
     has_property = bool(PROPERTY_RE.search(text))
     demand = bool(DEMAND_RE.search(text))
@@ -1670,7 +1683,8 @@ async def broad_telegram_scan(db_client, started):
         DEBUG["peer_discovery_found"] = len(discovered_peers)
         peer_cutoff = datetime.now(timezone.utc) - timedelta(days=30)
 
-        for username_key, chat in list(discovered_peers.items())[:40]:
+        peer_scan_limit = max(40, min(120, int(os.getenv("RADAR_PUBLIC_PEER_SCAN_LIMIT", "90") or "90")))
+        for username_key, chat in list(discovered_peers.items())[:peer_scan_limit]:
             username = _public_chat_username(chat)
             if not username:
                 continue
