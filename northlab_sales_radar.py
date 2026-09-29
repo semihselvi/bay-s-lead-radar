@@ -6,6 +6,7 @@ import json
 import os
 import re
 import urllib.parse
+from pathlib import Path
 import xml.etree.ElementTree as ET
 from collections import Counter
 from datetime import datetime, timedelta, timezone
@@ -739,6 +740,10 @@ def main() -> None:
         "new_leads": len(new_leads),
         "alerts": alerts,
     })
+    Path("northlab-last-run.json").write_text(
+        json.dumps({"status": "success", **data}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
     db_client.collection(SCAN_COLLECTION).document(now.strftime("%Y%m%dT%H%M%SZ")).set(data)
 
     rejects = ", ".join(f"{k}:{v}" for k, v in debug["rejects"].most_common(8)) or "-"
