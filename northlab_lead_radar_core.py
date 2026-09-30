@@ -8,7 +8,7 @@ from typing import Any
 import nc_v6_broad_radar as radar
 
 
-VERSION = "1.0-telegram-buyer-core"
+VERSION = "1.1-property-object-firewall"
 
 
 def is_actionable_buyer(lead: dict[str, Any]) -> bool:
@@ -24,6 +24,10 @@ def is_actionable_buyer(lead: dict[str, Any]) -> bool:
 
     text = str(lead.get("message") or lead.get("text") or "")
     if radar.RENT_DEMAND_RE.search(text):
+        return False
+    if radar._hard_reject(text, str(lead.get("author") or "")):
+        return False
+    if not radar.PROPERTY_RE.search(text):
         return False
 
     return True
