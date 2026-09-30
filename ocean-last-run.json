@@ -1,6 +1,6 @@
 {
   "status": "success",
-  "finished_at": "2026-09-30T16:59:52.144029+00:00",
+  "finished_at": "2026-09-30T21:32:19.978317+00:00",
   "version": "1.0-ocean-source-hub",
   "raw": 25,
   "unique": 25,
@@ -21,7 +21,7 @@
   "youtube_urls": 0,
   "forum_urls": 0,
   "source_learning_scores": {
-    "reddit_comments": 64.6,
+    "reddit_comments": 64.46666666666667,
     "forums": -10.0,
     "youtube_comments": -10.0,
     "bluesky": -10.0,
@@ -30,13 +30,13 @@
   "journey_hot": 0,
   "learned_sources": [
     {
-      "source_type": "reddit",
-      "last_seen_at": "2026-09-29T11:33:43.897494+00:00",
-      "qualified": 2,
-      "url": "https://www.reddit.com/r/expats/comments/1wsc9hb/employer_cancelled_my_netherlands_relocation/pcrijmx/",
-      "seen": 4,
-      "source_key": "reddit:r/expats",
       "new": 2,
+      "source_type": "reddit",
+      "seen": 4,
+      "url": "https://www.reddit.com/r/expats/comments/1wsc9hb/employer_cancelled_my_netherlands_relocation/pcrijmx/",
+      "qualified": 2,
+      "source_key": "reddit:r/expats",
+      "last_seen_at": "2026-09-29T11:33:43.897494+00:00",
       "score": 128.0
     }
   ]
