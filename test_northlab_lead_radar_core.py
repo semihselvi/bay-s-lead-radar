@@ -34,6 +34,15 @@ class NorthlabLeadRadarCoreTests(unittest.TestCase):
             "message": "What are the yields in North Cyprus?",
         }))
 
+    def test_rejects_car_purchase_even_if_upstream_labels_buyer(self):
+        self.assertFalse(core.is_actionable_buyer({
+            "market": "north_cyprus",
+            "intent_type": "BUYER",
+            "lead_class": "HOT BUYER",
+            "author": "@anna_smrnva",
+            "message": "Куплю авто ~5000£ либо с первым взносом в рассрочку",
+        }))
+
     def test_rejects_buyer_label_if_message_is_rental(self):
         self.assertFalse(core.is_actionable_buyer({
             "market": "north_cyprus",
