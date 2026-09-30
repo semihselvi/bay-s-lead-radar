@@ -22,7 +22,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.28-buyer-only-outbound-firewall"
+VERSION = "6.29-property-object-hard-gate"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -231,6 +231,8 @@ JOB_POST_RE = re.compile(
 VEHICLE_RE = re.compile(
     r"(?:\b(?:suzuki|honda|toyota|nissan|mazda|bmw|mercedes|audi|ford|kia|hyundai|renault|peugeot|fiat|volkswagen)\b|"
     r"\b(?:марка/модель|топливо|километров|автоматическ\w*|обмен)\b|"
+    r"\b(?:авто|автомобил\w*|машин\w*|car|vehicle|auto)\b|"
+    r"\b(?:куплю|ищу|хочу\s+купить)\b.{0,80}\b(?:авто|автомобил\w*|машин\w*)\b|"
     r"\b(?:car|vehicle|auto|автомобил\w*|машин\w*)\b.{0,120}\b(?:year|model|price|fuel|km|рассрочк)\b|"
     r"\b(?:ищу\s+в\s+аренду\s+авто|аренд\w*\s+авто|rent\s+(?:a\s+)?car|car\s+rental)\b)",
     re.I | re.S,
@@ -565,7 +567,10 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
         agent_purchase_request = bool(agent_client and has_property and demand and (purchase_budget_request or qualifier or investor))
         if not buy and not agent_purchase_request and not purchase_budget_request:
             return None, "no_explicit_purchase_intent"
-        if not any((has_property, qualifier, investor, residency)):
+        # Purchase qualifiers such as payment-plan/installment language do not
+        # establish that the object is real estate. A car can also be bought on
+        # installments. In sales-only mode we require an actual property object.
+        if not has_property:
             return None, "no_property_purchase_context"
 
     # A generic "buy" verb inside a North-Cyprus group is not enough. It must
