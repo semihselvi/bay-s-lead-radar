@@ -2,8 +2,6 @@ name: ABROAD - Belgium Residents Buying Abroad
 
 "on":
   workflow_dispatch:
-  schedule:
-    - cron: "35 6,12,18 * * *"
 
 jobs:
   belgium-abroad-buyer:
