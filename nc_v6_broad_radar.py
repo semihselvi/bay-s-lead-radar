@@ -2468,6 +2468,12 @@ def notify_lead(lead: dict[str, Any], prefix: str = "NEW") -> bool:
         return False
     if RENT_DEMAND_RE.search(message_text):
         return False
+    # Never trust an upstream BUYER label without verifying the original text.
+    # Purchase of a car, phone or other non-property goods is not a sales lead.
+    if _hard_reject(message_text, str(lead.get("author") or "")):
+        return False
+    if not PROPERTY_RE.search(message_text):
+        return False
 
     emoji = "🔥" if lead_class == "HOT BUYER" else "🟡"
     criteria_text = ", ".join(lead.get("important_criteria") or []) or "-"
