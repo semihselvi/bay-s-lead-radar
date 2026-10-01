@@ -10,8 +10,6 @@ name: NORTHLAB - North Cyprus Small Business Web Radar
       - "test_small_business_web_radar.py"
       - "test_small_business_web_radar_sales.py"
       - ".github/workflows/nc-small-business-web-radar.yml"
-  schedule:
-    - cron: "35 5 * * *"
 
 jobs:
   radar:
