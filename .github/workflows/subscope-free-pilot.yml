@@ -1,0 +1,71 @@
+name: Free pilot - Subscope Northlab
+"on":
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/subscope-free-pilot.yml"
+permissions:
+  contents: read
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - name: Checkout pilot workspace
+        uses: actions/checkout@v4
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install upstream open-source Subscope
+        run: |
+          git clone --depth 1 https://github.com/dancolta/subscope.git subscope-src
+          python -m pip install -e ./subscope-src
+      - name: Configure Northlab trial (no keys, no Telegram)
+        run: |
+          mkdir -p pilot-config
+          cat > pilot-config/subreddits.yml <<'YAML'
+          subreddits:
+            - {name: smallbusiness, tier: 1, bucket: operator, weight: 1.2}
+            - {name: Entrepreneur, tier: 1, bucket: operator, weight: 1.0}
+            - {name: WordPress, tier: 2, bucket: operator, weight: 1.1}
+            - {name: webdev, tier: 2, bucket: builder, weight: 1.0}
+            - {name: n8n, tier: 2, bucket: builder, weight: 1.0}
+          YAML
+          cat > pilot-config/keywords.yml <<'YAML'
+          shared: ["looking for", "recommend", "need help", "need a website", "looking for web developer", "web designer", "website redesign", "booking system", "CRM", "automation"]
+          operator: ["WordPress", "Webflow", "Wix", "Shopify", "booking", "CRM", "HubSpot", "Zapier", "n8n", "web developer", "website", "automation"]
+          builder: ["WordPress", "Webflow", "website", "web developer", "API integration", "n8n", "automation", "CRM", "custom software"]
+          YAML
+          cat > pilot-config/brand-anchor.yml <<'YAML'
+          brand_anchor: [WordPress, Webflow, Wix, Shopify, HubSpot, Zapier, n8n]
+          YAML
+          cat > pilot-config/fetch.yml <<'YAML'
+          strategy: search
+          since_days: 7
+          YAML
+      - name: Run real Reddit RSS pilot
+        id: scan
+        env:
+          SUBSCOPE_CONFIG: ${{ github.workspace }}/pilot-config
+          XDG_DATA_HOME: ${{ runner.temp }}/subscope-data
+        run: |
+          subscope setup
+          subscope fetch-score --search --since-days 7 --limit-per-sub 10 --max-requests 5 --no-cool --no-slack --no-enrich --candidates --explain > pilot-results.json
+          python - <<'PY'
+          import json
+          d=json.load(open("pilot-results.json",encoding="utf-8"))
+          print("PILOT_RESULT_TOP_LEVEL",sorted(d.keys()))
+          for k,v in d.items():
+              if isinstance(v,list): print("PILOT_COUNT",k,len(v))
+              elif isinstance(v,(int,str,float)): print("PILOT_VALUE",k,str(v)[:200])
+          PY
+      - name: Save result for audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: subscope-northlab-free-pilot
+          path: |
+            pilot-results.json
+            pilot-config/*.yml
+          if-no-files-found: warn
