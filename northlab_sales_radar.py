@@ -752,28 +752,7 @@ def main() -> None:
     classes = ", ".join(f"{k}:{v}" for k, v in debug["accepted_classes"].most_common()) or "-"
     types = ", ".join(f"{k}:{v}" for k, v in debug["project_types"].most_common()) or "-"
     langs = ", ".join(f"{k}:{v}" for k, v in debug["languages"].most_common()) or "-"
-    # Keep zero-yield scan diagnostics in logs; alert only on new opportunities.
-    if alerts > 0:
-        core.telegram(
-            (
-                "🧪 NORTHLAB SALES RADAR DEBUG | SON TARAMA\n\n"
-                f"Telegram grup: {debug['telegram_groups']}\n"
-                f"Telegram mesaj: {debug['telegram_messages']}\n"
-                f"Global arama: {debug['telegram_global_queries']} sorgu | {debug['telegram_global_messages']} mesaj\n"
-                f"Yeni fırsat: {len(new_leads)} | Bildirim: {alerts}\n"
-                f"Sınıflar: {classes}\n"
-                f"İş tipleri: {types}\n"
-                f"Diller: {langs}\n"
-                f"Telegram eleme: {rejects}\n"
-                f"Web ham: {debug['web_raw']} | Web kabul: {debug['web_accepted']}\n"
-                f"Web eleme: {web_rejects}\n"
-                f"Source Hub ham: {debug['hub_raw']} | Kabul: {debug['hub_accepted']}\n"
-                f"Hub kaynaklar: {json.dumps(debug['hub_source_counts'], ensure_ascii=False)}\n"
-                f"YouTube URL: {debug['hub_youtube_urls']} | Forum URL: {debug['hub_forum_urls']}\n"
-                f"Hub eleme: {hub_rejects}\n"
-                f"Gerçek hata: {len(debug['errors'])}"
-            )[:3900]
-        )
+    # Diagnostic summary is retained in the run log and status file only.
     print("NORTHLAB_SALES_DEBUG", json.dumps(data, ensure_ascii=False))
 
 
