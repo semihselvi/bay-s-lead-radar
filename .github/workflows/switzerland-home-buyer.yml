@@ -2,8 +2,6 @@ name: LOCAL - Switzerland Home Buyer Radar
 
 "on":
   workflow_dispatch:
-  schedule:
-    - cron: "5 7,13,19 * * *"
 
 jobs:
   switzerland-home-buyer:
