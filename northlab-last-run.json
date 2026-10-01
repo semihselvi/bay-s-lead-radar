@@ -1,5 +1,8 @@
 {
   "status": "failed",
-  "finished_at": "2026-09-29T12:16:40.075700+00:00",
-  "reason": "Northlab radar wrote no status file"
+  "finished_at": "2026-10-01T15:20:31.274584+00:00",
+  "reason": "No completed scan status",
+  "verify": "failure",
+  "session": "skipped",
+  "scan": "skipped"
 }
