@@ -1,0 +1,91 @@
+name: Free pilot - North Cyprus property buyers
+"on":
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/subscope-nc-property-pilot.yml"
+permissions:
+  contents: read
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install open-source Subscope
+        run: |
+          git clone --depth 1 https://github.com/dancolta/subscope.git subscope-src
+          python -m pip install -e ./subscope-src
+      - name: Configure North Cyprus real estate pilot
+        run: |
+          mkdir -p property-pilot-config
+          cat > property-pilot-config/subreddits.yml <<'YAML'
+          subreddits:
+            - {name: NorthCyprus, tier: 1, bucket: operator, weight: 1.5}
+            - {name: cyprus, tier: 1, bucket: operator, weight: 1.2}
+            - {name: expats, tier: 2, bucket: operator, weight: 1.0}
+            - {name: realestateinvesting, tier: 2, bucket: operator, weight: 1.0}
+            - {name: realestate, tier: 2, bucket: operator, weight: 1.0}
+          YAML
+          cat > property-pilot-config/keywords.yml <<'YAML'
+          shared: ["buy property", "buy apartment", "buy a flat", "buy a house", "north cyprus", "northern cyprus", "TRNC", "looking to buy", "buying property", "Iskele", "Kyrenia", "Famagusta", "property purchase", "title deed", "off-plan", "куплю квартиру", "купить квартиру", "ev almak", "satın almak"]
+          operator: ["north cyprus", "northern cyprus", "TRNC", "Iskele", "Kyrenia", "Famagusta", "buy house", "buy apartment", "buy property", "property purchase", "title deed"]
+          YAML
+          cat > property-pilot-config/brand-anchor.yml <<'YAML'
+          brand_anchor: [North Cyprus, Northern Cyprus, TRNC, Iskele, Kyrenia, Famagusta, Girne, İskele, Gazimağusa]
+          YAML
+          cat > property-pilot-config/fetch.yml <<'YAML'
+          strategy: search
+          since_days: 30
+          YAML
+      - name: Search Reddit and classify direct property-buying intent
+        env:
+          SUBSCOPE_CONFIG: ${{ github.workspace }}/property-pilot-config
+          XDG_DATA_HOME: ${{ runner.temp }}/subscope-property-data
+        run: |
+          subscope setup
+          subscope fetch-score --search --since-days 30 --limit-per-sub 12 --max-requests 5 --no-cool --no-slack --no-enrich --candidates --explain > property-pilot-raw.json
+          python - <<'PY'
+          import json, re
+          from pathlib import Path
+          d=json.loads(Path("property-pilot-raw.json").read_text(encoding="utf-8"))
+          buy=re.compile(r"\b(?:buy|buying|purchase|purchasing|invest\s+in\s+(?:a\s+)?(?:property|apartment|flat|house)|looking\s+to\s+buy|want\s+to\s+buy)\b|купл\w*|покуп\w*|satın\s+al\w*|\b(?:ev|daire|arsa)\s+al\w*",re.I)
+          prop=re.compile(r"\b(?:property|apartment|flat|house|villa|studio|land|plot|real\s+estate)\b|квартир\w*|недвижимост\w*|вилл\w*|\b(?:daire|ev|villa|arsa|konut|gayrimenkul)\b",re.I)
+          nc=re.compile(r"north(?:ern)?\s+cyprus|\btrnc\b|\bkk?tc\b|\biskele\b|\bisk[eé]le\b|\bkyrenia\b|\bgirne\b|\bfamagusta\b|\bgazima[gğ]usa\b|\blong\s+beach\b|северн\w*\s+кипр\w*",re.I)
+          rent=re.compile(r"\b(?:rent|rental|tenant|lease|airbnb)\b|аренд\w*|сниму|снять|кирал\w*",re.I)
+          vehicle=re.compile(r"\b(?:car|vehicle|automobile|motorcycle)\b|авто|автомобил\w*|машин\w*|\b(?:araba|araç)\b",re.I)
+          offer=re.compile(r"\b(?:for sale|selling\s+(?:my|our)|available\s+for\s+sale|contact\s+me\s+for)\b|прода[её]тся|продам|satılıktır|satılık\s+(?:daire|villa|ev)",re.I)
+          hits=[];reasons={}
+          for p in d.get("candidates",[]):
+              text=(str(p.get("title") or "")+" "+str(p.get("body") or "")).strip()
+              sub=str(p.get("sub") or "").lower()
+              reason=next((key for key,ok in [
+                  ("not_north_cyprus",not(nc.search(text) or (sub=="northcyprus" and re.search(r"\b(?:cyprus|north|iskele|property|apartment|flat|house)\b",text,re.I)))),
+                  ("rental",bool(rent.search(text) and not buy.search(text))),
+                  ("vehicle",bool(vehicle.search(text))),
+                  ("seller_ad",bool(offer.search(text) and not re.search(r"\b(?:is\s+it|should\s+i|can\s+i|buying|purchase)\b",text,re.I))),
+                  ("no_property",not prop.search(text)),
+                  ("no_explicit_purchase",not buy.search(text))
+              ] if ok),None)
+              if reason:
+                  reasons[reason]=reasons.get(reason,0)+1
+                  continue
+              hits.append({"title":p.get("title"),"url":p.get("url"),"sub":p.get("sub"),"age_hours":p.get("age_h"),"text":text[:1000],"review_status":"MANUAL_REVIEW_REQUIRED"})
+          result={"status":"completed","scope":"North Cyprus explicit property purchase only","source":"Subscope public Reddit RSS","subreddits_scanned":d.get("subs_scanned"),"fetched":d.get("fetched"),"subscope_candidates":len(d.get("candidates",[])),"explicit_property_purchase_candidates":len(hits),"rejected":reasons,"candidates":hits,"note":"Potential matches only, not verified customers; no Telegram notifications."}
+          Path("property-pilot-results.json").write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding="utf-8")
+          print("PROPERTY_PILOT",json.dumps({k:v for k,v in result.items() if k!="candidates"},ensure_ascii=False))
+          for x in hits:print("REVIEW",x["title"],x["url"])
+          PY
+      - name: Save results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: subscope-north-cyprus-property-pilot
+          path: |
+            property-pilot-raw.json
+            property-pilot-results.json
+            property-pilot-config/*.yml
+          if-no-files-found: warn
