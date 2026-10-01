@@ -2,8 +2,6 @@ name: LOCAL - Netherlands Home Buyer Radar
 
 "on":
   workflow_dispatch:
-  schedule:
-    - cron: "45 6,12,18 * * *"
 
 jobs:
   netherlands-home-buyer:
