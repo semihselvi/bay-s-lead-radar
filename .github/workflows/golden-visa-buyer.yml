@@ -13,8 +13,6 @@ name: GOLDEN VISA - Buyer Intent Radar
       - test_europe_buyer_serper_resilient.py
       - .github/workflows/golden-visa-buyer.yml
   workflow_dispatch:
-  schedule:
-    - cron: "55 6,12,18 * * *"
 
 jobs:
   golden-visa-buyer:
