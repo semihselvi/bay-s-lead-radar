@@ -1,0 +1,59 @@
+name: Free pilot - Harken North Cyprus
+"on":
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/harken-nc-free-pilot.yml"
+permissions:
+  contents: read
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install free open source Harken
+        run: |
+          git clone --depth 1 https://github.com/VladUZH/harken.git harken-src
+          python -m pip install -e ./harken-src
+      - name: Scan open Hacker News and Bluesky without API keys
+        env:
+          HARKEN_LLM_PROVIDER: none
+        run: |
+          mkdir -p harken-property-test
+          harken track "North Cyprus property" --sources hackernews,bluesky --limit 30 --pages 1 --db harken-property-test/harken.db || true
+          harken track "buy property Cyprus" --sources hackernews,bluesky --limit 30 --pages 1 --db harken-property-test/harken.db || true
+          harken track "Iskele apartment" --sources hackernews,bluesky --limit 30 --pages 1 --db harken-property-test/harken.db || true
+          python - <<'PY'
+          import sqlite3,json,re
+          from pathlib import Path
+          p=Path("harken-property-test/harken.db")
+          result={"source":"Harken free Hacker News + Bluesky","scanned_keywords":3,"raw":0,"buyer_candidates":[],"rejected":{},"note":"Candidate matches are not validated buyers."}
+          if p.exists():
+              db=sqlite3.connect(p);db.row_factory=sqlite3.Row
+              records=[dict(row) for row in db.execute("SELECT query,source,title,text,url,created_at FROM mentions")]
+              result["raw"]=len(records)
+              buy=re.compile(r"looking\s+to\s+buy|want\s+to\s+buy|buying\s+(?:an?\s+)?(?:property|apartment|flat|house|villa|land)|buy\s+(?:an?\s+)?(?:property|apartment|flat|house|villa|land)|купл\w*|покуп\w*|satın\s+al",re.I)
+              prop=re.compile(r"property|real\s+estate|apartment|flat|house|villa|land|plot|квартир\w*|недвижимост\w*|daire|arsa",re.I)
+              geo=re.compile(r"north(?:ern)?\s+cyprus|\bTRNC\b|\bKKTC\b|iskele|kyrenia|girne|famagusta|gazima[gğ]usa|северн\w*\s+кипр",re.I)
+              rent=re.compile(r"\brent\b|rental|tenant|аренд\w*|сниму|кира",re.I)
+              car=re.compile(r"\bcar\b|vehicle|automobil|машин\w*|авто|araba",re.I)
+              for item in records:
+                  text=" ".join([str(item.get("title") or ""),str(item.get("text") or "")])
+                  reason=next((k for k,condition in [("not_north_cyprus",not geo.search(text)),("rental",bool(rent.search(text) and not buy.search(text))),("vehicle",bool(car.search(text))),("no_property",not prop.search(text)),("no_purchase_intent",not buy.search(text))] if condition),None)
+                  if reason:result["rejected"][reason]=result["rejected"].get(reason,0)+1
+                  else:result["buyer_candidates"].append({**item,"review_required":True})
+          Path("harken-property-test/result.json").write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding="utf-8")
+          print("HARKEN_PILOT",json.dumps({k:v if k!="buyer_candidates" else len(v) for k,v in result.items()},ensure_ascii=False))
+          for c in result["buyer_candidates"]:print("REVIEW",c["url"])
+          PY
+      - name: Archive independent pilot output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harken-north-cyprus-free-pilot
+          path: harken-property-test/
+          if-no-files-found: warn
