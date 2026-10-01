@@ -753,6 +753,30 @@ class BroadIntentTests(unittest.TestCase):
         self.assertEqual(out["freshness"], "15_30d")
         self.assertLess(out["intent_score"], 90)
 
+    def test_final_notification_rejects_car_purchase_mislabeled_buyer(self):
+        lead = {
+            "market": "north_cyprus",
+            "intent_type": "BUYER",
+            "lead_class": "HOT BUYER",
+            "author": "@anna_smrnva",
+            "message": "Куплю авто ~5000£ либо с первым взносом в рассрочку",
+        }
+        with patch.object(v6.core, "telegram") as telegram:
+            self.assertFalse(v6.notify_lead(lead, "NEW"))
+            telegram.assert_not_called()
+
+    def test_final_notification_accepts_property_purchase(self):
+        lead = {
+            "market": "north_cyprus",
+            "intent_type": "BUYER",
+            "lead_class": "HOT BUYER",
+            "author": "@real_buyer",
+            "message": "Куплю квартиру 3+1 в Искеле",
+        }
+        with patch.object(v6.core, "telegram") as telegram:
+            self.assertTrue(v6.notify_lead(lead, "NEW"))
+            telegram.assert_called_once()
+
     def test_buyer_only_message_firewall_blocks_rental_recovery_and_debug(self):
         self.assertFalse(v6._buyer_only_message_allowed(
             "🕰 BAY-S NC RECOVERY 7G | 0 BUYER + 3 TENANT"
