@@ -2,8 +2,6 @@ name: ABROAD - Netherlands Residents Buying Abroad
 
 "on":
   workflow_dispatch:
-  schedule:
-    - cron: "25 6,12,18 * * *"
 
 jobs:
   netherlands-abroad-buyer:
