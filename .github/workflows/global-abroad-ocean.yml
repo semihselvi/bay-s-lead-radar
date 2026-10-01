@@ -16,8 +16,6 @@ name: OCEAN - Global Residents Buying Abroad
       - "requirements-ocean.txt"
       - "test_ocean_learning.py"
       - ".github/workflows/global-abroad-ocean.yml"
-  schedule:
-    - cron: "40 5,11,17 * * *"
 
 permissions:
   contents: write
