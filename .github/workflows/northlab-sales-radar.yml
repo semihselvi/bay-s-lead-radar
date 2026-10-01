@@ -31,6 +31,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Clear previous run status
+        run: rm -f northlab-last-run.json
+
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
@@ -44,11 +47,13 @@ jobs:
           pip install -r requirements-ocean.txt
 
       - name: Verify Northlab radar
+        id: verify
         run: |
           python -m py_compile northlab_sales_radar.py northlab_sales_source_hub.py test_northlab_sales_radar.py
           python -m unittest -q test_northlab_sales_radar.py
 
       - name: Restore dedicated Northlab Telegram session
+        id: session
         env:
           TELEGRAM_STRING_SESSION: ${{ secrets.TELEGRAM_STRING_SESSION_NORTHLAB }}
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
@@ -75,6 +80,7 @@ jobs:
           PY
 
       - name: Run Northlab sales radar
+        id: scan
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -106,7 +112,10 @@ jobs:
               p.write_text(json.dumps({
                   "status":"failed",
                   "finished_at":datetime.now(timezone.utc).isoformat(),
-                  "reason":"Northlab radar wrote no status file"
+                  "reason":"No completed scan status",
+                  "verify":"${{ steps.verify.outcome }}",
+                  "session":"${{ steps.session.outcome }}",
+                  "scan":"${{ steps.scan.outcome }}"
               }, ensure_ascii=False, indent=2), encoding="utf-8")
           PY
           git config user.name "github-actions[bot]"
