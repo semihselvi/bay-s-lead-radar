@@ -12,9 +12,7 @@
       "beds": 0,
       "our_price_gbp": 62000,
       "our_extra_gbp": 5000,
-      "seed_urls": [
-        "https://www.101evler.com/north-cyprus/property-for-sale/iskele-long-beach-flat-518870.html"
-      ],
+      "seed_urls": [],
       "area_m2": 38,
       "floor": 2
     },
@@ -184,9 +182,7 @@
       "beds": 2,
       "our_price_gbp": 130000,
       "our_extra_gbp": 0,
-      "seed_urls": [
-        "https://www.101evler.com/index.php/north-cyprus/project-for-sale?project=213"
-      ],
+      "seed_urls": [],
       "area_m2": 84,
       "floor": 4
     },
