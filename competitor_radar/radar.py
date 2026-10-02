@@ -9,7 +9,8 @@ import time
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse, urlunparse
+from urllib.parse import urlparse, urlunparse
+from competitor_radar.site_sync import sync
 from urllib.robotparser import RobotFileParser
 from xml.etree import ElementTree as ET
 
@@ -117,7 +118,7 @@ def classify(prop, listing):
             score += 16
             reasons.append("bedrooms_match")
     area = listing.get("area_m2")
-    if area:
+    if area and prop.get("area_m2"):
         expected = [prop["area_m2"]]
         if prop.get("extra_area_m2"):
             expected.append(prop["area_m2"] + prop["extra_area_m2"])
@@ -192,7 +193,8 @@ def discover(prop, session):
     queries = []
     variants = prop.get("aliases", [prop["project"]])
     for site in ("101evler.com", "hangiev.com"):
-        queries.append(f'site:{site} "{variants[0]}" {prop["beds"]}+1 satilik')
+        query_type = "studio" if prop["beds"] == 0 else f'{prop["beds"]}+1'
+        queries.append(f'site:{site} "{variants[0]}" {query_type} satilik')
     for query in queries:
         try:
             r = session.get("https://www.bing.com/search", params={"q": query, "format": "rss"},
@@ -218,8 +220,11 @@ def run(catalog, state_path, out, live=True):
     previous = json.loads(state_path.read_text()) if state_path.exists() else {}
     had_previous = bool(previous.get("checked_at"))
     fetcher = Fetcher()
+    site_status = {"mode": "offline"}
+    if live:
+        catalog, site_status = sync(catalog, fetcher.session)
     report = {"checked_at": datetime.now(timezone.utc).isoformat(), "mode": "live" if live else "fixture",
-              "had_previous": had_previous, "properties": [], "alerts": []}
+              "had_previous": had_previous, "site_sync": site_status, "properties": [], "alerts": []}
     next_state = {"checked_at": report["checked_at"], "listings": dict(previous.get("listings", {}))}
     for prop in catalog["properties"]:
         urls = list(prop.get("seed_urls", []))
@@ -256,7 +261,7 @@ def run(catalog, state_path, out, live=True):
                 time.sleep(SLEEP)
         report["properties"].append({"ref": prop["ref"], "name": prop["name"],
             "our_price_gbp": prop["our_price_gbp"],
-            "our_known_total_gbp": prop["our_price_gbp"] + prop["our_extra_gbp"],
+            "our_known_total_gbp": (prop.get("our_price_gbp") or 0) + prop.get("our_extra_gbp", 0),
             "competitors": results, "discovery_errors": discovery_errors})
     out.mkdir(parents=True, exist_ok=True)
     (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
@@ -269,9 +274,12 @@ def render_md(report):
     lines = [f'# Prime Kıbrıs Rakip Radar — {report["checked_at"]}', "",
              "İlk tarama referans oluşturur; takip eden çalışmalarda fiyat değişimleri raporlanır.",
              "Eşleşme yalnızca adaydır; aynı konut tespiti için fotoğraf/birim numarası kontrolü gerekir.", ""]
+    site = report.get("site_sync", {})
+    lines.append(f'Sitemap: {site.get("site_urls", 0)} URLs, new: {site.get("new_properties", 0)}, errors: {len(site.get("errors", []))}')
+    lines.append("")
     for p in report["properties"]:
         lines.extend([f'## {p["name"]} ({p["ref"]})',
-            f'Bizim ilan £{p["our_price_gbp"]:,} · bilinen ek ücretlerle £{p["our_known_total_gbp"]:,}', ""])
+            f'Bizim ilan £{p["our_price_gbp"]:,} · bilinen ek ücretlerle £{p["our_known_total_gbp"]:,}' if p["our_price_gbp"] else "Bizim fiyat okunamadı", ""])
         for x in p["competitors"]:
             if x["status"] not in ("ok", "unverified_html"):
                 lines.append(f'- Erişim: {x["status"]} — {x["url"]}')
@@ -322,7 +330,7 @@ def main():
     if not args.dry_run:
         telegram(result)
     print(json.dumps({"properties": len(result["properties"]),
-                      "alerts": len(result["alerts"]), "report": str(args.out / "report.md")}, ensure_ascii=False))
+                      "alerts": len(result["alerts"]), "site_sync": result["site_sync"], "report": str(args.out / "report.md")}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
