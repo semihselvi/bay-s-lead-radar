@@ -41,6 +41,11 @@ jobs:
       - name: Offline smoke test on pull requests
         if: github.event_name == 'pull_request'
         run: python -m competitor_radar.radar --dry-run
+      - name: Live public-site pilot (no notifications)
+        if: github.event_name == 'pull_request'
+        run: |
+          python -m competitor_radar.radar
+          cat competitor-radar-report/report.md
       - name: Save state
         if: github.event_name != 'pull_request'
         uses: actions/cache/save@v4
