@@ -21,8 +21,8 @@ ALLOWED = {"101evler.com", "www.101evler.com", "hangiev.com", "www.hangiev.com"}
 HEADERS = {"User-Agent": "PrimeKibrisCompetitorPilot/0.1 (+https://primekibris.com)"}
 TIMEOUT = 15
 SLEEP = 1.3
-GBP_RE = re.compile(r"(?:£|GBP|STG)\\s*([0-9][0-9,. ]{3,})|([0-9][0-9,. ]{3,})\\s*(?:£|GBP|STG)", re.I)
-SQM_RE = re.compile(r"(?<!\\d)(\\d{2,4})\\s*(?:m²|m2|sq\\.?\\s?m)", re.I)
+GBP_RE = re.compile(r"(?:£|GBP|STG)\s*([0-9][0-9,. ]{3,})|([0-9][0-9,. ]{3,})\s*(?:£|GBP|STG)", re.I)
+SQM_RE = re.compile(r"(?<!\d)(\d{2,4})\s*(?:m²|m2|sq\.?\s?m)", re.I)
 
 
 def norm(s):
@@ -40,7 +40,7 @@ def canonical_url(url):
 
 
 def gbp_number(s):
-    digits = re.sub(r"[^0-9]", "", str(s).split(".")[0] if re.search(r"\\.\\d{2}$", str(s)) else str(s))
+    digits = re.sub(r"[^0-9]", "", str(s).split(".")[0] if re.search(r"\.\d{2}$", str(s)) else str(s))
     try:
         value = int(digits)
         return value if 10000 <= value <= 10000000 else None
@@ -112,7 +112,7 @@ def classify(prop, listing):
     score, reasons = 45, ["project_match"]
     beds = prop.get("beds")
     if beds is not None:
-        bed_patterns = [rf"\\b{beds}\\s*\\+\\s*1\\b", rf"\\b{beds}\\s*(?:bed|yatak|zimmer)"]
+        bed_patterns = [rf"\b{beds}\s*\+\s*1\b", rf"\b{beds}\s*(?:bed|yatak|zimmer)"]
         if any(re.search(p, corpus) for p in bed_patterns):
             score += 16
             reasons.append("bedrooms_match")
@@ -128,7 +128,7 @@ def classify(prop, listing):
             score -= 18
             reasons.append("area_differs")
     floor = prop.get("floor")
-    if floor is not None and re.search(rf"\\b{floor}\\s*(?:kat|floor|etage)\\b", corpus):
+    if floor is not None and re.search(rf"\b{floor}\s*(?:kat|floor|etage)\b", corpus):
         score += 12
         reasons.append("floor_match")
     if prop.get("land_m2") and str(prop["land_m2"]) in corpus:
