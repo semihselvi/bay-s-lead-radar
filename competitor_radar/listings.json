@@ -1,0 +1,37 @@
+{
+  "catalog_version": 1,
+  "note": "Pilot: four approved Prime Kibris resale properties. Seed URLs are unverified leads, never proof of a live listing.",
+  "properties": [
+    {
+      "ref": "PK-2E-000010", "name": "Tatlısu 4+1 Havuzlu Villa",
+      "project": "Tatlisu", "aliases": ["Tatlısu", "Tatlisu"],
+      "type": "villa", "beds": 4, "area_m2": 286, "land_m2": 1000,
+      "our_price_gbp": 620000, "our_extra_gbp": 0,
+      "seed_urls": [
+        "https://www.101evler.com/north-cyprus/property-for-sale/famagusta-tatlisu-villa-557442.html",
+        "https://www.hangiev.com/famagusta-tatlisu-villa-for-sale-151796"
+      ]
+    },
+    {
+      "ref": "PK-2E-000007", "name": "Caesar Resort Andreanius 2+1",
+      "project": "Andreanius", "aliases": ["Caesar Resort Andreanius", "Andreanius"],
+      "type": "apartment", "beds": 2, "area_m2": 76, "floor": 0,
+      "our_price_gbp": 74000, "our_extra_gbp": 15000,
+      "seed_urls": ["https://www.101evler.com/index.php/kibris/satilik-emlak/iskele-long-beach-daire-564394.html"]
+    },
+    {
+      "ref": "PK-2E-000011", "name": "Caesar Cliff 2+1 Dubleks",
+      "project": "Caesar Cliff", "aliases": ["Caesar Cliff", "Sezar Cliff"],
+      "type": "apartment", "beds": 2, "area_m2": 108, "bathrooms": 3,
+      "our_price_gbp": 195000, "our_extra_gbp": 15000,
+      "seed_urls": ["https://www.hangiev.com/girne-esentepe-satilik-daire-215768"]
+    },
+    {
+      "ref": "PK-2E-000018", "name": "Caesar Resort 5 2+1",
+      "project": "Caesar Resort 5", "aliases": ["Caesar Resort 5", "Caesar Resort V", "Caesar Resort-5"],
+      "type": "apartment", "beds": 2, "area_m2": 76, "extra_area_m2": 16, "floor": 3,
+      "our_price_gbp": 85000, "our_extra_gbp": 15000,
+      "seed_urls": ["https://www.101evler.com/kibris/satilik-emlak/iskele-long-beach-daire-548679.html"]
+    }
+  ]
+}
