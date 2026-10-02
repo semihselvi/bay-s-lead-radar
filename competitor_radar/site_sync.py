@@ -10,19 +10,19 @@ from bs4 import BeautifulSoup
 
 SITEMAP = "https://primekibris.com/sitemap-tr-resale.xml"
 SITE_HOSTS = {"primekibris.com", "www.primekibris.com"}
-REF_RE = re.compile(r"PK-2E-\\d{6}", re.I)
-PRICE_RE = re.compile(r"(?:£|GBP)\\s*([0-9][0-9., ]{3,})", re.I)
-AREA_RE = re.compile(r"(\\d{2,4})\\s*(?:m²|m2)", re.I)
-BEDS_RE = re.compile(r"\\b([0-9])\\s*\\+\\s*1\\b")
+REF_RE = re.compile(r"PK-2E-\d{6}", re.I)
+PRICE_RE = re.compile(r"(?:£|GBP)\s*([0-9][0-9., ]{3,})", re.I)
+AREA_RE = re.compile(r"(\d{2,4})\s*(?:m²|m2)", re.I)
+BEDS_RE = re.compile(r"\b([0-9])\s*\+\s*1\b")
 GENERIC = {"satilik", "satılık", "ikinci", "el", "daire", "villa", "studio", "studyo", "stüdyo",
            "penthouse", "duplex", "dubleks", "kat", "floor", "m2", "resale"}
 
 
 def project_from_title(title):
     # Project names precede apartment type / area in existing Prime Kıbrıs titles.
-    first = re.split(r"\\s*[|–—]\\s*", title, maxsplit=1)[0].strip()
-    first = re.sub(r"\\b\\d+\\s*\\+\\s*1\\b.*$", "", first).strip()
-    first = re.sub(r"\\b\\d{2,4}\\s*(?:m²|m2)\\b.*$", "", first, flags=re.I).strip()
+    first = re.split(r"\s*[|–—]\s*", title, maxsplit=1)[0].strip()
+    first = re.sub(r"\b\d+\s*\+\s*1\b.*$", "", first).strip()
+    first = re.sub(r"\b\d{2,4}\s*(?:m²|m2)\b.*$", "", first, flags=re.I).strip()
     tokens = first.split()
     while tokens and tokens[-1].lower() in GENERIC:
         tokens.pop()
