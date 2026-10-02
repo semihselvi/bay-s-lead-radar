@@ -6,9 +6,8 @@ on:
     paths:
       - 'competitor_radar/**'
       - '.github/workflows/prime-competitor-radar.yml'
-  # Daily schedule will be enabled after first live pilot is verified.
-  # schedule:
-  #   - cron: '35 6 * * *'
+  schedule:
+    - cron: '35 6 * * *'
 
 permissions:
   contents: read
