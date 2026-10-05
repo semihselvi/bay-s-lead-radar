@@ -320,6 +320,25 @@ class BroadIntentTests(unittest.TestCase):
         self.assertIsNone(lead)
         self.assertEqual(reason, "no_explicit_purchase_intent")
 
+    def test_global_public_signal_accepts_buyer_when_public_chat_supplies_north_context(self):
+        text = "Здравствуйте! Куплю квартиру 2+1 с ТИТУЛОМ. Пожалуйста, присылайте предложения."
+        self.assertTrue(v6.global_public_candidate_signal(text, has_north_context=True))
+        self.assertFalse(v6.global_public_candidate_signal(text, has_north_context=False))
+
+    def test_sales_only_accepts_title_deed_buyer_without_location_in_message(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            lead, reason = v6.classify_text(
+                "Здравствуйте! Куплю квартиру 2+1 с ТИТУЛОМ. Пожалуйста, присылайте предложения.",
+                group="СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+            )
+        self.assertIsNotNone(lead)
+        self.assertIn(lead["lead_class"], {"HOT BUYER", "WARM BUYER"})
+        self.assertEqual(reason, "accepted")
+
+    def test_short_real_world_query_family_is_present(self):
+        for query in ("ищу квартиру", "нужна квартира", "квартира с титулом", "квартира от собственника"):
+            self.assertIn(query, v6.TELEGRAM_GLOBAL_BUYER_QUERIES)
+
     def test_sales_only_accepts_direct_property_buyer(self):
         with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
             lead, reason = v6.classify_text(
