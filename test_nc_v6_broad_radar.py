@@ -339,6 +339,36 @@ class BroadIntentTests(unittest.TestCase):
         for query in ("ищу квартиру", "нужна квартира", "квартира с титулом", "квартира от собственника"):
             self.assertIn(query, v6.TELEGRAM_GLOBAL_BUYER_QUERIES)
 
+    def test_german_buyer(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            lead, reason = v6.classify_text(
+                "Ich suche eine Wohnung in Nordzypern zum Kauf, Budget £120000.",
+                group="Nordzypern Deutsche",
+            )
+        self.assertIsNotNone(lead)
+        self.assertEqual(reason, "accepted")
+        self.assertEqual(v6.detect_language("Ich suche eine Wohnung in Nordzypern zum Kauf."), "DE")
+
+    def test_polish_buyer(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            lead, reason = v6.classify_text(
+                "Szukam mieszkania na Cyprze Północnym do kupna, budżet £110000.",
+                group="Polacy Cypr Północny",
+            )
+        self.assertIsNotNone(lead)
+        self.assertEqual(reason, "accepted")
+        self.assertEqual(v6.detect_language("Szukam mieszkania na Cyprze Północnym do kupna."), "PL")
+
+    def test_multilingual_query_families_present(self):
+        expected = (
+            "Nordzypern Wohnung kaufen",
+            "kupię mieszkanie Cypr Północny",
+            "daire arıyorum",
+            "looking for apartment North Cyprus",
+        )
+        for query in expected:
+            self.assertIn(query, v6.TELEGRAM_GLOBAL_BUYER_QUERIES)
+
     def test_sales_only_accepts_direct_property_buyer(self):
         with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
             lead, reason = v6.classify_text(
