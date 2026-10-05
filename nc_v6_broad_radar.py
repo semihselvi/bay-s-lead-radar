@@ -58,7 +58,8 @@ DIRECT_NORTH_GROUP_RE = re.compile(
     r"(?:north\s*cyprus|northern\s*cyprus|trnc|kktc|kuzey\s*k[ıi]br[ıi]s|"
     r"северн\w*\s+кипр|iskele|i̇skele|trikomo|long\s*beach|girne|kyrenia|"
     r"famagust|gazima[ğg]usa|ma[ğg]usa|alsancak|lapta|esentepe|tatl[ıi]su|"
-    r"bafra|yenibo[ğg]azi[çc]i|bo[ğg]az|lefke|g[üu]zelyurt)",
+    r"bafra|yenibo[ğg]azi[çc]i|bo[ğg]az|lefke|g[üu]zelyurt|"
+    r"nordzypern|cypr\s+p[oó]łnocn\w*|cypr\s+polnocn\w*)",
     re.I,
 )
 
@@ -704,6 +705,13 @@ DEBUG: dict[str, Any] = {
     "messages_scanned": 0,
     "groups_total": 0,
     "groups_relevant": 0,
+    "group_discovery_queries": 0,
+    "group_discovery_found": 0,
+    "group_discovery_vetted_found": 0,
+    "group_discovery_joined": 0,
+    "group_discovery_already_joined": 0,
+    "group_discovery_rejected": Counter(),
+    "group_discovery_joined_samples": [],
     "strict_extra_groups_scanned": 0,
     "strict_extra_messages_scanned": 0,
     "strict_extra_geo_pass": 0,
@@ -1049,11 +1057,129 @@ TELEGRAM_PUBLIC_PEER_QUERIES = (
     "Cypr Polnocny nieruchomosci",
 )
 
-RADAR_SELF_FEEDBACK_RE = re.compile(
+# Public discussion groups already verified outside Telegram search. Keep this
+# list discussion/community oriented; catalog-only seller channels do not belong.
+TELEGRAM_VETTED_PUBLIC_GROUPS = (
+    "meetinnorthcyprus",
+    "cyprusposter",
+    "kktcpazar",
+)
+
+# Group discovery terms are intentionally multilingual. We search Telegram's
+# public directory and only consider public megagroups with explicit
+# North-Cyprus context.
+TELEGRAM_GROUP_DISCOVERY_QUERIES = (
+    "North Cyprus",
+    "Northern Cyprus expats",
+    "North Cyprus property",
+    "Kuzey Kıbrıs",
+    "Kuzey Kıbrıs emlak",
+    "Kuzey Kıbrıs yatırım",
+    "Nordzypern",
+    "Nordzypern Deutsche",
+    "Nordzypern Immobilien",
+    "Deutsche in Nordzypern",
+    "Cypr Północny",
+    "Cypr Polnocny",
+    "Polacy na Cyprze",
+    "Cypr Północny nieruchomości",
+)
+
+RADAR_GROUP_AUTOJOIN_MAX = max(0, min(5, int(os.getenv("RADAR_GROUP_AUTOJOIN_MAX", "3") or "3")))
+E = re.compile(
     r"(?:\bLEAD\s+RADAR\b|\bOK\.RU\s+RADAR\b|\bPRIME\s+RADAR\b|"
     r"\bNC_REDDIT_|\bBUYER\s+ADAYI\b)",
     re.I,
 )
+
+
+def _is_public_discussion_group(chat: Any) -> bool:
+    username = _public_chat_username(chat)
+    if not username:
+        return False
+    # Telegram public discussion groups are represented as megagroups.
+    return bool(getattr(chat, "megagroup", False))
+
+
+def _group_has_explicit_north_context(chat: Any) -> bool:
+    title = str(getattr(chat, "title", "") or "")
+    username = _public_chat_username(chat)
+    context = f"{title} {username.replace('_', ' ')}"
+    return bool(DIRECT_NORTH_GROUP_RE.search(context))
+
+
+async def _discover_and_join_public_groups(client: Any, joined_public_usernames: set[str]) -> list[str]:
+    """Discover public North-Cyprus discussion groups and join conservatively.
+
+    Vetted groups are tried first. Dynamic directory results must be public
+    megagroups with explicit North-Cyprus context. Joining is capped per run to
+    reduce Telegram anti-spam/flood risk.
+    """
+    if RADAR_GROUP_AUTOJOIN_MAX <= 0:
+        return []
+
+    candidates: dict[str, Any] = {}
+
+    for username in TELEGRAM_VETTED_PUBLIC_GROUPS:
+        key = username.casefold()
+        if key in joined_public_usernames:
+            DEBUG["group_discovery_already_joined"] += 1
+            continue
+        try:
+            entity = await client.get_entity(username)
+        except Exception as exc:
+            DEBUG["group_discovery_rejected"][f"vetted_fetch:{type(exc).__name__}"] += 1
+            continue
+        if not _is_public_discussion_group(entity):
+            DEBUG["group_discovery_rejected"]["vetted_not_public_group"] += 1
+            continue
+        candidates[key] = entity
+        DEBUG["group_discovery_vetted_found"] += 1
+
+    for query in TELEGRAM_GROUP_DISCOVERY_QUERIES:
+        DEBUG["group_discovery_queries"] += 1
+        try:
+            result = await client(tg_functions.contacts.SearchRequest(q=query, limit=25))
+        except Exception as exc:
+            DEBUG["group_discovery_rejected"][f"search:{type(exc).__name__}"] += 1
+            continue
+        for chat in list(getattr(result, "chats", []) or []):
+            username = _public_chat_username(chat)
+            if not username:
+                continue
+            key = username.casefold()
+            if key in joined_public_usernames or key in candidates:
+                continue
+            if not _is_public_discussion_group(chat):
+                DEBUG["group_discovery_rejected"]["not_public_megagroup"] += 1
+                continue
+            if not _group_has_explicit_north_context(chat):
+                DEBUG["group_discovery_rejected"]["no_explicit_north_group_context"] += 1
+                continue
+            candidates[key] = chat
+            DEBUG["group_discovery_found"] += 1
+
+    joined: list[str] = []
+    for key, chat in candidates.items():
+        if len(joined) >= RADAR_GROUP_AUTOJOIN_MAX:
+            break
+        username = _public_chat_username(chat)
+        try:
+            await client(tg_functions.channels.JoinChannelRequest(chat))
+            joined_public_usernames.add(key)
+            joined.append(username)
+            DEBUG["group_discovery_joined"] += 1
+            if len(DEBUG["group_discovery_joined_samples"]) < 12:
+                DEBUG["group_discovery_joined_samples"].append({
+                    "username": username,
+                    "title": str(getattr(chat, "title", "") or ""),
+                })
+        except Exception as exc:
+            name = type(exc).__name__
+            DEBUG["group_discovery_rejected"][f"join:{name}"] += 1
+            if "FloodWait" in name:
+                break
+    return joined
 
 
 def global_public_candidate_signal(text: str, author: str = "", has_north_context: bool = False) -> bool:
@@ -1322,6 +1448,14 @@ async def broad_telegram_scan(db_client, started):
             for d in dialogs
             if _public_chat_username(d.entity)
         }
+
+        newly_joined_groups = await _discover_and_join_public_groups(client, joined_public_usernames)
+        if newly_joined_groups:
+            dialogs = []
+            async for dialog in client.iter_dialogs():
+                if getattr(dialog, "is_group", False):
+                    dialogs.append(dialog)
+            DEBUG["groups_total"] = len(dialogs)
 
         dialogs.sort(
             key=lambda d: (
