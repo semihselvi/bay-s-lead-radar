@@ -1086,7 +1086,8 @@ TELEGRAM_GROUP_DISCOVERY_QUERIES = (
 )
 
 RADAR_GROUP_AUTOJOIN_MAX = max(0, min(5, int(os.getenv("RADAR_GROUP_AUTOJOIN_MAX", "3") or "3")))
-E = re.compile(
+
+RADAR_SELF_FEEDBACK_RE = re.compile(
     r"(?:\bLEAD\s+RADAR\b|\bOK\.RU\s+RADAR\b|\bPRIME\s+RADAR\b|"
     r"\bNC_REDDIT_|\bBUYER\s+ADAYI\b)",
     re.I,
