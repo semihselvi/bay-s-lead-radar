@@ -2,7 +2,6 @@ name: ARCHIVE - LOCAL - Netherlands Home Buyer Radar
 
 "on":
   workflow_dispatch:
-
 jobs:
   netherlands-home-buyer:
     runs-on: ubuntu-latest
