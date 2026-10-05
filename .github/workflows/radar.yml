@@ -31,7 +31,6 @@ name: ARCHIVE - NC - Legacy Buyer Radar (manual)
 
 "on":
   workflow_dispatch:
-
 concurrency:
   group: nc-lead-radar-production
   cancel-in-progress: false
