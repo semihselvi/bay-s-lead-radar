@@ -886,6 +886,20 @@ TELEGRAM_GLOBAL_BUYER_QUERIES = (
     "ищу квартиру в комплексе",
     "куплю апартаменты",
     "ищу апартаменты для покупки",
+    # Short, real-world demand language. These deliberately trade search precision
+    # for recall; the downstream buyer firewall still rejects rentals/sellers/noise.
+    "ищу квартиру",
+    "ищем квартиру",
+    "нужна квартира",
+    "нужна недвижимость",
+    "квартира с титулом",
+    "недвижимость с титулом",
+    "квартира от собственника",
+    "недвижимость от собственника",
+    "Цезарь квартира",
+    "Caesar квартира",
+    "Искеле квартира титул",
+    "Гирне квартира титул",
     # English.
     "looking to buy apartment",
     "looking to buy property",
@@ -978,14 +992,21 @@ RADAR_SELF_FEEDBACK_RE = re.compile(
 )
 
 
-def global_public_candidate_signal(text: str, author: str = "") -> bool:
-    """No group-title context is trusted for global search results."""
+def global_public_candidate_signal(text: str, author: str = "", has_north_context: bool = False) -> bool:
+    """High-recall prefilter for public global-search results.
+
+    Geography may come from the message OR from a clearly North-Cyprus public
+    chat. The final sales-only classifier remains the precision firewall.
+    """
     own = str(text or "")
     if RADAR_SELF_FEEDBACK_RE.search(own):
         return False
     if _hard_reject(own, author):
         return False
-    return strict_extra_candidate_signal(own)
+    north = bool(has_nc_geo(own) or has_north_context)
+    buyer_side = bool(BUY_RE.search(own) or DEMAND_RE.search(own) or PURCHASE_QUALIFIER_RE.search(own))
+    property_context = bool(PROPERTY_RE.search(own) or (UNIT_LAYOUT_RE.search(own) and buyer_side))
+    return bool(north and buyer_side and property_context)
 
 
 def _public_chat_username(chat: Any) -> str:
@@ -995,6 +1016,20 @@ def _public_chat_username(chat: Any) -> str:
     if not re.fullmatch(r"[A-Za-z0-9_]{4,64}", username):
         return ""
     return username
+
+
+def _public_chat_has_north_context(chat: Any, username: str = "") -> bool:
+    """Trust explicit North-Cyprus context from a public chat identity.
+
+    Real buyers often omit the geography because they are already posting inside
+    a North-Cyprus group (e.g. "Куплю квартиру 2+1 с титулом"). We only borrow
+    context from public username-addressable chats whose title/username clearly
+    names North Cyprus or a North-Cyprus locality.
+    """
+    title = str(getattr(chat, "title", "") or "")
+    user = str(username or getattr(chat, "username", "") or "")
+    context = f"{title} {user.replace('_', ' ')}"
+    return bool(DIRECT_NORTH_GROUP_RE.search(context) or NC_GEO_RE.search(context) or NC_GEO_RU_RE.search(context))
 
 
 def _is_self_telegram_message(
@@ -1510,11 +1545,15 @@ async def broad_telegram_scan(db_client, started):
                         continue
                     seen_text_hashes.add(text_key)
 
-                    if not has_nc_geo(text):
+                    north_from_message = has_nc_geo(text)
+                    north_from_chat = _public_chat_has_north_context(chat, username)
+                    if not (north_from_message or north_from_chat):
                         DEBUG["global_search_reject_reasons"]["no_north_context"] += 1
                         continue
                     DEBUG["global_search_geo_pass"] += 1
                     qstat["north_context"] += 1
+                    if north_from_chat and not north_from_message:
+                        DEBUG["global_search_reject_reasons"]["north_context_from_public_chat"] += 1
 
                     try:
                         concern = learning.concern_signal(text, has_north_context=True)
@@ -1542,7 +1581,7 @@ async def broad_telegram_scan(db_client, started):
                         DEBUG["global_search_reject_reasons"]["self_author"] += 1
                         continue
 
-                    if not global_public_candidate_signal(text, author):
+                    if not global_public_candidate_signal(text, author, has_north_context=(north_from_message or north_from_chat)):
                         if RADAR_SELF_FEEDBACK_RE.search(text):
                             DEBUG["global_search_reject_reasons"]["self_feedback"] += 1
                         elif _hard_reject(text, author):
