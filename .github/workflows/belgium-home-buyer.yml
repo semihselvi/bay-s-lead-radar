@@ -1,4 +1,4 @@
-name: LOCAL - Belgium Home Buyer Radar
+name: ARCHIVE - LOCAL - Belgium Home Buyer Radar
 
 "on":
   workflow_dispatch:
