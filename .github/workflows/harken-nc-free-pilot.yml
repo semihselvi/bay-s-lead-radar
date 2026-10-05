@@ -1,4 +1,4 @@
-name: Free pilot - Harken North Cyprus
+name: ARCHIVE - Free pilot - Harken North Cyprus
 "on":
   workflow_dispatch:
   push:
