@@ -1,19 +1,7 @@
 name: ARCHIVE - GOLDEN VISA - Buyer Intent Radar
 
 "on":
-  push:
-    branches: [main]
-    paths:
-      - europe_abroad_buyer_radar.py
-      - europe_abroad_buyer_radar_verified.py
-      - europe_buyer_search_fallback.py
-      - europe_buyer_serper_resilient.py
-      - test_europe_abroad_buyer_radar.py
-      - test_europe_abroad_buyer_radar_verified.py
-      - test_europe_buyer_serper_resilient.py
-      - .github/workflows/golden-visa-buyer.yml
   workflow_dispatch:
-
 jobs:
   golden-visa-buyer:
     runs-on: ubuntu-latest
