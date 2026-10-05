@@ -1,4 +1,4 @@
-name: NC - Legacy Buyer Radar (manual)
+name: ARCHIVE - NC - Legacy Buyer Radar (manual)
 # production fix: reject vehicle purchases at final buyer notification gate
 # production outbound: buyer-only-firewall-6.28
 # production source: youtube-local-fresh-ranking-1.3
