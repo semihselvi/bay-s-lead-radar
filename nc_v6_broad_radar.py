@@ -163,7 +163,7 @@ RESIDENCY_RE = re.compile(
 
 PURCHASE_QUALIFIER_RE = re.compile(
     r"(?:\bko[çc]an\w*\b|\btapu\b|\btitle\s+deed\b|\bdeed\b|\bready\s+to\s+move\b|"
-    r"\bhaz[ıi]r\s+teslim\b|\btaksit\w*\b|\bpayment\s+plan\b|\bрассрочк\w*\b|\bготов\w*\s+квартир\w*\b)",
+    r"\bhaz[ıi]r\s+teslim\b|\btaksit\w*\b|\bpayment\s+plan\b|\bрассрочк\w*\b|\bготов\w*\s+квартир\w*\b|\bтитул\w*\b)",
     re.I,
 )
 
@@ -848,6 +848,15 @@ TELEGRAM_GLOBAL_BUYER_QUERIES = (
     "куплю 1+1",
     "куплю 2+1",
     "куплю 3+1",
+    # Proven live-buyer wording: explicit title-deed requirement.
+    "куплю квартиру с титулом",
+    "куплю 1+1 с титулом",
+    "куплю 2+1 с титулом",
+    "куплю 3+1 с титулом",
+    "ищу квартиру с титулом",
+    "ищу 2+1 с титулом",
+    "квартира 2+1 с титулом",
+    "нужна квартира с титулом",
     "квартира в рассрочку",
     "квартира с предоплатой",
     "бюджет на квартиру",
