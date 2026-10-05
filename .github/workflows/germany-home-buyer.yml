@@ -1,4 +1,4 @@
-name: LOCAL - Germany Home Buyer Radar
+name: ARCHIVE - LOCAL - Germany Home Buyer Radar
 
 "on":
   workflow_dispatch:
