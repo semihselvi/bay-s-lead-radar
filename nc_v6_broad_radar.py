@@ -83,7 +83,7 @@ PROPERTY_RE = re.compile(
     r"\bdaire\b|\bev\b|\bkonut\b|\bvilla\b|\bst[üu]dyo\b|\barsa\b|\bgayrimenkul\b|"
     r"\bwohnung\w*\b|\bimmobilie\w*\b|\bhaus\w*\b|\bgrundst[üu]ck\w*\b|"
     r"\bmieszkan\w*\b|\bnieruchomo[śs]c\w*\b|\bdom\w*\b|\bdzia[łl]k\w*\b|"
-    r"\bквартир\w*\b|\bапартамент\w*\b|\bвилл\w*\b|\bдом\w*\b|\bстуди\w*\b|\bнедвижимост\w*\b|\bземл\w*\b|
+    r"\bквартир\w*\b|\bапартамент\w*\b|\bвилл\w*\b|\bдом\w*\b|\bстуди\w*\b|\bнедвижимост\w*\b|\bземл\w*\b|"
     r"\b[0-6]\s*\+\s*[0-3]\b|\b(?:one|two|three|1|2|3)\s+bed(?:room)?s?\b|"
     r"\b(?:bir|iki|üç|uc|1|2|3)\s+yatak\s+odal[ıi]\b"
     r")",
