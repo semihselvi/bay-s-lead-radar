@@ -2482,6 +2482,9 @@ async def broad_telegram_scan(db_client, started):
             "candidate_first_buyer_signals": DEBUG["signal_pass"],
             "candidate_first_total_groups": DEBUG["groups_total"],
             "candidate_first_already_notified": DEBUG["already_notified"],
+            "group_discovery_joined": DEBUG["group_discovery_joined"],
+            "group_discovery_joined_samples": list(DEBUG["group_discovery_joined_samples"]),
+            "group_discovery_found": DEBUG["group_discovery_found"],
         }
     except Exception as exc:
         DEBUG["errors"].append(f"telegram_scan:{type(exc).__name__}:{exc}")
