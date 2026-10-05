@@ -1,9 +1,6 @@
 name: ARCHIVE - Free pilot - Subscope Northlab
 "on":
   workflow_dispatch:
-  push:
-    paths:
-      - ".github/workflows/subscope-free-pilot.yml"
 permissions:
   contents: read
 jobs:
