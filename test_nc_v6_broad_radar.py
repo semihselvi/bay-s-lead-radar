@@ -369,6 +369,18 @@ class BroadIntentTests(unittest.TestCase):
         for query in expected:
             self.assertIn(query, v6.TELEGRAM_GLOBAL_BUYER_QUERIES)
 
+    def test_multilingual_north_group_context(self):
+        self.assertTrue(v6.DIRECT_NORTH_GROUP_RE.search("Nordzypern Deutsche Immobilien"))
+        self.assertTrue(v6.DIRECT_NORTH_GROUP_RE.search("Polacy Cypr Północny"))
+        self.assertTrue(v6.DIRECT_NORTH_GROUP_RE.search("North Cyprus Expats"))
+        self.assertTrue(v6.DIRECT_NORTH_GROUP_RE.search("Kuzey Kıbrıs Emlak"))
+
+    def test_vetted_public_groups_are_discussion_sources(self):
+        self.assertIn("meetinnorthcyprus", v6.TELEGRAM_VETTED_PUBLIC_GROUPS)
+        self.assertIn("cyprusposter", v6.TELEGRAM_VETTED_PUBLIC_GROUPS)
+        self.assertIn("kktcpazar", v6.TELEGRAM_VETTED_PUBLIC_GROUPS)
+        self.assertLessEqual(v6.RADAR_GROUP_AUTOJOIN_MAX, 5)
+
     def test_sales_only_accepts_direct_property_buyer(self):
         with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
             lead, reason = v6.classify_text(
