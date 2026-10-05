@@ -55,12 +55,13 @@ jobs:
           print("Dedicated Prime Telegram session restored")
           PY
 
-      - name: Verify buyer core
+      - name: Verify Prime buyer radar
         run: |
-          python -m py_compile northlab_lead_radar_core.py
+          python -m py_compile northlab_lead_radar_core.py nc_v6_broad_radar.py
           python -m unittest -q test_northlab_lead_radar_core.py
+          python -m unittest -q test_nc_v6_broad_radar.py
 
-      - name: Run Northlab Lead Radar Core
+      - name: Run Prime Buyer Radar
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
