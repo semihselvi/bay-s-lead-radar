@@ -1,9 +1,6 @@
 name: ARCHIVE - Free pilot - Harken North Cyprus
 "on":
   workflow_dispatch:
-  push:
-    paths:
-      - ".github/workflows/harken-nc-free-pilot.yml"
 permissions:
   contents: read
 jobs:
