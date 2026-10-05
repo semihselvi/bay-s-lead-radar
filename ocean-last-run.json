@@ -1,44 +1,9 @@
 {
-  "status": "success",
-  "finished_at": "2026-10-01T11:47:58.802302+00:00",
-  "version": "1.0-ocean-source-hub",
-  "raw": 25,
-  "unique": 25,
-  "qualified": 0,
-  "new": 0,
-  "source_counts": {
-    "semantic": 0,
-    "reddit_comments": 25,
-    "bluesky": 0,
-    "youtube_comments": 0,
-    "forums": 0
-  },
-  "qualified_by_source": {},
-  "reject_reasons": {
-    "reddit_no_purchase_verb": 24,
-    "no_explicit_purchase_intent": 1
-  },
-  "source_errors": [],
-  "youtube_urls": 0,
-  "forum_urls": 0,
-  "source_learning_scores": {
-    "reddit_comments": 64.35384615384615,
-    "forums": -10.0,
-    "youtube_comments": -10.0,
-    "bluesky": -10.0,
-    "semantic": -10.0
-  },
-  "journey_hot": 0,
-  "learned_sources": [
-    {
-      "qualified": 2,
-      "new": 2,
-      "url": "https://www.reddit.com/r/expats/comments/1wsc9hb/employer_cancelled_my_netherlands_relocation/pcrijmx/",
-      "source_type": "reddit",
-      "seen": 4,
-      "last_seen_at": "2026-09-29T11:33:43.897494+00:00",
-      "source_key": "reddit:r/expats",
-      "score": 128.0
-    }
-  ]
+  "status": "failed",
+  "finished_at": "2026-10-05T16:29:28.271141+00:00",
+  "verify_outcome": "success",
+  "hub_outcome": "failure",
+  "reason": "Ocean verification or Source Hub failed",
+  "verify_log": "=== PY_COMPILE ===\ncompile_rc=0\n=== UNIT_TESTS ===\n----------------------------------------------------------------------\nRan 10 tests in 0.002s\n\nOK\ntests_rc=0\n=== PROFILE_CHECK ===\nOcean profiles OK: czechia_abroad, denmark_abroad, estonia_abroad, finland_abroad, ireland_abroad, italy_abroad, norway_abroad, poland_abroad, portugal_abroad, spain_abroad, sweden_abroad, uae_abroad, uae_arabic_abroad, uk_abroad\nprofiles_rc=0\n=== VERIFY SUMMARY ===\ncompile=0 tests=0 profiles=0",
+  "hub_log": "OCEAN_BING_OK 7 \"holiday home abroad\" \"want to buy\"\nOCEAN_BING_OK 10 \"buy apartment abroad\" forum\nOCEAN_BING_OK 10 \"overseas property\" \"payment plan\"\nOCEAN_BING_OK 10 \"Immobilie im Ausland kaufen\" forum\nOCEAN_BING_OK 10 \"nieruchomość za granicą\" kupić forum\nOCEAN_BING_OK 10 \"köpa bostad utomlands\" forum\nOCEAN_BING_OK 10 \"comprare casa all estero\" forum\nOCEAN_BING_OK 10 \"comprar vivienda en el extranjero\" foro\nOCEAN_BING_OK 7 \"شراء عقار في الخارج\" منتدى\nOCEAN_BING_OK 10 site:reddit.com/r/expats \"buy property abroad\"\nOCEAN_DISCOVERY_SURFACES {\"youtube\": 0, \"forums\": 4}\nSEMANTIC_EXA_OK 20 A person actively looking to buy property abroad, preferably a second home or in\nSEMANTIC_EXA_OK 20 A person comparing countries to buy an apartment or house overseas for retiremen\nSEMANTIC_EXA_OK 20 A buyer asking where they can purchase Mediterranean property within a specific \nSEMANTIC_EXA_OK 20 A person seeking an off-plan apartment abroad with installments or a payment pla\nSEMANTIC_EXA_OK 20 A person asking for a second home overseas near the sea and discussing purchase \nSEMANTIC_EXA_OK 20 A person planning to retire abroad and buy a home, apartment, or villa\nSEMANTIC_EXA_OK 20 A person evaluating overseas real estate investment and asking about yield, purc\nSEMANTIC_EXA_OK 20 A person saying they want to buy property outside their home country but have no\nOCEAN_SOURCE semantic 160\nGLOBAL_COMMENT_RSS_HTTP expats comments 200\nGLOBAL_COMMENT_RSS_OK expats comments 25\nGLOBAL_COMMENT_RSS_HTTP realestateinvesting comments 429\nGLOBAL_COMMENT_RSS_HTTP retirement comments 429\nGLOBAL_COMMENT_RSS_HTTP digitalnomad comments 429\nGLOBAL_COMMENT_RSS_HTTP ExpatFIRE comments 429\nGLOBAL_COMMENT_RSS_HTTP financialindependence comments 429\nOCEAN_SOURCE reddit_comments 25\nOCEAN_BLUESKY_ERROR 403 buy property abroad\nOCEAN_BLUESKY_ERROR 403 buying property abroad\nOCEAN_BLUESKY_ERROR 403 second home abroad\nOCEAN_BLUESKY_ERROR 403 retire abroad property\nOCEAN_BLUESKY_ERROR 403 Mediterranean property buy\nOCEAN_BLUESKY_ERROR 403 overseas property budget\nOCEAN_BLUESKY_ERROR 403 off plan property payment plan\nOCEAN_BLUESKY_ERROR 403 holiday home abroad buy\nOCEAN_BLUESKY_ERROR 403 Immobilie im Ausland kaufen\nOCEAN_BLUESKY_ERROR 403 nieruchomość za granicą kupić\nOCEAN_SOURCE bluesky 0\nOCEAN_SOURCE youtube_comments 0\nOCEAN_FORUM_DL_ERROR 1 https://support.google.com/maps/community?hl=en dtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/forum_dl/extractors/__init__.py\", line 37, in find\n    raise ExtractorNotFoundError(url)\nforum_dl.exceptions.ExtractorNotFoundError: https://support.google.com/maps/community?hl=en\n\nOCEAN_FORUM_DL_ERROR 1 https://support.google.com/maps/community?hl=fr dtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/forum_dl/extractors/__init__.py\", line 37, in find\n    raise ExtractorNotFoundError(url)\nforum_dl.exceptions.ExtractorNotFoundError: https://support.google.com/maps/community?hl=fr\n\nOCEAN_FORUM_DL_ERROR 1 https://forums.penny-arcade.com/discussion/153623/poke-voltage-a-no-no-no-sort-of-thing/p7 2/site-packages/forum_dl/extractors/__init__.py\", line 37, in find\n    raise ExtractorNotFoundError(url)\nforum_dl.exceptions.ExtractorNotFoundError: https://forums.penny-arcade.com/discussion/153623/poke-voltage-a-no-no-no-sort-of-thing/p7\n\nOCEAN_FORUM_DL_ERROR 1 https://forums.penny-arcade.com/discussion/143954/rap-battle-contest-beta/p4 /lib/python3.12/site-packages/forum_dl/extractors/__init__.py\", line 37, in find\n    raise ExtractorNotFoundError(url)\nforum_dl.exceptions.ExtractorNotFoundError: https://forums.penny-arcade.com/discussion/143954/rap-battle-contest-beta/p4\n\nOCEAN_SOURCE forums 0\nOCEAN_SOURCE_HUB_COMPLETE {\"version\": \"1.0-ocean-source-hub\", \"raw\": 185, \"unique\": 85, \"qualified\": 16, \"new\": 16, \"source_counts\": {\"semantic\": 160, \"reddit_comments\": 25, \"bluesky\": 0, \"youtube_comments\": 0, \"forums\": 0}, \"qualified_by_source\": {\"Exa Semantic\": 16}, \"reject_reasons\": {\"seller_or_agent\": 4, \"accepted\": 16, \"no_explicit_purchase_intent\": 25, \"past_purchase\": 1, \"no_property\": 11, \"rental\": 3, \"reddit_no_purchase_verb\": 25}, \"source_errors\": [], \"youtube_urls\": 0, \"forum_urls\": 4, \"source_learning_scores\": {\"reddit_comments\": 64.17333333333333, \"forums\": -10.0, \"youtube_comments\": -10.0, \"bluesky\": -10.0, \"semantic\": 526.0}, \"journey_hot\": 9, \"learned_sources\": [{\"seen\": 22, \"source_type\": \"domain\", \"source_key\": \"domain:expat.com\", \"qualified\": 11, \"new\": 11, \"url\": \"https://www.expat.com/en/forum/europe/croatia/1120271-property-tax-in-croatia-how-do-you-track-local-rates-and-deadlines.html\", \"last_seen_at\": \"2026-10-05T16:29:21.405722+00:00\", \"score\": 434.0}, {\"seen\": 4, \"source_type\": \"domain\", \"source_key\": \"domain:expatforum.com\", \"qualified\": 2, \"new\": 2, \"url\": \"https://www.expatforum.com/threads/moving-to-a-new-apartment-in-dubai-looking-for-advice.1554985/\", \"last_seen_at\": \"2026-10-05T16:29:18.040749+00:00\", \"score\": 128.0}, {\"seen\": 4, \"source_type\": \"reddit\", \"source_key\": \"reddit:r/expats\", \"qualified\": 2, \"new\": 2, \"url\": \"https://www.reddit.com/r/expats/comments/1wsc9hb/employer_cancelled_my_netherlands_relocation/pcrijmx/\", \"last_seen_at\": \"2026-09-29T11:33:43.897494+00:00\", \"score\": 128.0}, {\"seen\": 2, \"source_type\": \"domain\", \"source_key\": \"domain:nomadgate.com\", \"qualified\": 1, \"new\": 1, \"url\": \"https://nomadgate.com/portugal/real-estate/\", \"last_seen_at\": \"2026-10-05T16:29:05.462690+00:00\", \"score\": 94.0}, {\"seen\": 2, \"source_type\": \"domain\", \"source_key\": \"domain:bogleheads.org\", \"qualified\": 1, \"new\": 1, \"url\": \"https://www.bogleheads.org/forum/viewtopic.php?t=475012\", \"last_seen_at\": \"2026-10-05T16:29:19.160346+00:00\", \"score\": 94.0}, {\"seen\": 2, \"source_type\": \"domain\", \"source_key\": \"domain:forums.moneysavingexpert.com\", \"qualified\": 1, \"new\": 1, \"url\": \"https://forums.moneysavingexpert.com/discussion/6685676/house-buy-with-deposit-paid-directly-to-seller\", \"last_seen_at\": \"2026-10-05T16:29:16.912068+00:00\", \"score\": 94.0}]}\nTraceback (most recent call last):\n  File \"/home/runner/work/bay-s-lead-radar/bay-s-lead-radar/ocean_source_hub.py\", line 606, in <module>\n    run()\n  File \"/home/runner/work/bay-s-lead-radar/bay-s-lead-radar/ocean_source_hub.py\", line 601, in run\n    notify(\"\\n\".join(lines))\n  File \"/home/runner/work/bay-s-lead-radar/bay-s-lead-radar/ocean_source_hub.py\", line 123, in notify\n    ).raise_for_status()\n      ^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/requests/models.py\", line 1167, in raise_for_status\n    raise HTTPError(http_error_msg, response=self)\nrequests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.telegram.org/bot8960334527:AAHt14cD7NVGPGGGSuj1lKwopTcSpZr5_Ro/sendMessage"
 }
