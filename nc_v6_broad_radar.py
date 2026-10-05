@@ -81,7 +81,9 @@ PROPERTY_RE = re.compile(
     r"(?:"
     r"\bproperty\b|\breal\s+estate\b|\bapartment\b|\bflat\b|\bvilla\b|\bhouse\b|\bstudio\b|\bland\b|\bplot\b|"
     r"\bdaire\b|\bev\b|\bkonut\b|\bvilla\b|\bst[üu]dyo\b|\barsa\b|\bgayrimenkul\b|"
-    r"\bквартир\w*\b|\bапартамент\w*\b|\bвилл\w*\b|\bдом\w*\b|\bстуди\w*\b|\bнедвижимост\w*\b|\bземл\w*\b|"
+    r"\bwohnung\w*\b|\bimmobilie\w*\b|\bhaus\w*\b|\bgrundst[üu]ck\w*\b|"
+    r"\bmieszkan\w*\b|\bnieruchomo[śs]c\w*\b|\bdom\w*\b|\bdzia[łl]k\w*\b|"
+    r"\bквартир\w*\b|\bапартамент\w*\b|\bвилл\w*\b|\bдом\w*\b|\bстуди\w*\b|\bнедвижимост\w*\b|\bземл\w*\b|
     r"\b[0-6]\s*\+\s*[0-3]\b|\b(?:one|two|three|1|2|3)\s+bed(?:room)?s?\b|"
     r"\b(?:bir|iki|üç|uc|1|2|3)\s+yatak\s+odal[ıi]\b"
     r")",
@@ -96,7 +98,9 @@ BUY_RE = re.compile(
     r"\b(?:ev|daire|villa|arsa|konut|gayrimenkul)\s+al(?:mak|may[ıi]|[ıi]p)\b|"
     r"\bne\s+al[ıi]n(?:[ıi]r|abilir|abilirim|abiliriz)\b|\bnereden\s+ev\s+al[ıi]n[ıi]r\b|"
     r"\bхочу\s+купить\b|\bкуплю\b|\bпланир\w*\s+купить\b|\bстоит\s+ли\s+покупать\b|\bгде\s+(?:лучше\s+)?купить\b|"
-    r"\bчто\s+можно\s+купить\b|\bищу\s+на\s+покупку\b"
+    r"\bчто\s+можно\s+купить\b|\bищу\s+на\s+покупку\b|"
+    r"\b(?:ich|wir)\s+(?:möchte|moechte|wollen|will)\s+.*\bkaufen\b|\bsuche\s+.*\bzum\s+kauf\b|\bwohnung\s+kaufen\b|\bimmobilie\s+kaufen\b|"
+    r"\bchc[ęe]\s+kupi[ćc]\b|\bszukam\s+.*\bdo\s+kupna\b|\bkupi[ęe]\b|\bmieszkanie\s+na\s+sprzeda[żz]\b"
     r")",
     re.I | re.S,
 )
@@ -105,7 +109,9 @@ DEMAND_RE = re.compile(
     r"(?:"
     r"\blooking\s+for\b|\bseeking\b|\bneed\s+(?:a|an|some)?\b|"
     r"\bar[ıi]yorum\b|\bbak[ıi]yorum\b|\bariyorum\b|\bbakiyorum\b|"
-    r"\bищу\b|\bищем\b|\bнужн(?:а|ы|о)\b|\bподбира\w*\b|\bрассматрива\w*\b"
+    r"\bищу\b|\bищем\b|\bнужн(?:а|ы|о)\b|\bподбира\w*\b|\bрассматрива\w*\b|"
+    r"\bsuche\b|\bwir\s+suchen\b|\bgesucht\b|"
+    r"\bszukam\b|\bszukamy\b|\bposzukuj[ęe]\b"
     r")",
     re.I,
 )
@@ -163,7 +169,9 @@ RESIDENCY_RE = re.compile(
 
 PURCHASE_QUALIFIER_RE = re.compile(
     r"(?:\bko[çc]an\w*\b|\btapu\b|\btitle\s+deed\b|\bdeed\b|\bready\s+to\s+move\b|"
-    r"\bhaz[ıi]r\s+teslim\b|\btaksit\w*\b|\bpayment\s+plan\b|\bрассрочк\w*\b|\bготов\w*\s+квартир\w*\b|\bтитул\w*\b)",
+    r"\bhaz[ıi]r\s+teslim\b|\btaksit\w*\b|\bpayment\s+plan\b|\bрассрочк\w*\b|\bготов\w*\s+квартир\w*\b|\bтитул\w*\b|"
+    r"\beigentumstitel\b|\bgrundbuch\b|\bzahlungsplan\b|\bratenzahlung\b|"
+    r"\bakt\s+w[łl]asno[śs]ci\b|\bksi[ęe]ga\s+wieczysta\b|\braty\b|\bplan\s+p[łl]atno[śs]ci\b)",
     re.I,
 )
 
@@ -374,6 +382,10 @@ def detect_language(text: str) -> str:
     low = value.casefold()
     if re.search(r"[çğıöşüİı]", value) or any(x in low for x in (" arıyorum", " bakıyorum", " taşın", " yatırım", " daire", " kiralık", " oturma izni")):
         return "TR"
+    if re.search(r"[ąćęłńóśźż]", low) or any(x in low for x in ("szukam", "szukamy", "chcę kupić", "kupie ", "kupię ", "mieszkanie", "nieruchomość", "nieruchomosci")):
+        return "PL"
+    if re.search(r"[äöüß]", low) or any(x in low for x in ("wohnung", "immobilie", "ich suche", "wir suchen", "kaufen", "grundbuch", "eigentumstitel")):
+        return "DE"
     if re.search(r"[a-z]", value, re.I):
         return "EN"
     return "OTHER"
@@ -920,6 +932,33 @@ TELEGRAM_GLOBAL_BUYER_QUERIES = (
     "ready to buy property",
     "where to buy apartment",
     "which apartment should I buy",
+    "looking for apartment North Cyprus",
+    "need apartment North Cyprus",
+    "apartment with title deed",
+    "property with title deed",
+    "apartment direct from owner",
+    # German.
+    "Wohnung Nordzypern kaufen",
+    "Immobilie Nordzypern kaufen",
+    "suche Wohnung Nordzypern",
+    "suche Immobilie Nordzypern",
+    "Wohnung in Nordzypern gesucht",
+    "Wohnung kaufen Kyrenia",
+    "Wohnung kaufen Iskele",
+    "Immobilie mit Eigentumstitel",
+    "Wohnung mit Grundbuch",
+    "Immobilie Ratenzahlung Nordzypern",
+    # Polish.
+    "kupię mieszkanie Cypr Północny",
+    "chcę kupić mieszkanie Cypr Północny",
+    "szukam mieszkania Cypr Północny",
+    "szukam nieruchomości Cypr Północny",
+    "mieszkanie na sprzedaż Cypr Północny",
+    "kupię mieszkanie Iskele",
+    "kupię mieszkanie Kyrenia",
+    "mieszkanie z aktem własności",
+    "nieruchomość księga wieczysta",
+    "mieszkanie na raty Cypr Północny",
     # Turkish.
     "daire almak istiyorum",
     "ev almak istiyorum",
@@ -937,12 +976,23 @@ TELEGRAM_GLOBAL_BUYER_QUERIES = (
     "yatırımlık daire almak istiyorum",
     "peşinatlı daire arıyorum",
     "ödeme planlı daire arıyorum",
+    "daire arıyorum",
+    "ev arıyorum",
+    "koçanlı daire arıyorum",
+    "tapulu daire arıyorum",
+    "sahibinden daire arıyorum",
+    "İskele daire arıyorum",
+    "Girne daire arıyorum",
     # Geo-qualified fallback phrases.
     "Северный Кипр куплю квартиру",
     "Северный Кипр хочу купить квартиру",
     "Искеле куплю квартиру",
     "Гирне куплю квартиру",
     "North Cyprus looking to buy property",
+    "Nordzypern Wohnung kaufen",
+    "Nordzypern Immobilie kaufen",
+    "Cypr Północny kupię mieszkanie",
+    "Cypr Polnocny kupie mieszkanie",
     "Kuzey Kıbrıs daire almak istiyorum",
     "Kuzey Kibris ev almak istiyorum",
 )
@@ -983,6 +1033,20 @@ TELEGRAM_PUBLIC_PEER_QUERIES = (
     "Фамагуста",
     "Лонг Бич",
     "Эсентепе",
+    # German-speaking communities.
+    "Nordzypern",
+    "Nordzypern Deutsche",
+    "Deutsche in Nordzypern",
+    "Nordzypern Immobilien",
+    "Zypern Auswandern",
+    "Zypern Immobilien",
+    # Polish-speaking communities.
+    "Cypr Północny",
+    "Cypr Polnocny",
+    "Polacy na Cyprze",
+    "Polacy Cypr Północny",
+    "Cypr Północny nieruchomości",
+    "Cypr Polnocny nieruchomosci",
 )
 
 RADAR_SELF_FEEDBACK_RE = re.compile(
