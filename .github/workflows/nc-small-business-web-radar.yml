@@ -2,15 +2,6 @@ name: ARCHIVE - NORTHLAB - North Cyprus Small Business Web Radar
 
 "on":
   workflow_dispatch:
-  push:
-    paths:
-      - "small_business_web_radar.py"
-      - "small_business_web_radar_reviewed.py"
-      - "small_business_web_radar_sales.py"
-      - "test_small_business_web_radar.py"
-      - "test_small_business_web_radar_sales.py"
-      - ".github/workflows/nc-small-business-web-radar.yml"
-
 jobs:
   radar:
     runs-on: ubuntu-latest
