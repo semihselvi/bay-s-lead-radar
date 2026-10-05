@@ -2,21 +2,6 @@ name: ARCHIVE - OCEAN - Global Residents Buying Abroad
 
 "on":
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "europe_abroad_buyer_radar.py"
-      - "europe_buyer_serper_resilient.py"
-      - "ocean_source_hub.py"
-      - "ocean_learning.py"
-      - "buyer_intent_core.py"
-      - "global_semantic_buyer_radar.py"
-      - "reddit_global_comment_rss.py"
-      - "requirements-ocean.txt"
-      - "test_ocean_learning.py"
-      - ".github/workflows/global-abroad-ocean.yml"
-
 permissions:
   contents: write
 
