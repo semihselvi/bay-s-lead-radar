@@ -1,4 +1,4 @@
-name: Free pilot - Subscope Northlab
+name: ARCHIVE - Free pilot - Subscope Northlab
 "on":
   workflow_dispatch:
   push:
