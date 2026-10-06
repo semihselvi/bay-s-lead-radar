@@ -861,7 +861,7 @@ def _vk_rows_from_html(html: str, seed: str, label: str) -> list[dict[str, Any]]
             post_id = str(post.get("data-post-id") or post.get("data-post") or "")
             if post_id:
                 # VK wall URLs use wall{owner_id}_{post_id}; keep the underscore.
-                if re.fullmatch(r"-?\\d+_\\d+", post_id):
+                if re.fullmatch(r"-?\d+_\d+", post_id):
                     link = f"https://vk.com/wall{post_id}"
 
         if not link or link in seen_urls:
