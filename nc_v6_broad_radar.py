@@ -621,11 +621,13 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
         lead_class = "HOT BUYER" if specificity >= 2 else "WARM BUYER"
         score = 78 + min(18, specificity * 4)
         reasons.append("purchase_budget_demand")
-    elif buy and investor:
-        intent_type = "INVESTOR"
-        lead_class = "INVESTOR"
+    elif buy and investor and has_property:
+        # Buying a property for investment is still an actionable PROPERTY BUYER.
+        # The final notification firewall excludes generic INVESTOR discussions.
+        intent_type = "BUYER"
+        lead_class = "HOT BUYER" if specificity >= 1 else "WARM BUYER"
         score = 82 + min(14, specificity * 3)
-        reasons.extend(["explicit_purchase_intent", "investment_or_yield_research"])
+        reasons.extend(["explicit_purchase_intent", "investment_property_buyer"])
     elif buy:
         intent_type = "BUYER"
         lead_class = "HOT BUYER" if specificity >= 1 else "WARM BUYER"
