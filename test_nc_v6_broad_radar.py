@@ -84,6 +84,49 @@ class BroadIntentTests(unittest.TestCase):
                     self.assertEqual("BUYER", lead["intent_type"])
                     self.assertIn(lead["lead_class"], {"HOT BUYER", "WARM BUYER"})
 
+    def test_five_language_purchase_variants(self):
+        samples = (
+            ("İskele'de 1+1 satın almayı düşünüyorum", "TR"),
+            ("Интересует покупка квартиры в Искеле", "RU"),
+            ("Interested in buying an apartment in North Cyprus", "EN"),
+            ("Ich möchte eine Wohnung in Nordzypern erwerben", "DE"),
+            ("Chciałbym kupić mieszkanie na Cyprze Północnym", "PL"),
+        )
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            for phrase, language in samples:
+                with self.subTest(language=language):
+                    lead, reason = v6.classify_text(phrase, group="North Cyprus Property")
+                    self.assertIsNotNone(lead, (language, reason))
+                    self.assertEqual("BUYER", lead["intent_type"])
+                    self.assertTrue(v6.candidate_signal(phrase))
+                    self.assertTrue(v6.global_public_candidate_signal(phrase, has_north_context=True))
+
+    def test_title_and_resale_searches_without_buy_verb_are_buyers(self):
+        samples = (
+            "Ищу квартиру 2+1 с титулом",
+            "Нужна квартира на вторичном рынке",
+            "İskele'de koçanlı daire arıyorum",
+        )
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            for phrase in samples:
+                with self.subTest(phrase=phrase):
+                    lead, reason = v6.classify_text(phrase, group="North Cyprus Property")
+                    self.assertIsNotNone(lead, reason)
+                    self.assertEqual("BUYER", lead["intent_type"])
+
+    def test_owner_refusal_and_rental_still_not_sales_leads(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            samples = (
+                "Ищу 2+1 с титулом в Искеле, только от собственника",
+                "İskele'de koçanlı daire arıyorum, emlakçılar yazmasın",
+                "Ищу 1+1 с титулом в аренду",
+                "Продаю квартиру 2+1 с титулом в Искеле, цена 100000£",
+            )
+            for phrase in samples:
+                with self.subTest(phrase=phrase):
+                    lead, reason = v6.classify_text(phrase, group="North Cyprus Property")
+                    self.assertIsNone(lead, (phrase, reason))
+
     def test_russian_buyer(self):
         self.assertLead("Хочу купить квартиру на Северном Кипре, бюджет £140000.", "HOT BUYER")
 
