@@ -2730,7 +2730,7 @@ def notify_lead(lead: dict[str, Any], prefix: str = "NEW") -> bool:
     criteria_text = ", ".join(lead.get("important_criteria") or []) or "-"
     reasons = ", ".join(lead.get("lead_reasons") or []) or "-"
     msg = (
-        f"{emoji} LEAD RADAR | {lead_class} [{prefix}]\n\n"
+        f"{emoji} PRIME BUYER RADAR | {lead_class} [{prefix}]\n\n"
         f"Kullanıcı: {lead.get('author','-') or '-'}\n"
         f"Platform: {lead.get('platform') or lead.get('source','')}\n"
         f"Kaynak/Grup: {lead.get('group') or lead.get('title') or lead.get('source','')}\n"
