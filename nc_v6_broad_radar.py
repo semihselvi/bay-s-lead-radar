@@ -146,7 +146,8 @@ RENT_DEMAND_RE = re.compile(
     r"\bkiral[ıi]k\s+(?:ev|daire|villa|st[üu]dyo)?\s*ar[ıi]yorum\b|\b(?:ev|daire|villa|st[üu]dyo)\s+kiralamak\s+istiyorum\b|"
     r"\b(?:ev|daire|villa|st[üu]dyo)\s+ar[ıi]yorum\b.{0,80}\b(?:kiral[ıi]k|ayl[ıi]k|g[üu]nl[üu]k)\b|"
     r"\bсниму\b|\bхочу\s+снять\b|\bищу\b.{0,100}\b(?:аренд|долгосроч|посуточ)\b|"
-    r"\bищу\s+в\s+аренд\w*\b|\bнужн(?:а|ы)\b.{0,100}\b(?:в\s+аренд\w*|на\s+аренд\w*)\b|"
+    r"\bищу\s+в\s+аренд\w*\b|
+    r"\bищу\b.{0,150}\bв\s+аренд\w*\b|\bнужн(?:а|ы)\b.{0,100}\b(?:в\s+аренд\w*|на\s+аренд\w*)\b|"
     r"\bищу\s+(?:квартир\w*|дом\w*|вилл\w*|студи\w*)\b.{0,180}\b(?:на\s+месяц|на\s+год|на\s+долгий\s+срок|долгосроч\w*|долгосрок\w*|аренд\w*|сдавать\w*)\b|"
     r"\bищу\b.{0,120}\b(?:квартир\w*|дом\w*|вилл\w*|студи\w*)\b.{0,120}\b(?:с\s+\d|по\s+\d|на\s+\d+\s+(?:дн|день|дней|недел|месяц))\b"
     r")",
@@ -603,9 +604,9 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
         title_resale_request = bool(has_property and demand and PURCHASE_MARKET_RE.search(own))
         investment_property_request = bool(
             has_property and demand and re.search(
-                r"(?:yat[ıi]r[ıi]ms+i[çc]in|дляs+инвестицw*|"
-                r"fors+investment|ass+an?s+investment|"
-                r"alss+kapitalanlage|pods+inwestycj[ęe])", own, re.I
+                r"(?:yat[ıi]r[ıi]m\s+i[çc]in|для\s+инвестиц\w*|"
+                r"for\s+investment|as\s+an?\s+investment|"
+                r"als\s+kapitalanlage|pod\s+inwestycj[ęe])", own, re.I
             )
         )
         agent_purchase_request = bool(agent_client and has_property and demand and (purchase_budget_request or qualifier or investor))
