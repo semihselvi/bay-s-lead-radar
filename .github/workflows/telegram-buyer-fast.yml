@@ -61,94 +61,20 @@ jobs:
           print("Dedicated Prime Telegram session restored")
           PY
 
-      - name: Verify Prime buyer radar
-        run: |
-          python -m py_compile northlab_lead_radar_core.py nc_v6_broad_radar.py
-          python -m unittest -q test_northlab_lead_radar_core.py
-          python -m unittest -q test_nc_v6_broad_radar.py
-
-      - name: Run Prime Buyer Radar
-        env:
-          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
-          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
-          TELEGRAM_SESSION_PATH: telegram_radar_session/radar_session.session
-          RADAR_SALES_ONLY: "1"
-          RADAR_V5_TELEGRAM_HOURS: "6"
-          RADAR_GLOBAL_TELEGRAM_DAYS: "7"
-          RADAR_PUBLIC_PEER_SCAN_LIMIT: "90"
-          RADAR_LEARNED_TELEGRAM_QUERIES: "20"
-          RADAR_SOURCE_EXPANSION_SEEDS: "8"
-          RADAR_SOURCE_EXPANSION_CANDIDATES: "24"
-          RADAR_CRAWL4AI_RUN_BUDGET: "8"
-          RADAR_CRAWL4AI_PER_CALL: "2"
-        run: python northlab_lead_radar_core.py
-
-      - name: Cleanup Telegram session
-        if: always()
-        run: rm -rf telegram_radar_session
-
-  caesar-rental-offers:
-    name: Caesar Resort rental supply scan and report
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout Radar production code
-        uses: actions/checkout@v6
-        with:
-          ref: production/radar
-
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install Telegram client
-        run: python -m pip install "telethon>=1.40,<2"
-
-      - name: Verify rental parser
-        run: |
-          python -m py_compile caesar_rental_search.py
-          python -m unittest -q test_caesar_rental_search.py
-
-      - name: Restore Prime Telegram session
-        env:
-          TELEGRAM_STRING_SESSION: ${{ secrets.TELEGRAM_STRING_SESSION_PRIME }}
-        run: |
-          python - <<'PY'
-          import os
-          from pathlib import Path
-          from telethon.sessions import StringSession, SQLiteSession
-          value = os.environ.get("TELEGRAM_STRING_SESSION", "").strip()
-          if not value:
-              raise SystemExit("ERROR: TELEGRAM_STRING_SESSION_PRIME missing")
-          src = StringSession(value)
-          base = Path("telegram_radar_session/radar_session")
-          base.parent.mkdir(parents=True, exist_ok=True)
-          dst = SQLiteSession(str(base))
-          dst.set_dc(src.dc_id, src.server_address, src.port)
-          dst.auth_key = src.auth_key
-          dst.save()
-          dst.close()
-          print("Prime Telegram session restored")
-          PY
-
-      - name: Search Caesar Resort rental offers
-        timeout-minutes: 10
+      - name: Scan Caesar Resort rental offers first
+        timeout-minutes: 8
+        continue-on-error: true
         env:
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           TELEGRAM_SESSION_PATH: telegram_radar_session/radar_session.session
           CAESAR_REPORT_PATH: caesar-rental-summary.json
-        run: python caesar_rental_search.py
+        run: |
+          python -m unittest -q test_caesar_rental_search.py
+          python caesar_rental_search.py
 
       - name: Publish privacy-safe Caesar rental summary
         if: always()
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           CAESAR_REPORT_PATH: caesar-rental-summary.json
@@ -202,6 +128,31 @@ jobs:
           with urllib.request.urlopen(req, timeout=20) as res:
               print("CAESAR_REPORT_PUBLISHED", res.status, path)
           PY
+
+      - name: Verify Prime buyer radar
+        run: |
+          python -m py_compile northlab_lead_radar_core.py nc_v6_broad_radar.py
+          python -m unittest -q test_northlab_lead_radar_core.py
+          python -m unittest -q test_nc_v6_broad_radar.py
+
+      - name: Run Prime Buyer Radar
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION_PATH: telegram_radar_session/radar_session.session
+          RADAR_SALES_ONLY: "1"
+          RADAR_V5_TELEGRAM_HOURS: "6"
+          RADAR_GLOBAL_TELEGRAM_DAYS: "7"
+          RADAR_PUBLIC_PEER_SCAN_LIMIT: "90"
+          RADAR_LEARNED_TELEGRAM_QUERIES: "20"
+          RADAR_SOURCE_EXPANSION_SEEDS: "8"
+          RADAR_SOURCE_EXPANSION_CANDIDATES: "24"
+          RADAR_CRAWL4AI_RUN_BUDGET: "8"
+          RADAR_CRAWL4AI_PER_CALL: "2"
+        run: python northlab_lead_radar_core.py
 
       - name: Cleanup Telegram session
         if: always()
