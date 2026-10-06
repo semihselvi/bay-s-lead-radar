@@ -63,6 +63,18 @@ class BroadIntentTests(unittest.TestCase):
     def test_buy_to_rent_investor(self):
         self.assertLead("Kuzey Kıbrıs'ta ev alıp kiraya vermek istiyorum.", "INVESTOR")
 
+    def test_explicit_investment_property_purchase_is_buyer(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            for phrase in (
+                "Я хочу купить квартиру на Северном Кипре для инвестиций. Бюджет 120000 евро.",
+                "I want to buy an apartment in North Cyprus as an investment. Budget £140000.",
+            ):
+                with self.subTest(phrase=phrase):
+                    lead, reason = v6.classify_text(phrase, group="North Cyprus Expats")
+                    self.assertIsNotNone(lead, reason)
+                    self.assertEqual("BUYER", lead["intent_type"])
+                    self.assertIn(lead["lead_class"], {"HOT BUYER", "WARM BUYER"})
+
     def test_russian_buyer(self):
         self.assertLead("Хочу купить квартиру на Северном Кипре, бюджет £140000.", "HOT BUYER")
 
