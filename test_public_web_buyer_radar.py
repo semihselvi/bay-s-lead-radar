@@ -7,6 +7,34 @@ import public_web_buyer_radar as web
 
 
 class PublicWebBuyerRadarTests(unittest.TestCase):
+    def test_target_forum_discovery_only_allows_two_domains(self):
+        sample = [
+            {"url": "https://forum.donanimhaber.com/yatirim-amacli-konut-alinir-mi--160559823", "title": "Kıbrıs"},
+            {"url": "https://unrelated.example.com/spam", "title": "Not allowed"},
+        ]
+        with patch.object(web.forum_engine, "discover_forum_threads", return_value={
+            "threads": ["https://kibkomnorthcyprusforum.com/viewtopic.php?t=123"],
+            "error": "", "engine": "phpbb",
+        }), patch.object(web, "bing_rss", return_value=sample):
+            rows, debug = web.discover_target_forum_rows()
+        self.assertTrue(any(r["source"] == "Kibkom" for r in rows))
+        self.assertTrue(any(r["source"] == "DonanımHaber" for r in rows))
+        self.assertFalse(any("unrelated.example.com" in r["url"] for r in rows))
+        self.assertTrue(all(r["source"] in {"Kibkom", "DonanımHaber"} for r in rows))
+
+    def test_donanimhaber_must_explicitly_mention_north_cyprus(self):
+        with patch.dict(os.environ, {"RADAR_SALES_ONLY": "1"}):
+            signal, reason = web.classify_window(
+                "İstanbul'da 2+1 daire satın almak istiyorum, bütçem 6 milyon TL.",
+                implicit_north_cyprus=False,
+            )
+        self.assertIsNone(signal)
+        self.assertEqual(reason, "no_north_context")
+
+    def test_undated_forum_post_must_not_be_hot(self):
+        freshness, age = web._freshness(None)
+        self.assertEqual((freshness, age), ("unknown", None))
+
     def test_extracts_buyer_window_from_forum_text(self):
         text = (
             "Forum navigation random text. "
