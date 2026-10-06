@@ -1441,6 +1441,19 @@ def build_review_candidate(candidate: dict[str, Any]) -> dict[str, Any] | None:
     review, _ = evaluate_review_candidate(candidate)
     return review
 
+def _record_public_buyer_reject(reason: str, entity: Any, msg: Any) -> None:
+    """Audit a handful of public post URLs, never private links or message text."""
+    username = _public_chat_username(entity)
+    mid = int(getattr(msg, "id", 0) or 0)
+    if not username or mid <= 0:
+        return
+    examples = DEBUG.setdefault("buyer_reject_public_links", {}).setdefault(reason, [])
+    if len(examples) < 4:
+        link = f"https://t.me/{username}/{mid}"
+        if link not in examples:
+            examples.append(link)
+
+
 def _joined_dialog_eligible(dialog: Any) -> bool:
     """Scan joined groups AND broadcast channels; never private user DMs."""
     return bool(getattr(dialog, "is_group", False) or getattr(dialog, "is_channel", False))
@@ -1576,6 +1589,7 @@ async def broad_telegram_scan(db_client, started):
 
                         if not candidate_signal(text):
                             DEBUG["reject_reasons"]["no_candidate_signal"] += 1
+                            _record_public_buyer_reject("no_candidate_signal", entity, msg)
                             continue
                         DEBUG["signal_pass"] += 1
 
@@ -1603,8 +1617,10 @@ async def broad_telegram_scan(db_client, started):
                     if signal is None:
                         if strict_extra:
                             DEBUG["strict_extra_reject_reasons"][reason] += 1
+                            _record_public_buyer_reject(reason, entity, msg)
                         else:
                             DEBUG["reject_reasons"][reason] += 1
+                            _record_public_buyer_reject(reason, entity, msg)
                             if reason == "no_explicit_purchase_intent":
                                 DEBUG["review_candidates"] += 1
                                 review, review_reason = evaluate_review_candidate(candidate)
