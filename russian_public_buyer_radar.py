@@ -1657,6 +1657,46 @@ def _vk_ok_verified_date(url: str) -> str:
     return ""
 
 
+def _vk_ok_verified_content(url: str, platform: str) -> tuple[str, str]:
+    """Require actual post text and date from its public permalink, not Bing snippets."""
+    try:
+        response = requests.get(
+            url, timeout=min(TIMEOUT, 12),
+            headers={"User-Agent": "Mozilla/5.0", "Accept-Language": "ru-RU,ru;q=0.9"},
+        )
+        if response.status_code != 200:
+            return "", ""
+        soup = BeautifulSoup(response.text, "html.parser")
+        selectors = (
+            (".wall_post_text", ".PostText__text", "[data-post-id] .wall_post_text")
+            if platform == "VK" else
+            (".media-text_cnt", ".media-text", "[data-l='t,feed_entry'] .media-text_cnt")
+        )
+        text = ""
+        for selector in selectors:
+            for node in soup.select(selector):
+                candidate = normalize(node.get_text(" ", strip=True))
+                if len(candidate) >= 35 and len(candidate) <= 12000:
+                    text = candidate
+                    break
+            if text:
+                break
+        if not text:
+            return "", ""
+        dates = []
+        for node in soup.select("time[datetime], meta[property='article:published_time'], meta[itemprop='datePublished']"):
+            value = str(node.get("datetime") or node.get("content") or "").strip()
+            if value:
+                dates.append(value)
+        for value in dates:
+            dt = parse_published(value)
+            if dt and dt <= datetime.now(timezone.utc) + timedelta(minutes=2):
+                return text, dt.isoformat()
+    except Exception:
+        pass
+    return "", ""
+
+
 def scan_vk_ok() -> dict[str, Any]:
     """Targeted public buyer discovery, strict source timestamps and dedupe."""
     started = datetime.now(timezone.utc)
@@ -1677,7 +1717,16 @@ def scan_vk_ok() -> dict[str, Any]:
                 row["platform"] = platform
                 row["source"] = f"{platform} Public Search"
                 row["source_type"] = "public_search_index"
-                row["published"] = _vk_ok_verified_date(str(row.get("url") or ""))
+                # Search-index titles/descriptions are discovery hints, never buyer evidence.
+                original_text, original_date = _vk_ok_verified_content(
+                    str(row.get("url") or ""), platform,
+                )
+                if not original_text:
+                    rejected["original_post_unreadable"] += 1
+                    continue
+                row["title"] = ""
+                row["text"] = original_text
+                row["published"] = original_date
                 candidates.append(row)
 
     db = firestore_client()
