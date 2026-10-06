@@ -100,7 +100,7 @@ async def scan():
         {"kind": item["kind"], "date": item["date"], "url": item["url"],
          "price_mentions": item["price_mentions"]}
         for item in stats["offers"]
-        if re.fullmatch(r"https://t\\.me/[A-Za-z0-9_]+/\\d+", item["url"])
+        if re.fullmatch(r"https://t\.me/[A-Za-z0-9_]+/\d+", item["url"])
         and not item["url"].startswith("https://t.me/c/")
     ]
     summary = {
