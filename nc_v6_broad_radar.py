@@ -126,7 +126,7 @@ BUY_INTENT_VARIANTS_RE = re.compile(
 PURCHASE_MARKET_RE = re.compile(
     r"\b(?:ko[çc]an\w*|tapu|title\s+deed|eigentumstitel|grundbuch|"
     r"akt\s+w[łl]asno[śs]ci|ksi[ęe]ga\s+wieczysta|титул\w*|"
-    r"вторичк\w*|вторичн\w*\s+рынк\w*|resale|ikinci\s+el|2[.]?\s*el)\b", re.I,
+    r"вторичк\w*|вторичн\w*\s+рынк\w*|resale|ikinci\s+el|2[.]?\s*el|sat[ıi]l[ıi]k|taksitl\w*|рассрочк\w*|payment\s+plan)\b", re.I,
 )
 
 DEMAND_RE = re.compile(
