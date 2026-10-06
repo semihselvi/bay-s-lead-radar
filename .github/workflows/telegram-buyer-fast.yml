@@ -146,7 +146,7 @@ jobs:
           RADAR_SALES_ONLY: "1"
           RADAR_V5_TELEGRAM_HOURS: "6"
           RADAR_JOINED_TELEGRAM_HOURS: "48"
-          # Buyer keyword/filter regression update: run tests before live scan.
+          # Retest repaired buyer/rental expressions before live Telegram scan.
           # Joined groups and broadcast channels are both scanned; private DMs are excluded.
           RADAR_GLOBAL_TELEGRAM_DAYS: "7"
           RADAR_PUBLIC_PEER_SCAN_LIMIT: "90"
