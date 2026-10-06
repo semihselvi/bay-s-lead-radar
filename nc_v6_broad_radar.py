@@ -1415,6 +1415,11 @@ def build_review_candidate(candidate: dict[str, Any]) -> dict[str, Any] | None:
     review, _ = evaluate_review_candidate(candidate)
     return review
 
+def _joined_dialog_eligible(dialog: Any) -> bool:
+    """Scan joined groups AND broadcast channels; never private user DMs."""
+    return bool(getattr(dialog, "is_group", False) or getattr(dialog, "is_channel", False))
+
+
 async def broad_telegram_scan(db_client, started):
     if not core.TELEGRAM_API_ID or not core.TELEGRAM_API_HASH:
         DEBUG["errors"].append("telegram_missing_api_credentials")
@@ -1443,9 +1448,11 @@ async def broad_telegram_scan(db_client, started):
 
         dialogs = []
         async for dialog in client.iter_dialogs():
-            if getattr(dialog, "is_group", False):
+            if _joined_dialog_eligible(dialog):
                 dialogs.append(dialog)
         DEBUG["groups_total"] = len(dialogs)
+        DEBUG["joined_groups_count"] = sum(bool(getattr(d, "is_group", False)) for d in dialogs)
+        DEBUG["joined_channels_count"] = sum(bool(getattr(d, "is_channel", False)) and not bool(getattr(d, "is_group", False)) for d in dialogs)
         joined_public_usernames = {
             _public_chat_username(d.entity).casefold()
             for d in dialogs
@@ -1456,7 +1463,7 @@ async def broad_telegram_scan(db_client, started):
         if newly_joined_groups:
             dialogs = []
             async for dialog in client.iter_dialogs():
-                if getattr(dialog, "is_group", False):
+                if _joined_dialog_eligible(dialog):
                     dialogs.append(dialog)
             DEBUG["groups_total"] = len(dialogs)
 
