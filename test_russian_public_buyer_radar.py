@@ -213,6 +213,32 @@ class RussianPublicBuyerRadarTests(unittest.TestCase):
         self.assertIsNotNone(lead, reason)
         self.assertEqual("BUYER", lead["intent_type"])
 
+    def test_vk_html_data_post_id_keeps_valid_wall_permalink(self):
+        html = """
+        <div class="post" data-post-id="-123_456">
+          <time datetime="2026-10-05T11:20:00+00:00"></time>
+          <div class="wall_post_text">
+            Я хочу купить квартиру на Северном Кипре, бюджет 120 000 евро.
+          </div>
+        </div>
+        """
+        rows = r._vk_rows_from_html(html, "ru_cyprus", "Русские на Кипре")
+        self.assertEqual(1, len(rows))
+        self.assertEqual("https://vk.com/wall-123_456", rows[0]["url"])
+
+    def test_scheduled_vk_scan_calls_native_group_adapter(self):
+        from unittest.mock import patch, MagicMock
+        with (
+            patch.object(r, "vk_native_seed_search", return_value=[]) as native,
+            patch.object(r, "ok_native_search", return_value=[]),
+            patch.object(r, "bing_rss_search", return_value=[]),
+            patch.object(r, "firestore_client", return_value=MagicMock()),
+        ):
+            report = r.scan_vk_ok()
+        native.assert_called_once()
+        self.assertEqual({}, report["raw"])
+        self.assertEqual(0, report["notified"])
+
     def test_vk_html_parser_drops_south_cyprus_only_post(self):
         html = """
         <div class="post">
