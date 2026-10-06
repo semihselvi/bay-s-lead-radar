@@ -860,8 +860,9 @@ def _vk_rows_from_html(html: str, seed: str, label: str) -> list[dict[str, Any]]
         if not link:
             post_id = str(post.get("data-post-id") or post.get("data-post") or "")
             if post_id:
-                post_id = post_id.replace("_", "-") if post_id.count("_") == 1 else post_id
-                link = f"https://vk.com/wall{post_id}" if post_id.startswith("-") else ""
+                # VK wall URLs use wall{owner_id}_{post_id}; keep the underscore.
+                if re.fullmatch(r"-?\\d+_\\d+", post_id):
+                    link = f"https://vk.com/wall{post_id}"
 
         if not link or link in seen_urls:
             continue
@@ -1703,7 +1704,9 @@ def scan_vk_ok() -> dict[str, Any]:
     rejected = Counter()
     raw = Counter()
     candidates: list[dict[str, Any]] = []
-    # Native OK results use a timestamp taken from the public post's own markup.
+    # Read public group posts directly before search-index discovery.
+    # This adapter existed but was previously never called in the scheduled VK job.
+    candidates.extend(vk_native_seed_search())
     candidates.extend(ok_native_search())
     # VK public walls were blocked by login/CAPTCHA on hosted runners; indexed
     # post links are a fallback, subject to verifying their own post timestamp.
@@ -1733,6 +1736,8 @@ def scan_vk_ok() -> dict[str, Any]:
     seen: set[str] = set()
     notified = 0
     review = 0
+    accepted = Counter()
+    notified_by_platform = Counter()
     for row in candidates:
         platform = str(row.get("platform") or "")
         if platform not in {"VK", "OK"} or not _vk_ok_permalink(platform, str(row.get("url") or "")):
@@ -1745,7 +1750,7 @@ def scan_vk_ok() -> dict[str, Any]:
         raw[platform] += 1
         lead, reason = classify_candidate(row)
         if lead is None:
-            rejected[reason] += 1
+            rejected[f"{platform}:{reason}"] += 1
             continue
         published = parse_published(row.get("published"))
         if published is None:
@@ -1754,8 +1759,9 @@ def scan_vk_ok() -> dict[str, Any]:
             continue
         age = (started - published).total_seconds() / 86400
         if age < -0.01 or age > 30:
-            rejected["stale_or_future"] += 1
+            rejected[f"{platform}:stale_or_future"] += 1
             continue
+        accepted[platform] += 1
         ref = db.collection(COLLECTION).document(key)
         if ref.get().exists:
             rejected["already_known"] += 1
@@ -1775,9 +1781,14 @@ def scan_vk_ok() -> dict[str, Any]:
             f"{lead['message'][:900]}\\n{row.get('url','')}"
         )
         notified += 1
+        notified_by_platform[platform] += 1
     report = {
         "version": VERSION, "source": "VK_OK", "raw": dict(raw),
-        "notified": notified, "review_unverified_date": review, "rejected": dict(rejected),
+        "accepted_by_platform": dict(accepted),
+        "notified": notified,
+        "notified_by_platform": dict(notified_by_platform),
+        "review_unverified_date": review, "rejected": dict(rejected),
+        "native_debug": {k: v for k, v in NATIVE_DEBUG.items() if k.startswith(("VK:", "OK:"))},
     }
     print("PRIME_VK_OK_BUYER_SCAN", json.dumps(report, ensure_ascii=False))
     return report
