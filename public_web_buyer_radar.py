@@ -587,6 +587,74 @@ def discover_source_rows() -> tuple[list[dict[str, Any]], dict[str, Any]]:
     return rows, debug
 
 
+# Targeted forums are a separate source job under the SAME Prime Buyer Radar.
+# Preserve strict freshness and buyer-only notification from the main web engine.
+FORUM_BUYER_SEARCHES = {
+    "Kibkom": (
+        'site:kibkomnorthcyprusforum.com "want to buy" property',
+        'site:kibkomnorthcyprusforum.com "looking to buy" apartment',
+        'site:kibkomnorthcyprusforum.com "buying" "title deed"',
+    ),
+    "DonanımHaber": (
+        'site:forum.donanimhaber.com "Kıbrıs" "ev almak"',
+        'site:forum.donanimhaber.com "Kıbrıs" "daire almak"',
+        'site:forum.donanimhaber.com "Kuzey Kıbrıs" "yatırım" "daire"',
+    ),
+}
+
+
+def discover_target_forum_rows() -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Bounded targeted discovery; no general crawling or unrelated websites."""
+    rows: list[dict[str, Any]] = []
+    debug: dict[str, Any] = {}
+    # The source has North Cyprus in its identity. Forum posts are still required
+    # to express purchase demand and to carry a real timestamp.
+    try:
+        result = forum_engine.discover_forum_threads(
+            SOURCE_ROOTS["Kibkom"], limit=24, timeout=min(TIMEOUT, 12),
+        )
+        for url in result.get("threads") or []:
+            if urllib.parse.urlparse(url).hostname != "kibkomnorthcyprusforum.com":
+                continue
+            rows.append({
+                "source": "Kibkom", "title": "", "url": url,
+                "snippet": "", "discovery": "targeted_forum_thread", "implicit_nc": True,
+            })
+        debug["Kibkom:forum_index"] = {
+            "threads": len(result.get("threads") or []),
+            "error": result.get("error") or "",
+        }
+    except Exception as exc:
+        debug["Kibkom:forum_index"] = {"error": f"{type(exc).__name__}:{exc}"}
+
+    for source, queries in FORUM_BUYER_SEARCHES.items():
+        count = 0
+        for query in queries:
+            try:
+                hits = bing_rss(query)
+            except Exception as exc:
+                debug[f"{source}:search_error"] = f"{type(exc).__name__}:{exc}"
+                continue
+            expected_host = (
+                "kibkomnorthcyprusforum.com" if source == "Kibkom"
+                else "forum.donanimhaber.com"
+            )
+            for hit in hits[:5]:
+                url = str(hit.get("url") or "")
+                hostname = (urllib.parse.urlparse(url).hostname or "").lower()
+                if hostname != expected_host:
+                    continue
+                rows.append({
+                    **hit,
+                    "source": source,
+                    "discovery": "targeted_forum_search",
+                    "implicit_nc": source == "Kibkom",
+                })
+                count += 1
+        debug[f"{source}:targeted_search"] = {"urls": count}
+    return rows, debug
+
+
 def run() -> None:
     os.environ["RADAR_SALES_ONLY"] = "1"
     db = v6.core.db()
@@ -597,11 +665,19 @@ def run() -> None:
     source_new_counts = Counter()
     source_fetch_attempts = Counter()
     discovery_stats = Counter()
-    forum_rows, forum_debug = discover_forumscraper_rows()
-    direct_rows, direct_debug = discover_direct_rows()
-    discovery_rows, discovery_debug = discover_source_rows()
-    # Productive/direct sources must consume the fetch budget before broad crawling.
-    discovery_rows = direct_rows + forum_rows + discovery_rows
+    forum_only = os.getenv("RADAR_FORUM_ONLY", "0") == "1"
+    if forum_only:
+        forum_rows, forum_debug = discover_target_forum_rows()
+        direct_rows, direct_debug = [], {}
+        discovery_rows, discovery_debug = [], {}
+        # Target forum-only scans must not spend their budget on unrelated sites.
+        discovery_rows = forum_rows
+    else:
+        forum_rows, forum_debug = discover_forumscraper_rows()
+        direct_rows, direct_debug = discover_direct_rows()
+        discovery_rows, discovery_debug = discover_source_rows()
+        # Productive/direct sources must consume the fetch budget before broad crawling.
+        discovery_rows = direct_rows + forum_rows + discovery_rows
     discovery_debug = {
         "forumscraper": forum_debug,
         "direct": direct_debug,
@@ -744,8 +820,8 @@ def run() -> None:
         surface="web",
         limit=int(os.getenv("RADAR_LEARNED_WEB_QUERIES", "10") or "10"),
     )
-    runtime_source_queries = dict(SOURCE_QUERIES)
-    if learned_web_terms:
+    runtime_source_queries = {} if forum_only else dict(SOURCE_QUERIES)
+    if learned_web_terms and not forum_only:
         runtime_source_queries["Demand Language"] = tuple(learned_web_terms)
     discovery_stats["learned_web_queries"] = len(learned_web_terms)
 
