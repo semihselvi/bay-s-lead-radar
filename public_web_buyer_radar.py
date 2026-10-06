@@ -710,6 +710,10 @@ def run() -> None:
             page = fetch_page(url)
         except Exception as exc:
             rejects[f"native_fetch_{type(exc).__name__}"] += 1
+            if forum_only:
+                # A search/RSS snippet is not a verified forum post or post date.
+                rejects["forum_original_unreadable"] += 1
+                continue
             page = _fallback_page_from_row(row, url)
             if not page.get("text"):
                 continue
