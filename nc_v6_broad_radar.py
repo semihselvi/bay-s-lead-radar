@@ -106,6 +106,29 @@ BUY_RE = re.compile(
     re.I | re.S,
 )
 
+# Additional multilingual purchase expressions found in real buyer searches.
+BUY_INTENT_VARIANTS_RE = re.compile(
+    r"(?:"
+    r"\b(?:sat[ıi]n\s+almay[ıi]\s+d[üu][şs][üu]n[üu]yorum|sat[ıi]n\s+alaca[ğg][ıi]m|almak\s+istiyoruz)\b|"
+    r"\b(?:интересует\s+покупк\w*|рассмотрю\s+покупк\w*|"
+    r"хоч(?:у|ем)\s+приобрести|планир\w*\s+приобрести|готов\w*\s+купить|"
+    r"покупаю\s+(?:квартир\w*|недвижимост\w*|апартамент\w*))\b|"
+    r"\b(?:interested\s+in\s+(?:buying|purchasing)|ready\s+to\s+(?:buy|purchase)|"
+    r"searching\s+to\s+(?:buy|purchase)|looking\s+to\s+purchase)\b|"
+    r"\b(?:zum\s+kaufen\s+gesucht|kaufgesuch|"
+    r"(?:ich|wir)\s+(?:möchte|möchten|moechte|moechten)\s+.{0,90}erwerben)\b|"
+    r"\b(?:chcia[łl]bym\s+kupi[ćc]|chcemy\s+kupi[ćc]|planuj[ęe]\s+kupi[ćc]|"
+    r"zainteresowan\w*\s+zakupem)\b"
+    r")", re.I | re.S,
+)
+# A property search specifying title deed or the resale market is purchase-side,
+# provided it is not rent demand, a sale advert or an intermediary exclusion.
+PURCHASE_MARKET_RE = re.compile(
+    r"\b(?:ko[çc]an\w*|tapu|title\s+deed|eigentumstitel|grundbuch|"
+    r"akt\s+w[łl]asno[śs]ci|ksi[ęe]ga\s+wieczysta|титул\w*|"
+    r"вторичк\w*|вторичн\w*\s+рынк\w*|resale|ikinci\s+el|2[.]?\s*el)\b", re.I,
+)
+
 DEMAND_RE = re.compile(
     r"(?:"
     r"\blooking\s+for\b|\bseeking\b|\bneed\s+(?:a|an|some)?\b|"
@@ -550,7 +573,7 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
         return None, "south_only"
 
     explicit_geo = bool(explicit_geo)
-    buy = bool(BUY_RE.search(own))
+    buy = bool(BUY_RE.search(own) or BUY_INTENT_VARIANTS_RE.search(own))
     demand = bool(DEMAND_RE.search(own))
     implicit_layout_property = bool(explicit_geo and UNIT_LAYOUT_RE.search(own) and (buy or demand))
     has_property = bool(PROPERTY_RE.search(own) or implicit_layout_property)
@@ -577,8 +600,9 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
         if rent:
             return None, "rental_excluded_sales_only"
         purchase_budget_request = bool(has_property and demand and has_purchase_sized_budget(own))
+        title_resale_request = bool(has_property and demand and PURCHASE_MARKET_RE.search(own))
         agent_purchase_request = bool(agent_client and has_property and demand and (purchase_budget_request or qualifier or investor))
-        if not buy and not agent_purchase_request and not purchase_budget_request:
+        if not buy and not agent_purchase_request and not purchase_budget_request and not title_resale_request:
             return None, "no_explicit_purchase_intent"
         # Purchase qualifiers such as payment-plan/installment language do not
         # establish that the object is real estate. A car can also be bought on
@@ -616,11 +640,11 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
         lead_class = "HOT BUYER" if specificity >= 2 else "WARM BUYER"
         score = 76 + min(18, specificity * 4)
         reasons.append("agent_client_purchase_request")
-    elif sales_only and has_property and demand and has_purchase_sized_budget(own):
+    elif sales_only and has_property and demand and (has_purchase_sized_budget(own) or PURCHASE_MARKET_RE.search(own)):
         intent_type = "BUYER"
         lead_class = "HOT BUYER" if specificity >= 2 else "WARM BUYER"
         score = 78 + min(18, specificity * 4)
-        reasons.append("purchase_budget_demand")
+        reasons.append("purchase_budget_demand" if has_purchase_sized_budget(own) else "title_or_resale_purchase_demand")
     elif buy and investor and has_property:
         # Buying a property for investment is still an actionable PROPERTY BUYER.
         # The final notification firewall excludes generic INVESTOR discussions.
@@ -689,6 +713,7 @@ def candidate_signal(text: str) -> bool:
     return bool(
         PROPERTY_RE.search(text or "")
         or BUY_RE.search(text or "")
+        or BUY_INTENT_VARIANTS_RE.search(text or "")
         or RENT_DEMAND_RE.search(text or "")
         or RELOCATION_RE.search(text or "")
         or INVESTOR_RE.search(text or "")
@@ -825,6 +850,7 @@ def strict_extra_candidate_signal(text: str) -> bool:
     geo = has_nc_geo(own)
     buyer_side = bool(
         BUY_RE.search(own)
+        or BUY_INTENT_VARIANTS_RE.search(own)
         or DEMAND_RE.search(own)
         or PURCHASE_QUALIFIER_RE.search(own)
         or INVESTOR_RE.search(own)
@@ -1197,7 +1223,7 @@ def global_public_candidate_signal(text: str, author: str = "", has_north_contex
     if _hard_reject(own, author):
         return False
     north = bool(has_nc_geo(own) or has_north_context)
-    buyer_side = bool(BUY_RE.search(own) or DEMAND_RE.search(own) or PURCHASE_QUALIFIER_RE.search(own))
+    buyer_side = bool(BUY_RE.search(own) or BUY_INTENT_VARIANTS_RE.search(own) or DEMAND_RE.search(own) or PURCHASE_QUALIFIER_RE.search(own))
     property_context = bool(PROPERTY_RE.search(own) or (UNIT_LAYOUT_RE.search(own) and buyer_side))
     return bool(north and buyer_side and property_context)
 
