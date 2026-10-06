@@ -87,7 +87,7 @@ async def scan_once() -> dict[str, Any]:
     }
 
     # Logs only. No zero-result/debug Telegram messages.
-    print("NORTHLAB_LEAD_RADAR_CORE", summary)
+    print("PRIME_KIBRIS_BUYER_RADAR", summary)
     return summary
 
 
