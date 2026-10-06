@@ -22,6 +22,22 @@ class RussianPublicBuyerRadarTests(unittest.TestCase):
         self.assertFalse(r._vk_ok_permalink("OK", "https://ok.ru/group/123"))
         self.assertFalse(r._vk_ok_permalink("VK", "https://evil.example.com/wall-123_456"))
 
+    def test_vk_ok_search_index_requires_original_post_text(self):
+        from unittest.mock import patch, Mock
+        html = (
+            '<div class="wall_post_text">Я хочу купить квартиру на Северном Кипре, '
+            'бюджет 120 000 евро. Подскажите район.</div>'
+            '<time datetime="2026-10-05T11:30:00+00:00"></time>'
+        )
+        with patch.object(r.requests, "get", return_value=Mock(status_code=200, text=html)):
+            text, published = r._vk_ok_verified_content("https://vk.com/wall-123_456", "VK")
+        self.assertIn("хочу купить квартиру", text)
+        self.assertTrue(published.startswith("2026-10-05"))
+        with patch.object(r.requests, "get", return_value=Mock(status_code=403, text="")):
+            self.assertEqual(("", ""), r._vk_ok_verified_content("https://vk.com/wall-123_456", "VK"))
+        with patch.object(r.requests, "get", return_value=Mock(status_code=200, text="<title>Куплю квартиру</title>")):
+            self.assertEqual(("", ""), r._vk_ok_verified_content("https://vk.com/wall-123_456", "VK"))
+
     def test_vk_ok_index_date_must_come_from_original_post(self):
         from unittest.mock import patch, Mock
         html = '<html><time datetime="2026-10-05T11:30:00+00:00"></time></html>'
