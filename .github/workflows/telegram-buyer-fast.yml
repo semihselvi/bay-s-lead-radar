@@ -61,6 +61,12 @@ jobs:
           print("Dedicated Prime Telegram session restored")
           PY
 
+      - name: Verify Prime buyer radar
+        run: |
+          python -m py_compile northlab_lead_radar_core.py nc_v6_broad_radar.py
+          python -m unittest -q test_northlab_lead_radar_core.py
+          python -m unittest -q test_nc_v6_broad_radar.py
+
       - name: Scan Caesar Resort rental offers first
         timeout-minutes: 8
         continue-on-error: true
@@ -128,12 +134,6 @@ jobs:
           with urllib.request.urlopen(req, timeout=20) as res:
               print("CAESAR_REPORT_PUBLISHED", res.status, path)
           PY
-
-      - name: Verify Prime buyer radar
-        run: |
-          python -m py_compile northlab_lead_radar_core.py nc_v6_broad_radar.py
-          python -m unittest -q test_northlab_lead_radar_core.py
-          python -m unittest -q test_nc_v6_broad_radar.py
 
       - name: Run Prime Buyer Radar
         env:
