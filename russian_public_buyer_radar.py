@@ -1610,8 +1610,135 @@ def scan() -> dict[str, Any]:
     }
 
 
+# Prime Buyer Radar source adapter: VK and OK public surfaces only.
+# Do not try to log into private profiles, defeat CAPTCHA or use stale RSS dates.
+VK_OK_BUYER_QUERIES = (
+    '"Северный Кипр" "куплю квартиру"',
+    '"Северный Кипр" "ищу квартиру"',
+    '"Северный Кипр" "хочу купить"',
+    '"Искеле" "куплю" "квартиру"',
+    '"Гирне" "куплю квартиру"',
+    '"Северный Кипр" "титул" "куплю"',
+)
+
+
+def _vk_ok_permalink(platform: str, url: str) -> bool:
+    parsed = urllib.parse.urlparse(url or "")
+    host = (parsed.hostname or "").casefold()
+    path = parsed.path or ""
+    if platform == "VK":
+        return host in {"vk.com", "m.vk.com"} and bool(re.search(r"/wall-?\\d+_\\d+", path))
+    if platform == "OK":
+        return host in {"ok.ru", "m.ok.ru"} and bool(re.search(r"/(?:topic|statuses)/", path))
+    return False
+
+
+def _vk_ok_verified_date(url: str) -> str:
+    """Read original public post timestamp; NEVER substitute search crawl date."""
+    try:
+        response = requests.get(
+            url, timeout=min(TIMEOUT, 12),
+            headers={"User-Agent": "Mozilla/5.0", "Accept-Language": "ru-RU,ru;q=0.9"},
+        )
+        if response.status_code != 200:
+            return ""
+        soup = BeautifulSoup(response.text, "html.parser")
+        candidates = []
+        for node in soup.select("time[datetime], meta[property='article:published_time'], meta[itemprop='datePublished']"):
+            value = str(node.get("datetime") or node.get("content") or "").strip()
+            if value:
+                candidates.append(value)
+        for val in candidates[:10]:
+            dt = parse_published(val)
+            if dt and dt <= datetime.now(timezone.utc) + timedelta(minutes=2):
+                return dt.isoformat()
+    except Exception:
+        pass
+    return ""
+
+
+def scan_vk_ok() -> dict[str, Any]:
+    """Targeted public buyer discovery, strict source timestamps and dedupe."""
+    started = datetime.now(timezone.utc)
+    rejected = Counter()
+    raw = Counter()
+    candidates: list[dict[str, Any]] = []
+    # Native OK results use a timestamp taken from the public post's own markup.
+    candidates.extend(ok_native_search())
+    # VK public walls were blocked by login/CAPTCHA on hosted runners; indexed
+    # post links are a fallback, subject to verifying their own post timestamp.
+    for platform, domain in (("VK", "vk.com"), ("OK", "ok.ru")):
+        for query in VK_OK_BUYER_QUERIES:
+            for row in bing_rss_search(query, domain)[:8]:
+                if not _vk_ok_permalink(platform, str(row.get("url") or "")):
+                    rejected["not_post_permalink"] += 1
+                    continue
+                row = dict(row)
+                row["platform"] = platform
+                row["source"] = f"{platform} Public Search"
+                row["source_type"] = "public_search_index"
+                row["published"] = _vk_ok_verified_date(str(row.get("url") or ""))
+                candidates.append(row)
+
+    db = firestore_client()
+    seen: set[str] = set()
+    notified = 0
+    review = 0
+    for row in candidates:
+        platform = str(row.get("platform") or "")
+        if platform not in {"VK", "OK"} or not _vk_ok_permalink(platform, str(row.get("url") or "")):
+            rejected["invalid_source"] += 1
+            continue
+        key = hashlib.sha256((platform + "|" + row["url"].split("?")[0]).encode()).hexdigest()
+        if key in seen:
+            continue
+        seen.add(key)
+        raw[platform] += 1
+        lead, reason = classify_candidate(row)
+        if lead is None:
+            rejected[reason] += 1
+            continue
+        published = parse_published(row.get("published"))
+        if published is None:
+            rejected["unverified_post_date"] += 1
+            review += 1
+            continue
+        age = (started - published).total_seconds() / 86400
+        if age < -0.01 or age > 30:
+            rejected["stale_or_future"] += 1
+            continue
+        ref = db.collection(COLLECTION).document(key)
+        if ref.get().exists:
+            rejected["already_known"] += 1
+            continue
+        lead.update({
+            "lead_id": key, "source": row.get("source"), "found_at": started.isoformat(),
+            "message": normalize(str(row.get("text") or "")), "message_time": published.isoformat(),
+            "message_age_days": int(max(0, age)), "freshness": "0_7d" if age <= 7 else "8_30d",
+        })
+        if DRY_RUN:
+            rejected["dry_run"] += 1
+            continue
+        ref.set(lead)
+        telegram(
+            f"🔥 PRIME BUYER | {platform}\\n"
+            f"Intent: {lead.get('intent_score', 0)}/100 | Yaş: {lead['message_age_days']} gün\\n"
+            f"{lead['message'][:900]}\\n{row.get('url','')}"
+        )
+        notified += 1
+    report = {
+        "version": VERSION, "source": "VK_OK", "raw": dict(raw),
+        "notified": notified, "review_unverified_date": review, "rejected": dict(rejected),
+    }
+    print("PRIME_VK_OK_BUYER_SCAN", json.dumps(report, ensure_ascii=False))
+    return report
+
+
 def main() -> None:
-    print(json.dumps(scan(), ensure_ascii=False, indent=2))
+    if os.getenv("RADAR_VK_OK_ONLY", "0") == "1":
+        scan_vk_ok()
+    else:
+        print(json.dumps(scan(), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
