@@ -1628,7 +1628,7 @@ def _vk_ok_permalink(platform: str, url: str) -> bool:
     host = (parsed.hostname or "").casefold()
     path = parsed.path or ""
     if platform == "VK":
-        return host in {"vk.com", "m.vk.com"} and bool(re.search(r"/wall-?\\d+_\\d+", path))
+        return host in {"vk.com", "m.vk.com"} and bool(re.search(r"/wall-?\d+_\d+", path))
     if platform == "OK":
         return host in {"ok.ru", "m.ok.ru"} and bool(re.search(r"/(?:topic|statuses)/", path))
     return False
