@@ -80,6 +80,17 @@ jobs:
           RADAR_CRAWL4AI_PER_CALL: "2"
         run: python northlab_lead_radar_core.py
 
+      - name: Scan Caesar Resort rental offers (read-only)
+        timeout-minutes: 7
+        continue-on-error: true
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION_PATH: telegram_radar_session/radar_session.session
+        run: |
+          python -m unittest -q test_caesar_rental_search.py
+          python caesar_rental_search.py
+
       - name: Cleanup Telegram session
         if: always()
         run: rm -rf telegram_radar_session
