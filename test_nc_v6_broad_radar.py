@@ -106,6 +106,8 @@ class BroadIntentTests(unittest.TestCase):
             "Ищу квартиру 2+1 с титулом",
             "Нужна квартира на вторичном рынке",
             "İskele'de koçanlı daire arıyorum",
+            "İskele'de satılık daire arıyorum",
+            "İskele'de taksitli 1+1 arıyorum",
         )
         with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
             for phrase in samples:
