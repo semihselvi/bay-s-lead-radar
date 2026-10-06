@@ -83,6 +83,8 @@ async def scan_once() -> dict[str, Any]:
         "group_discovery_found": result.get("group_discovery_found", 0),
         "errors": result.get("errors", 0),
         "joined_groups_total": result.get("candidate_first_total_groups", 0),
+        "joined_groups_count": radar.DEBUG.get("joined_groups_count", 0),
+        "joined_channels_count": radar.DEBUG.get("joined_channels_count", 0),
         "joined_hours": radar.DEBUG.get("joined_scan_hours", 0),
         "joined_primary_signal_pass": radar.DEBUG.get("signal_pass", 0),
         "joined_rejections": dict(radar.DEBUG.get("reject_reasons") or {}),
