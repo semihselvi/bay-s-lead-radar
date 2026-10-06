@@ -15,6 +15,8 @@ concurrency:
 
 jobs:
   telegram-fast:
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 18
 
@@ -91,9 +93,67 @@ jobs:
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           TELEGRAM_SESSION_PATH: telegram_radar_session/radar_session.session
+          CAESAR_REPORT_PATH: caesar-rental-summary.json
         run: |
           python -m unittest -q test_caesar_rental_search.py
           python caesar_rental_search.py
+
+      - name: Publish privacy-safe Caesar rental summary
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CAESAR_REPORT_PATH: caesar-rental-summary.json
+        run: |
+          python - <<'PY'
+          import base64
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          report = Path(os.environ["CAESAR_REPORT_PATH"])
+          if not report.is_file():
+              report.write_text(json.dumps({
+                  "status": "failed_or_not_run",
+                  "scanned_at": datetime.now(timezone.utc).isoformat(),
+                  "error": "No Caesar rental scan report was produced",
+              }, indent=2) + "\n", encoding="utf-8")
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          path = "reports/caesar-rental-latest.json"
+          url = f"https://api.github.com/repos/{repo}/contents/{path}"
+          headers = {
+              "Authorization": "Bearer " + os.environ["GH_TOKEN"],
+              "Accept": "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "prime-caesar-rental-reporter",
+          }
+          sha = None
+          try:
+              req = urllib.request.Request(url + "?ref=main", headers=headers)
+              with urllib.request.urlopen(req, timeout=15) as res:
+                  sha = json.loads(res.read()).get("sha")
+          except urllib.error.HTTPError as exc:
+              if exc.code != 404:
+                  raise
+          payload = {
+              "message": "Update Caesar Resort rental summary",
+              "branch": "main",
+              "content": base64.b64encode(report.read_bytes()).decode("ascii"),
+          }
+          if sha:
+              payload["sha"] = sha
+          req = urllib.request.Request(
+              url, data=json.dumps(payload).encode("utf-8"),
+              headers={**headers, "Content-Type": "application/json"},
+              method="PUT",
+          )
+          with urllib.request.urlopen(req, timeout=20) as res:
+              print("CAESAR_REPORT_PUBLISHED", res.status, path)
+          PY
 
       - name: Cleanup Telegram session
         if: always()
