@@ -15,6 +15,22 @@ def item(text, url="https://vk.com/wall-1_1"):
 
 
 class RussianPublicBuyerRadarTests(unittest.TestCase):
+    def test_vk_ok_real_post_permalink_only(self):
+        self.assertTrue(r._vk_ok_permalink("VK", "https://vk.com/wall-123_456"))
+        self.assertTrue(r._vk_ok_permalink("OK", "https://ok.ru/group/123/topic/987"))
+        self.assertFalse(r._vk_ok_permalink("VK", "https://vk.com/northcyprusinvest"))
+        self.assertFalse(r._vk_ok_permalink("OK", "https://ok.ru/group/123"))
+        self.assertFalse(r._vk_ok_permalink("VK", "https://evil.example.com/wall-123_456"))
+
+    def test_vk_ok_index_date_must_come_from_original_post(self):
+        from unittest.mock import patch, Mock
+        html = '<html><time datetime="2026-10-05T11:30:00+00:00"></time></html>'
+        with patch.object(r.requests, "get", return_value=Mock(status_code=200, text=html)):
+            dt = r._vk_ok_verified_date("https://vk.com/wall-123_456")
+        self.assertTrue(dt.startswith("2026-10-05T11:30:00"))
+        with patch.object(r.requests, "get", return_value=Mock(status_code=403, text="")):
+            self.assertEqual(r._vk_ok_verified_date("https://vk.com/wall-123_456"), "")
+
     def assertAccepted(self, text):
         lead, reason = r.classify_candidate(item(text))
         self.assertIsNotNone(lead, reason)
