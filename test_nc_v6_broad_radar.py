@@ -116,6 +116,18 @@ class BroadIntentTests(unittest.TestCase):
                     self.assertIsNotNone(lead, reason)
                     self.assertEqual("BUYER", lead["intent_type"])
 
+    def test_investment_purpose_property_search_without_buy_verb(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            for phrase in (
+                "İskele'de yatırım için 1+1 daire arıyorum",
+                "Ищу квартиру 1+1 в Искеле для инвестиций",
+            ):
+                with self.subTest(phrase=phrase):
+                    lead, reason = v6.classify_text(phrase, group="North Cyprus Property")
+                    self.assertIsNotNone(lead, reason)
+                    self.assertEqual("BUYER", lead["intent_type"])
+                    self.assertIn("investment_property_demand", lead["lead_reasons"])
+
     def test_owner_refusal_and_rental_still_not_sales_leads(self):
         with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
             samples = (
