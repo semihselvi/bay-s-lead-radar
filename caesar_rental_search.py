@@ -48,7 +48,6 @@ def link_for(entity, msg) -> str:
 
 
 async def scan():
-    from telethon.sessions import SQLiteSession
     session = os.getenv("TELEGRAM_SESSION_PATH", "telegram_radar_session/radar_session.session")
     api_id = int(os.environ["TELEGRAM_API_ID"])
     api_hash = os.environ["TELEGRAM_API_HASH"]
@@ -97,7 +96,32 @@ async def scan():
         await client.disconnect()
     stats["offers"].sort(key=lambda x: x["date"], reverse=True)
     stats["matches"] = len(stats["offers"])
-    print("CAESAR_RENTAL_SUPPLY_SCAN", json.dumps(stats, ensure_ascii=False))
+    public_links = [
+        {"kind": item["kind"], "date": item["date"], "url": item["url"],
+         "price_mentions": item["price_mentions"]}
+        for item in stats["offers"]
+        if re.fullmatch(r"https://t\\.me/[A-Za-z0-9_]+/\\d+", item["url"])
+        and not item["url"].startswith("https://t.me/c/")
+    ]
+    summary = {
+        "status": "completed",
+        "scanned_at": datetime.now(timezone.utc).isoformat(),
+        "groups": stats["groups"], "messages": stats["messages"],
+        "matches": stats["matches"],
+        "niche_studio": sum(i["kind"] == "niche_studio" for i in stats["offers"]),
+        "one_bed": sum(i["kind"] == "1+1" for i in stats["offers"]),
+        "unlinked": stats["unlinked"], "errors": stats["errors"],
+        "public_offers": public_links[:30],
+        "private_or_unpublished_matches": stats["matches"] - len(public_links),
+    }
+    # Repository is public: never expose private Telegram group messages or members.
+    report_path = os.getenv("CAESAR_REPORT_PATH", "").strip()
+    if report_path:
+        from pathlib import Path
+        target = Path(report_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print("CAESAR_RENTAL_SUPPLY_SUMMARY", json.dumps(summary, ensure_ascii=False))
     return stats
 
 
