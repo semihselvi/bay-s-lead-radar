@@ -4,6 +4,15 @@ from unittest.mock import patch
 import nc_v6_broad_radar as v6
 
 
+class JoinedTelegramDialogTests(unittest.TestCase):
+    def test_includes_group_and_broadcast_channel_but_not_private_chat(self):
+        from types import SimpleNamespace
+        self.assertTrue(v6._joined_dialog_eligible(SimpleNamespace(is_group=True, is_channel=False)))
+        self.assertTrue(v6._joined_dialog_eligible(SimpleNamespace(is_group=False, is_channel=True)))
+        self.assertTrue(v6._joined_dialog_eligible(SimpleNamespace(is_group=True, is_channel=True)))
+        self.assertFalse(v6._joined_dialog_eligible(SimpleNamespace(is_group=False, is_channel=False)))
+
+
 class BroadIntentTests(unittest.TestCase):
     def assertLead(self, text, expected_class, group="North Cyprus Expats"):
         lead, reason = v6.classify_text(text, group=group)
