@@ -2,6 +2,10 @@ name: PRIME KIBRIS - Buyer Radar
 
 "on":
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/telegram-buyer-fast.yml"
   schedule:
     - cron: "10 */2 * * *"
 
