@@ -145,7 +145,7 @@ jobs:
           TELEGRAM_SESSION_PATH: telegram_radar_session/radar_session.session
           RADAR_SALES_ONLY: "1"
           RADAR_V5_TELEGRAM_HOURS: "6"
-          RADAR_JOINED_TELEGRAM_HOURS: "48"
+          RADAR_JOINED_TELEGRAM_HOURS: "336"
           # Re-run unit tests after repairing Russian rental expression syntax.
           # Joined groups and broadcast channels are both scanned; private DMs are excluded.
           RADAR_GLOBAL_TELEGRAM_DAYS: "7"
