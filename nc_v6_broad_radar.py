@@ -1528,7 +1528,7 @@ async def broad_telegram_scan(db_client, started):
                 core.tg_norm(d.name or ""),
             )
         )
-        joined_scan_hours = max(6, min(168, int(os.getenv("RADAR_JOINED_TELEGRAM_HOURS", "48") or "48")))
+        joined_scan_hours = max(6, min(720, int(os.getenv("RADAR_JOINED_TELEGRAM_HOURS", "336") or "336")))
         cutoff = datetime.now(timezone.utc) - timedelta(hours=joined_scan_hours)
         DEBUG["joined_scan_hours"] = joined_scan_hours
 
@@ -1540,10 +1540,10 @@ async def broad_telegram_scan(db_client, started):
 
             if strict_extra:
                 DEBUG["strict_extra_groups_scanned"] += 1
-                message_limit = max(60, min(100, core.TELEGRAM_PER_GROUP_LIMIT))
+                message_limit = 150
             else:
                 DEBUG["groups_relevant"] += 1
-                message_limit = max(120, min(200, core.TELEGRAM_PER_GROUP_LIMIT))
+                message_limit = 400
 
             try:
                 async for msg in client.iter_messages(entity, limit=message_limit):
