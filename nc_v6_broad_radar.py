@@ -1466,6 +1466,8 @@ async def broad_telegram_scan(db_client, started):
                 if _joined_dialog_eligible(dialog):
                     dialogs.append(dialog)
             DEBUG["groups_total"] = len(dialogs)
+            DEBUG["joined_groups_count"] = sum(bool(getattr(d, "is_group", False)) for d in dialogs)
+            DEBUG["joined_channels_count"] = sum(bool(getattr(d, "is_channel", False)) and not bool(getattr(d, "is_group", False)) for d in dialogs)
 
         dialogs.sort(
             key=lambda d: (
