@@ -123,3 +123,39 @@ jobs:
           RADAR_PUBLIC_WEB_RESULTS_PER_QUERY: "8"
           RADAR_HTTP_TIMEOUT: "12"
         run: python public_web_buyer_radar.py
+
+  vk-ok-buyers:
+    name: Prime Buyer Radar - VK and OK
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout Radar production
+        uses: actions/checkout@v6
+        with:
+          ref: production/radar
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify VK and OK buyer logic
+        run: |
+          python -m py_compile russian_public_buyer_radar.py
+          python -m unittest -q test_russian_public_buyer_radar.py
+
+      - name: Scan VK and OK public buyers
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RADAR_VK_OK_ONLY: "1"
+          RADAR_RU_PUBLIC_MAX_AGE_DAYS: "30"
+          RADAR_HTTP_TIMEOUT: "12"
+        run: python russian_public_buyer_radar.py
