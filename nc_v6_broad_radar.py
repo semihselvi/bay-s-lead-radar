@@ -601,8 +601,15 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
             return None, "rental_excluded_sales_only"
         purchase_budget_request = bool(has_property and demand and has_purchase_sized_budget(own))
         title_resale_request = bool(has_property and demand and PURCHASE_MARKET_RE.search(own))
+        investment_property_request = bool(
+            has_property and demand and re.search(
+                r"(?:yat[ıi]r[ıi]ms+i[çc]in|дляs+инвестицw*|"
+                r"fors+investment|ass+an?s+investment|"
+                r"alss+kapitalanlage|pods+inwestycj[ęe])", own, re.I
+            )
+        )
         agent_purchase_request = bool(agent_client and has_property and demand and (purchase_budget_request or qualifier or investor))
-        if not buy and not agent_purchase_request and not purchase_budget_request and not title_resale_request:
+        if not buy and not agent_purchase_request and not purchase_budget_request and not title_resale_request and not investment_property_request:
             return None, "no_explicit_purchase_intent"
         # Purchase qualifiers such as payment-plan/installment language do not
         # establish that the object is real estate. A car can also be bought on
@@ -640,11 +647,15 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
         lead_class = "HOT BUYER" if specificity >= 2 else "WARM BUYER"
         score = 76 + min(18, specificity * 4)
         reasons.append("agent_client_purchase_request")
-    elif sales_only and has_property and demand and (has_purchase_sized_budget(own) or PURCHASE_MARKET_RE.search(own)):
+    elif sales_only and has_property and demand and (has_purchase_sized_budget(own) or PURCHASE_MARKET_RE.search(own) or investment_property_request):
         intent_type = "BUYER"
         lead_class = "HOT BUYER" if specificity >= 2 else "WARM BUYER"
         score = 78 + min(18, specificity * 4)
-        reasons.append("purchase_budget_demand" if has_purchase_sized_budget(own) else "title_or_resale_purchase_demand")
+        reasons.append(
+            "purchase_budget_demand" if has_purchase_sized_budget(own)
+            else "title_or_resale_purchase_demand" if PURCHASE_MARKET_RE.search(own)
+            else "investment_property_demand"
+        )
     elif buy and investor and has_property:
         # Buying a property for investment is still an actionable PROPERTY BUYER.
         # The final notification firewall excludes generic INVESTOR discussions.
