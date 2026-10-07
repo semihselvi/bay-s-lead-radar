@@ -135,7 +135,7 @@ jobs:
               print("CAESAR_REPORT_PUBLISHED", res.status, path)
           PY
 
-      - name: Scan 3+1 and 4+1 villa rental demand
+      - name: Scan 3+1 and 4+1 villa rental offers
         timeout-minutes: 8
         env:
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
