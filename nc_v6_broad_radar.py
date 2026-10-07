@@ -22,7 +22,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.29-property-object-hard-gate"
+VERSION = "6.30-recall-first-buyer-capture"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -510,14 +510,13 @@ def _hard_reject(text: str, author: str = "") -> str:
         return "financial_or_goods"
     if POST_PURCHASE_OR_INFO_RE.search(text):
         return "post_purchase_or_info"
-    if OWNER_NO_AGENT_RE.search(text):
-        return "owner_direct_only"
-    # A soft owner-direct preference is useful for a real purchase request,
-    # but not for rentals/ambiguous demand. Explicit sale listings are rejected
-    # by the supply guards below.
-    if OWNER_DIRECT_PREFERENCE_RE.search(text):
-        if RENT_DEMAND_RE.search(text) or not (BUY_RE.search(text) and PROPERTY_RE.search(text)):
-            return "owner_direct_only"
+    # "Owner direct / no agents" is still a real buyer signal. Do not throw
+    # purchase demand away just because the person prefers the owner directly.
+    # Rental demand remains outside the purchase radar.
+    if OWNER_NO_AGENT_RE.search(text) and RENT_DEMAND_RE.search(text):
+        return "owner_direct_rental"
+    if OWNER_DIRECT_PREFERENCE_RE.search(text) and RENT_DEMAND_RE.search(text):
+        return "owner_direct_rental"
     if JOB_POST_RE.search(text):
         return "job_post"
     if VEHICLE_RE.search(text):
@@ -610,8 +609,15 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
             )
         )
         agent_purchase_request = bool(agent_client and has_property and demand and (purchase_budget_request or qualifier or investor))
-        if not buy and not agent_purchase_request and not purchase_budget_request and not title_resale_request and not investment_property_request:
-            return None, "no_explicit_purchase_intent"
+        # Recall-first policy: a person asking/searching for a property in a
+        # North-Cyprus context is a buyer candidate even when they omit a literal
+        # "buy/purchase/куплю/satın al" verb. Supply and rental posts have already
+        # been removed by hard guards.
+        broad_property_demand = bool(has_property and demand)
+        early_property_research = bool(has_property and (research or qualifier or investor or residency or relocation))
+        if not any((buy, agent_purchase_request, purchase_budget_request, title_resale_request,
+                    investment_property_request, broad_property_demand, early_property_research)):
+            return None, "no_buyer_shaped_property_signal"
         # Purchase qualifiers such as payment-plan/installment language do not
         # establish that the object is real estate. A car can also be bought on
         # installments. In sales-only mode we require an actual property object.
@@ -657,6 +663,16 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
             else "title_or_resale_purchase_demand" if PURCHASE_MARKET_RE.search(own)
             else "investment_property_demand"
         )
+    elif sales_only and has_property and demand:
+        intent_type = "BUYER"
+        lead_class = "WARM BUYER"
+        score = 66 + min(20, specificity * 4)
+        reasons.append("implicit_property_demand")
+    elif sales_only and has_property and (research or qualifier or investor or residency or relocation):
+        intent_type = "BUYER"
+        lead_class = "WARM BUYER"
+        score = 62 + min(20, specificity * 4)
+        reasons.append("early_property_buyer_signal")
     elif buy and investor and has_property:
         # Buying a property for investment is still an actionable PROPERTY BUYER.
         # The final notification firewall excludes generic INVESTOR discussions.
@@ -701,7 +717,7 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
         reasons.append("investment_secondary")
     if residency:
         reasons.append("residency_signal")
-    if OWNER_DIRECT_PREFERENCE_RE.search(own) and buy and has_property:
+    if (OWNER_DIRECT_PREFERENCE_RE.search(own) or OWNER_NO_AGENT_RE.search(own)) and has_property and (buy or demand):
         reasons.append("owner_direct_buyer_preference")
     if extract_budget(own):
         reasons.append("budget_present")
