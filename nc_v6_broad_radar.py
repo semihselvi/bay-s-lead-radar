@@ -551,6 +551,12 @@ def _hard_reject(text: str, author: str = "") -> str:
         return "discussion_or_hypothetical"
     if COMMERCIAL_PROVIDER_RE.search(text):
         return "commercial_provider"
+    if NONBUYER_SERVICE_RE.search(text):
+        return "nonbuyer_service"
+    if ROOMMATE_OR_RENTAL_LIFE_RE.search(text):
+        return "rental_or_roommate"
+    if RENTAL_SUPPLY_RE.search(text):
+        return "rental_supply"
     if IMPERATIVE_SALE_AD_RE.search(text):
         return "supply_or_agent"
     if SELLER_DIRECTION_RE.search(text) and PROPERTY_RE.search(text):
@@ -699,10 +705,10 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
         score = 66 + min(20, specificity * 4)
         reasons.append("implicit_property_demand")
     elif sales_only and has_property and (research or qualifier or investor or residency or relocation):
-        intent_type = "BUYER"
-        lead_class = "WARM BUYER"
-        score = 62 + min(20, specificity * 4)
-        reasons.append("early_property_buyer_signal")
+        intent_type = "WATCH"
+        lead_class = "WATCH"
+        score = 58 + min(18, specificity * 3)
+        reasons.append("early_property_research_only")
     elif buy and investor and has_property:
         # Buying a property for investment is still an actionable PROPERTY BUYER.
         # The final notification firewall excludes generic INVESTOR discussions.
@@ -2896,6 +2902,9 @@ def notify_lead(lead: dict[str, Any], prefix: str = "NEW") -> bool:
         return False
     if not PROPERTY_RE.search(message_text):
         return False
+    if "implicit_property_demand" in (lead.get("lead_reasons") or []):
+        if not DEMAND_RE.search(message_text):
+            return False
 
     emoji = "🔥" if lead_class == "HOT BUYER" else "🟡"
     criteria_text = ", ".join(lead.get("important_criteria") or []) or "-"
