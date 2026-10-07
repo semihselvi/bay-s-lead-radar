@@ -74,7 +74,7 @@ async def scan():
     stats["offers"].sort(key=lambda x:x["date"],reverse=True)
     stats["matches"]=len(stats["offers"])
     public=[x for x in stats["offers"] if re.fullmatch(r"https://t\.me/[A-Za-z0-9_]+/\d+",x["url"])]
-    print("VILLA_RENTAL_OFFER_RESULTS",json.dumps({"status":"completed","groups":stats["groups"],"messages":stats["messages"],"matches":stats["matches"],"three_bed":sum(x["kind"]=="3+1" for x in stats["demands"]),"four_bed":sum(x["kind"]=="4+1" for x in stats["demands"]),"errors":stats["errors"],"public_offers":public[:40]},ensure_ascii=False))
+    print("VILLA_RENTAL_OFFER_RESULTS",json.dumps({"status":"completed","groups":stats["groups"],"messages":stats["messages"],"matches":stats["matches"],"three_bed":sum(x["kind"]=="3+1" for x in stats["offers"]),"four_bed":sum(x["kind"]=="4+1" for x in stats["offers"]),"errors":stats["errors"],"public_offers":public[:40]},ensure_ascii=False))
     return stats
 
 if __name__=="__main__":asyncio.run(scan())
