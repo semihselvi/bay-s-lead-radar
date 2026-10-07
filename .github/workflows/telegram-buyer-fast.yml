@@ -135,6 +135,16 @@ jobs:
               print("CAESAR_REPORT_PUBLISHED", res.status, path)
           PY
 
+      - name: Scan 3+1 and 4+1 villa rental demand
+        timeout-minutes: 8
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION_PATH: telegram_radar_session/radar_session.session
+        run: |
+          python -m unittest -q test_villa_rental_demand_search.py
+          python villa_rental_demand_search.py
+
       - name: Run Prime Buyer Radar
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
