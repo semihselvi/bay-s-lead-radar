@@ -136,6 +136,7 @@ jobs:
           PY
 
       - name: Scan 3+1 and 4+1 villa rental offers
+        # rerun after fixing report variable references
         timeout-minutes: 8
         env:
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
