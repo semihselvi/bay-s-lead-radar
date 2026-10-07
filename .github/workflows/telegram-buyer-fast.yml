@@ -147,6 +147,9 @@ jobs:
           python -m unittest -q test_villa_rental_demand_search.py
           python villa_rental_demand_search.py
 
+      - name: Audit recent buyer notifications
+        run: python audit_recent_buyers.py
+
       - name: Run Prime Buyer Radar
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
