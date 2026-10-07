@@ -4,18 +4,21 @@ from datetime import datetime, timedelta, timezone
 from telethon import TelegramClient
 from telethon.tl.types import PeerChannel
 
-VILLA=re.compile(r"\b(?:villa|villas|villa\s+house|vila|вилл\w*|вилла|виллу|виллы|m[üu]stakil\s+ev|villa)\b",re.I)
+VILLA=re.compile(r"\b(?:villa|villas|villa\s+house|vila|вилл\w*|вилла|виллу|виллы|m[üu]stakil\s+ev|m[üu]stakil|detached\s+(?:house|home)|house|home|дом\w*|коттедж\w*)\b",re.I)
 LAYOUT=re.compile(r"(?<!\d)(3|4)\s*[+＋]\s*1(?!\d)",re.I)
 DEMAND=re.compile(r"(?:ar[ıi]yorum|kiralamak\s*istiyorum|ihtiyac\w*|looking\s+for|want\s+to\s+rent|need\s+(?:a|an)?\s*|seeking|ищу|сниму|хочу\s+снять|нужн\w*|подбира\w*)",re.I)
 RENT=re.compile(r"(?:kiral\w*|rent|rental|lease|аренд\w*|снять|сниму|долгосроч\w*|посуточ\w*)",re.I)
 SUPPLY=re.compile(r"(?:kiral[ıi]k\s+(?:villa|m[üu]stakil)|for\s+rent|available\s+for\s+rent|сда(?:м|ю|ется|ётся)|аренда\s+вилл\w*)",re.I)
 SALE=re.compile(r"(?:sat[ıi]l[ıi]k|for\s+sale|продаю|продам|прода[её]тся)",re.I)
 PRICE=re.compile(r"(?:[£€$]\s*\d[\d\s,.]*|\d[\d\s,.]*\s*(?:gbp|eur|usd|sterlin|pounds?|фунт\w*))",re.I)
+TARGET_EAST=re.compile(r"(?:ma[ğg]usa|gazima[ğg]usa|famagusta|фамагуст\w*|yenibo[ğg]azi[çc]i|yeni\s+bo[ğg]azi[çc]i|yeni\s+bogazici|енибогаз\w*|ени\s*богаз\w*|iskele|i̇skele|искеле|trikomo|long\s*beach|лонг\s*бич)",re.I)
 
 def classify(text):
     t=str(text or "")
     m=LAYOUT.search(t)
     if not m or not VILLA.search(t):
+        return None
+    if not TARGET_EAST.search(t):
         return None
     if SALE.search(t):
         return None
@@ -74,7 +77,7 @@ async def scan():
     stats["offers"].sort(key=lambda x:x["date"],reverse=True)
     stats["matches"]=len(stats["offers"])
     public=[x for x in stats["offers"] if re.fullmatch(r"https://t\.me/[A-Za-z0-9_]+/\d+",x["url"])]
-    print("VILLA_RENTAL_OFFER_RESULTS",json.dumps({"status":"completed","groups":stats["groups"],"messages":stats["messages"],"matches":stats["matches"],"three_bed":sum(x["kind"]=="3+1" for x in stats["offers"]),"four_bed":sum(x["kind"]=="4+1" for x in stats["offers"]),"errors":stats["errors"],"public_offers":public[:40]},ensure_ascii=False))
+    print("VILLA_RENTAL_OFFER_RESULTS",json.dumps({"status":"completed","scope":"east_famagusta_yenibogazici_iskele","groups":stats["groups"],"messages":stats["messages"],"matches":stats["matches"],"three_bed":sum(x["kind"]=="3+1" for x in stats["offers"]),"four_bed":sum(x["kind"]=="4+1" for x in stats["offers"]),"errors":stats["errors"],"public_offers":public[:40]},ensure_ascii=False))
     return stats
 
 if __name__=="__main__":asyncio.run(scan())
