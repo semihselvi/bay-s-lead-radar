@@ -300,6 +300,34 @@ COMMERCIAL_PROVIDER_RE = re.compile(
     re.I | re.S,
 )
 
+RENTAL_SUPPLY_RE = re.compile(
+    r"(?:"
+    r"\b(?:rent|rental)\s*:\s*[£€$]?\s*\d|"
+    r"\bapartment\s+available\b.{0,180}\b(?:rent|monthly|deposit|commission)\b|"
+    r"\bavailable\b.{0,120}\b(?:rent|monthly|deposit|commission)\b|"
+    r"\b(?:kiral[ıi]k|kiraya\s+ver\w*)\b.{0,160}\b(?:ayl[ıi]k|depozito|komisyon|£|€|\$)\b|"
+    r"\b(?:аренда|сда[её]тся|сдам|сдаю)\b.{0,180}\b(?:месяц|депозит|комисси|£|€|\$)\b"
+    r")", re.I | re.S,
+)
+
+ROOMMATE_OR_RENTAL_LIFE_RE = re.compile(
+    r"(?:"
+    r"\b(?:долгий\s+срок|долгосрок|на\s+долгосроч\w*|квартирант\w*|подселен\w*|"
+    r"соседк\w*|сосед\w*|совместн\w*\s+проживан\w*|на\s+\d+\s*(?:дн|день|дней|месяц)|"
+    r"с\s+\d{1,2}[.\/-]\d{1,2}|до\s+\d+\s*(?:евро|€|£|\$)\b)|"
+    r"\b(?:ev\s+arkada[şs][ıi]|oda\s+arkada[şs][ıi]|uzun\s+d[öo]nem|k[ıi]sa\s+d[öo]nem)\b|"
+    r"\b(?:roommate|flatmate|long[- ]term|short[- ]term)\b"
+    r")", re.I | re.S,
+)
+
+NONBUYER_SERVICE_RE = re.compile(
+    r"(?:"
+    r"\bищу\s+(?:инвестора|соинвестора|колориста|нян[юя]|видеографа|фотографа|преподавателя|репетитора)\b|"
+    r"\b(?:investor|co[- ]?investor|videographer|photographer|nanny|tutor|teacher)\b|"
+    r"\b(?:yat[ıi]r[ıi]mc[ıi]|videograf|foto[ğg]raf[çc][ıi]|bak[ıi]c[ıi]|[öo][ğg]retmen)\s+ar[ıi]yorum\b"
+    r")", re.I,
+)
+
 SERVICE_PROVIDER_REQUEST_RE = re.compile(
     r"(?:"
     r"\b(?:looking\s+for|need|recommend)\b.{0,80}\b(?:realtor|real\s+estate\s+agent|property\s+agent|agency|lawyer|solicitor|plumber|electrician|handyman|cleaner)\b|"
