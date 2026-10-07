@@ -128,18 +128,41 @@ class BroadIntentTests(unittest.TestCase):
                     self.assertEqual("BUYER", lead["intent_type"])
                     self.assertIn("investment_property_demand", lead["lead_reasons"])
 
-    def test_owner_refusal_and_rental_still_not_sales_leads(self):
+    def test_owner_direct_buyers_are_kept_but_rental_and_sale_are_rejected(self):
         with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
-            samples = (
+            for phrase in (
                 "Ищу 2+1 с титулом в Искеле, только от собственника",
                 "İskele'de koçanlı daire arıyorum, emlakçılar yazmasın",
+            ):
+                with self.subTest(phrase=phrase):
+                    lead, reason = v6.classify_text(phrase, group="North Cyprus Property")
+                    self.assertIsNotNone(lead, (phrase, reason))
+                    self.assertEqual("BUYER", lead["intent_type"])
+                    self.assertIn("owner_direct_buyer_preference", lead["lead_reasons"])
+
+            for phrase in (
                 "Ищу 1+1 с титулом в аренду",
                 "Продаю квартиру 2+1 с титулом в Искеле, цена 100000£",
+            ):
+                with self.subTest(phrase=phrase):
+                    lead, reason = v6.classify_text(phrase, group="North Cyprus Property")
+                    self.assertIsNone(lead, (phrase, reason))
+
+    def test_recall_first_implicit_property_demand(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            samples = (
+                "Ищу 2+1 у моря в Искеле, бюджет обсуждается",
+                "Long Beach 1+1 bakıyorum, denize yakın olsun",
+                "Looking for a family house in Famagusta, 3 bedrooms",
+                "Suche Wohnung in Nordzypern, zwei Schlafzimmer",
+                "Szukam mieszkania na Cyprze Północnym, 2 sypialnie",
             )
             for phrase in samples:
                 with self.subTest(phrase=phrase):
                     lead, reason = v6.classify_text(phrase, group="North Cyprus Property")
-                    self.assertIsNone(lead, (phrase, reason))
+                    self.assertIsNotNone(lead, (phrase, reason))
+                    self.assertEqual("BUYER", lead["intent_type"])
+                    self.assertIn(lead["lead_class"], {"HOT BUYER", "WARM BUYER"})
 
     def test_russian_buyer(self):
         self.assertLead("Хочу купить квартиру на Северном Кипре, бюджет £140000.", "HOT BUYER")
