@@ -22,7 +22,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.31-recall-first-wide-net"
+VERSION = "6.32-wide-search-strict-notify"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -311,7 +311,7 @@ SERVICE_PROVIDER_REQUEST_RE = re.compile(
 )
 
 SELLER_DIRECTION_RE = re.compile(
-    r"\b(?:продаю|продам|прода[её]тся|сдаю|сдам|сда[её]тся)\b",
+    r"\b(?:продаю|продам|прода[её]тся|продажа|сдаю|сдам|сда[её]тся|аренда)\b",
     re.I,
 )
 
