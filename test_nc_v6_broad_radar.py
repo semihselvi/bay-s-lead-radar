@@ -974,5 +974,38 @@ class BroadIntentTests(unittest.TestCase):
         ))
 
 
+    def test_false_positive_examples_from_live_notifications_are_rejected(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            samples = (
+                "Продажа 📍Центр Гирне 2+1 новая Обменный титул 90м2 185.000 £ торг",
+                "Studio Apartment Available 📍 Caesar 4 Rent: €450/month Payment: Monthly Payment Plan: 1 deposit 1 commission",
+                "Ищу 1+1 на долгий срок",
+                "Ищу квартиру 1+1 или студию с нишей, до 500 евро, без комиссии, Long Beach с 19 октября",
+                "Здравствуйте Ищу соседку по квартире, Лапта, можно с животными",
+                "Merhaba Girne’de ev arkadaşı arıyorum",
+                "Ищу колориста, который может помочь со сменой цвета на дому",
+                "Ищу няню с помощью по дому на постоянной основе в Эсентепе",
+                "Ищу профессионального видеографа для съёмки виллы",
+                "Ищу инвестора / стратегического соинвестора в международный проект",
+            )
+            for phrase in samples:
+                with self.subTest(phrase=phrase):
+                    lead, reason = v6.classify_text(phrase, group="North Cyprus Property")
+                    self.assertIsNone(lead, (phrase, reason))
+
+    def test_real_buyers_from_live_notifications_remain_buyers(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            samples = (
+                "Куплю 2+1 вид на море и Фамагуста, 175000£",
+                "Я ищу для покупки квартиры 1+1 и 2+1 в проекте Grand Sapphire, на высоких этажах, с видом на море",
+                "Я ищу однокомнатную квартиру в Caesar для покупки. Пожалуйста, напишите мне, если у вас есть варианты.",
+                "Ищу на продажу 2+1 в Фамагусте, Скай Сакарья, Премьер, Акол Джаддем.",
+            )
+            for phrase in samples:
+                with self.subTest(phrase=phrase):
+                    lead, reason = v6.classify_text(phrase, group="North Cyprus Property")
+                    self.assertIsNotNone(lead, (phrase, reason))
+                    self.assertEqual("BUYER", lead["intent_type"])
+
 if __name__ == "__main__":
     unittest.main()
