@@ -208,16 +208,15 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           RADAR_SALES_ONLY: "1"
-          RADAR_FORUM_ONLY: "1"
-          RADAR_PUBLIC_WEB_MAX_FETCHES: "40"
-          RADAR_PUBLIC_WEB_SOURCE_FETCH_QUOTA: "20"
+          RADAR_PUBLIC_WEB_MAX_FETCHES: "100"
+          RADAR_PUBLIC_WEB_SOURCE_FETCH_QUOTA: "25"
           RADAR_PUBLIC_WEB_MAX_AGE_DAYS: "30"
-          RADAR_PUBLIC_WEB_RESULTS_PER_QUERY: "8"
+          RADAR_PUBLIC_WEB_RESULTS_PER_QUERY: "12"
           RADAR_HTTP_TIMEOUT: "12"
         run: python public_web_buyer_radar.py
 
   vk-ok-buyers:
-    name: Prime Buyer Radar - VK and OK
+    name: Prime Buyer Radar - Russian Public Sources
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -242,12 +241,11 @@ jobs:
           python -m py_compile russian_public_buyer_radar.py
           python -m unittest -q test_russian_public_buyer_radar.py
 
-      - name: Scan VK and OK public buyers
+      - name: Scan Russian public buyer sources
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          RADAR_VK_OK_ONLY: "1"
           RADAR_RU_PUBLIC_MAX_AGE_DAYS: "30"
           RADAR_HTTP_TIMEOUT: "12"
         run: python russian_public_buyer_radar.py
