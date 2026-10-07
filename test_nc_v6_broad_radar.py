@@ -387,7 +387,7 @@ class BroadIntentTests(unittest.TestCase):
             group="СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
         )
         self.assertIsNone(lead)
-        self.assertEqual(reason, "owner_direct_only")
+        self.assertEqual(reason, "rental_hard_excluded")
 
     def test_generic_cyprus_without_north_context_does_not_force_market(self):
         lead, reason = v6.classify_text(
@@ -400,23 +400,25 @@ class BroadIntentTests(unittest.TestCase):
 
 
 
-    def test_owner_direct_only_request_rejected(self):
+    def test_owner_direct_only_request_kept_as_buyer(self):
         with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
             lead, reason = v6.classify_text(
                 "Ищу 2+1 в Искеле для клиента, бюджет £120000, только от собственника",
                 group="СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
             )
-        self.assertIsNone(lead)
-        self.assertEqual(reason, "owner_direct_only")
+        self.assertIsNotNone(lead, reason)
+        self.assertEqual("BUYER", lead["intent_type"])
+        self.assertIn("owner_direct_buyer_preference", lead["lead_reasons"])
 
-    def test_turkish_owner_only_request_rejected(self):
+    def test_turkish_owner_only_request_kept_as_buyer(self):
         with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
             lead, reason = v6.classify_text(
                 "Müşterim için İskele'de 1+1 arıyorum, bütçe £100000, sadece sahibinden",
                 group="Kuzey Kıbrıs Emlak",
             )
-        self.assertIsNone(lead)
-        self.assertEqual(reason, "owner_direct_only")
+        self.assertIsNotNone(lead, reason)
+        self.assertEqual("BUYER", lead["intent_type"])
+        self.assertIn("owner_direct_buyer_preference", lead["lead_reasons"])
 
     def test_sales_only_rejects_rental(self):
         with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
@@ -434,7 +436,7 @@ class BroadIntentTests(unittest.TestCase):
                 group="Северный Кипр Недвижимость",
             )
         self.assertIsNone(lead)
-        self.assertEqual(reason, "no_explicit_purchase_intent")
+        self.assertEqual(reason, "no_buyer_shaped_property_signal")
 
     def test_global_public_signal_accepts_buyer_when_public_chat_supplies_north_context(self):
         text = "Здравствуйте! Куплю квартиру 2+1 с ТИТУЛОМ. Пожалуйста, присылайте предложения."
@@ -829,15 +831,16 @@ class BroadIntentTests(unittest.TestCase):
         )
 
 
-    def test_live_natali_no_agents_buyer_is_not_actionable(self):
+    def test_live_natali_no_agents_buyer_is_actionable(self):
         with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
             lead, reason = v6.classify_text(
                 "Куплю студию или квартиру от собственника. Агентам не беспокоить. "
                 "Недорого. Гирне, Фамагуста, Искеле.",
                 group="СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
             )
-        self.assertIsNone(lead)
-        self.assertEqual(reason, "owner_direct_only")
+        self.assertIsNotNone(lead, reason)
+        self.assertEqual("BUYER", lead["intent_type"])
+        self.assertIn("owner_direct_buyer_preference", lead["lead_reasons"])
 
     def test_live_angel_owner_preference_without_agent_ban_is_actionable(self):
         with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
