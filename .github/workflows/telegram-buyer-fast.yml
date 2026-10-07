@@ -1,5 +1,5 @@
 name: PRIME KIBRIS - Buyer Radar
-# recall-first wide-net buyer capture rerun
+# recall-first wide-net buyer capture rerun after guard fixes
 
 "on":
   workflow_dispatch:
