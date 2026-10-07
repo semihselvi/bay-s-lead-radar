@@ -512,11 +512,7 @@ def _hard_reject(text: str, author: str = "") -> str:
         return "post_purchase_or_info"
     # "Owner direct / no agents" is still a real buyer signal. Do not throw
     # purchase demand away just because the person prefers the owner directly.
-    # Rental demand remains outside the purchase radar.
-    if OWNER_NO_AGENT_RE.search(text) and RENT_DEMAND_RE.search(text):
-        return "owner_direct_rental"
-    if OWNER_DIRECT_PREFERENCE_RE.search(text) and RENT_DEMAND_RE.search(text):
-        return "owner_direct_rental"
+    # Rental demand is handled by the dedicated rental exclusion below.
     if JOB_POST_RE.search(text):
         return "job_post"
     if VEHICLE_RE.search(text):
@@ -614,7 +610,13 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
         # "buy/purchase/куплю/satın al" verb. Supply and rental posts have already
         # been removed by hard guards.
         broad_property_demand = bool(has_property and demand)
-        early_property_research = bool(has_property and (research or qualifier or investor or residency or relocation))
+        early_property_research = bool(has_property and (research or qualifier or residency or relocation))
+        # A tiny budget with no purchase qualifier is usually rental demand with
+        # omitted "rent/аренда" wording. Do not promote it to a property buyer.
+        if broad_property_demand and budget and not has_purchase_sized_budget(own) and not any(
+            (buy, title_resale_request, investment_property_request, qualifier)
+        ):
+            return None, "small_budget_ambiguous_demand"
         if not any((buy, agent_purchase_request, purchase_budget_request, title_resale_request,
                     investment_property_request, broad_property_demand, early_property_research)):
             return None, "no_buyer_shaped_property_signal"
