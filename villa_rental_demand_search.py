@@ -1,4 +1,4 @@
-"""Read-only search for 3+1 / 4+1 villa rental demand in joined Telegram sources."""
+"""Read-only search for 3+1 / 4+1 villa rental OFFERS in joined Telegram sources."""
 import asyncio, json, os, re
 from datetime import datetime, timedelta, timezone
 from telethon import TelegramClient
@@ -19,15 +19,14 @@ def classify(text):
         return None
     if SALE.search(t):
         return None
-    if not DEMAND.search(t):
+    # We want supply/offers, never tenant demand.
+    if DEMAND.search(t):
         return None
-    if SUPPLY.search(t) and not re.search(r"(?:ar[ıi]yorum|looking\s+for|ищу|сниму|хочу\s+снять)",t,re.I):
+    if not (SUPPLY.search(t) or RENT.search(t)):
         return None
-    if not RENT.search(t):
-        # In rental-focused wanted language, Russian "сниму" and Turkish
-        # "kiralamak istiyorum" already imply rent; DEMAND handles those.
-        if not re.search(r"(?:kiralamak\s*istiyorum|сниму|хочу\s+снять|want\s+to\s+rent)",t,re.I):
-            return None
+    # Require explicit offer-ish wording to avoid generic rental discussion.
+    if not re.search(r"(?:kiral[ıi]k|kiraya\s*ver\w*|for\s+rent|for\s+lease|available|сда(?:м|ю|ется|ётся)|аренда\s+вилл\w*|в\s+аренду)", t, re.I):
+        return None
     return f"{m.group(1)}+1"
 
 def link_for(entity,msg):
@@ -41,7 +40,7 @@ def link_for(entity,msg):
 async def scan():
     client=TelegramClient(os.getenv("TELEGRAM_SESSION_PATH","telegram_radar_session/radar_session.session"),int(os.environ["TELEGRAM_API_ID"]),os.environ["TELEGRAM_API_HASH"])
     cutoff=datetime.now(timezone.utc)-timedelta(days=30)
-    stats={"groups":0,"messages":0,"matches":0,"errors":0,"demands":[]}
+    stats={"groups":0,"messages":0,"matches":0,"errors":0,"offers":[]}
     seen=set()
     try:
         await client.connect()
@@ -66,16 +65,16 @@ async def scan():
                         s=await msg.get_sender()
                         sender="@"+s.username if getattr(s,"username",None) else str(getattr(s,"first_name","") or "")
                     except Exception:pass
-                    stats["demands"].append({"kind":kind,"date":dt.isoformat(),"group":dialog.name,"author":sender,"url":url,"price_mentions":PRICE.findall(text)[:3],"text":text[:1400]})
+                    stats["offers"].append({"kind":kind,"date":dt.isoformat(),"group":dialog.name,"author":sender,"url":url,"price_mentions":PRICE.findall(text)[:3],"text":text[:1400]})
             except Exception as exc:
                 stats["errors"]+=1
                 print("VILLA_RENTAL_GROUP_ERROR",type(exc).__name__,str(exc)[:120])
     finally:
         await client.disconnect()
-    stats["demands"].sort(key=lambda x:x["date"],reverse=True)
-    stats["matches"]=len(stats["demands"])
-    public=[x for x in stats["demands"] if re.fullmatch(r"https://t\.me/[A-Za-z0-9_]+/\d+",x["url"])]
-    print("VILLA_RENTAL_DEMAND_RESULTS",json.dumps({"status":"completed","groups":stats["groups"],"messages":stats["messages"],"matches":stats["matches"],"three_bed":sum(x["kind"]=="3+1" for x in stats["demands"]),"four_bed":sum(x["kind"]=="4+1" for x in stats["demands"]),"errors":stats["errors"],"public_demands":public[:40]},ensure_ascii=False))
+    stats["offers"].sort(key=lambda x:x["date"],reverse=True)
+    stats["matches"]=len(stats["offers"])
+    public=[x for x in stats["offers"] if re.fullmatch(r"https://t\.me/[A-Za-z0-9_]+/\d+",x["url"])]
+    print("VILLA_RENTAL_OFFER_RESULTS",json.dumps({"status":"completed","groups":stats["groups"],"messages":stats["messages"],"matches":stats["matches"],"three_bed":sum(x["kind"]=="3+1" for x in stats["demands"]),"four_bed":sum(x["kind"]=="4+1" for x in stats["demands"]),"errors":stats["errors"],"public_offers":public[:40]},ensure_ascii=False))
     return stats
 
 if __name__=="__main__":asyncio.run(scan())
