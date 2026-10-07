@@ -22,7 +22,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.30-recall-first-buyer-capture"
+VERSION = "6.31-recall-first-wide-net"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -38,7 +38,7 @@ NC_GEO_RE = re.compile(
     r"\bfamagust\w*\b|\bgazima[ğg]usa\b|\bma[ğg]usa\b|\bkyrenia\b|\bgirne\b|"
     r"\balsancak\b|\blapta\b|\besentepe\b|\btatl[ıi]su\b|\bbafra\b|"
     r"\byenibo[ğg]azi[çc]i\b|\bbo[ğg]az\b|\blefke\b|\bg[üu]zelyurt\b|\bmorphou\b|"
-    r"\bercan\b|\bnicosia\s+north\b|\blefko[şs]a\b|"
+    r"\bercan\b|\bnicosia\s+north\b|\blefko[şs]a\b|\b[öo]t[üu]ken\b|\bkarakol\b|\bsalamis\b|\bmutluyaka\b|\bge[çc]itkale\b|\b[çc]atalk[öo]y\b|\bozank[öo]y\b|\bkarao[ğg]lano[ğg]lu\b|"
     r"\bискел\w*\b|\bлонг\s+бич\b|\bфамагуст\w*\b|\bгирн\w*\b|"
     r"\bалсанджак\b|\bлапт\w*\b|\bэсентеп\w*\b|\bтатлысу\b|\bбафр\w*\b|"
     r"\bбоаз\w*\b|\bлефк\w*\b|\bгюзельюрт\b"
@@ -80,11 +80,11 @@ SOUTH_ONLY_RE = re.compile(
 
 PROPERTY_RE = re.compile(
     r"(?:"
-    r"\bproperty\b|\breal\s+estate\b|\bapartment\b|\bflat\b|\bvilla\b|\bhouse\b|\bstudio\b|\bland\b|\bplot\b|"
-    r"\bdaire\b|\bev\b|\bkonut\b|\bvilla\b|\bst[üu]dyo\b|\barsa\b|\bgayrimenkul\b|"
+    r"\bproperty\b|\breal\s+estate\b|\bapartment\b|\bflat\b|\bvilla\b|\bhouse\b|\bhome\b|\btownhouse\b|\bpenthouse\b|\bbungalow\b|\bstudio\b|\bland\b|\bplot\b|"
+    r"\bdaire\b|\bev\b|\bkonut\b|\bm[üu]stakil\b|\bvilla\b|\brezidans\b|\bst[üu]dyo\b|\barsa\b|\bgayrimenkul\b|"
     r"\bwohnung\w*\b|\bimmobilie\w*\b|\bhaus\w*\b|\bgrundst[üu]ck\w*\b|"
     r"\bmieszkan\w*\b|\bnieruchomo[śs]c\w*\b|\bdom\w*\b|\bdzia[łl]k\w*\b|"
-    r"\bквартир\w*\b|\bапартамент\w*\b|\bвилл\w*\b|\bдом\w*\b|\bстуди\w*\b|\bнедвижимост\w*\b|\bземл\w*\b|"
+    r"\bквартир\w*\b|\bапартамент\w*\b|\bвилл\w*\b|\bдом\w*\b|\bтаунхаус\w*\b|\bпентхаус\w*\b|\bбунгало\w*\b|\bстуди\w*\b|\bнедвижимост\w*\b|\bземл\w*\b|"
     r"\b[0-6]\s*\+\s*[0-3]\b|\b(?:one|two|three|1|2|3)\s+bed(?:room)?s?\b|"
     r"\b(?:bir|iki|üç|uc|1|2|3)\s+yatak\s+odal[ıi]\b"
     r")",
@@ -131,9 +131,9 @@ PURCHASE_MARKET_RE = re.compile(
 
 DEMAND_RE = re.compile(
     r"(?:"
-    r"\blooking\s+for\b|\bseeking\b|\bneed\s+(?:a|an|some)?\b|"
-    r"\bar[ıi]yorum\b|\bbak[ıi]yorum\b|\bariyorum\b|\bbakiyorum\b|"
-    r"\bищу\b|\bищем\b|\bнужн(?:а|ы|о)\b|\bподбира\w*\b|\bрассматрива\w*\b|"
+    r"\blooking\s+for\b|\blooking\s+at\b|\bchecking\s+out\b|\binterested\s+in\b|\bconsidering\b|\bseeking\b|\bneed\s+(?:a|an|some)?\b|"
+    r"\bar[ıi]yorum\b|\bbak[ıi]yorum\b|\bariyorum\b|\bbakiyorum\b|\bde[ğg]erlendiriyorum\b|\bd[üu][şs][üu]n[üu]yorum\b|\bilgilenmek\s+istiyorum\b|"
+    r"\bищу\b|\bищем\b|\bнужн(?:а|ы|о)\b|\bподбира\w*\b|\bрассматрива\w*\b|\bинтересует\b|\bприсматрива\w*\b|\bхотел(?:а|и)?\s+бы\b|"
     r"\bsuche\b|\bwir\s+suchen\b|\bgesucht\b|"
     r"\bszukam\b|\bszukamy\b|\bposzukuj[ęe]\b"
     r")",
@@ -1059,6 +1059,64 @@ TELEGRAM_GLOBAL_BUYER_QUERIES = (
     "Cypr Polnocny kupie mieszkanie",
     "Kuzey Kıbrıs daire almak istiyorum",
     "Kuzey Kibris ev almak istiyorum",
+    # Recall-first colloquial / object-first searches.
+    "ищу дом",
+    "ищу виллу",
+    "ищу студию",
+    "ищу 1+1",
+    "ищу 2+1",
+    "ищу 3+1",
+    "нужна 1+1",
+    "нужна 2+1",
+    "нужна вилла",
+    "присматриваю квартиру",
+    "рассматриваю 1+1",
+    "рассматриваю 2+1",
+    "интересует 1+1",
+    "интересует 2+1",
+    "готовая квартира",
+    "вторичка Северный Кипр",
+    "переуступка квартира",
+    "первый взнос недвижимость",
+    "бюджет 100000 квартира",
+    "бюджет 150000 квартира",
+    "дом у моря",
+    "квартира у моря",
+    "looking for house North Cyprus",
+    "looking for villa North Cyprus",
+    "looking for studio North Cyprus",
+    "looking for 1+1 North Cyprus",
+    "looking for 2+1 North Cyprus",
+    "looking at property North Cyprus",
+    "considering apartment North Cyprus",
+    "family home North Cyprus",
+    "ready to move apartment North Cyprus",
+    "resale apartment North Cyprus",
+    "cash buyer North Cyprus property",
+    "what can I get North Cyprus",
+    "what can I buy for 100000 North Cyprus",
+    "what can I buy for 150000 North Cyprus",
+    "1+1 daire bakıyorum",
+    "2+1 daire bakıyorum",
+    "3+1 daire bakıyorum",
+    "villa bakıyorum",
+    "müstakil ev bakıyorum",
+    "hazır teslim daire bakıyorum",
+    "ikinci el daire bakıyorum",
+    "devir daire arıyorum",
+    "peşin alım daire",
+    "100 bin pound daire",
+    "150 bin pound daire",
+    "denize yakın daire bakıyorum",
+    "suche Haus Nordzypern",
+    "suche Villa Nordzypern",
+    "suche 1+1 Nordzypern",
+    "suche 2+1 Nordzypern",
+    "Haus am Meer Nordzypern",
+    "szukam domu Cypr Północny",
+    "szukam willi Cypr Północny",
+    "szukam 1+1 Cypr Północny",
+    "szukam 2+1 Cypr Północny",
 )
 
 TELEGRAM_GLOBAL_SEARCH_QUERIES = (
