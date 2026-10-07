@@ -148,6 +148,21 @@ class BroadIntentTests(unittest.TestCase):
                     lead, reason = v6.classify_text(phrase, group="North Cyprus Property")
                     self.assertIsNone(lead, (phrase, reason))
 
+    def test_colloquial_recall_variants(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            samples = (
+                "İskele'de 2+1 daire bakıyorum, denize yakın olsun",
+                "Фамагуста, присматриваю квартиру 2+1",
+                "North Cyprus, looking at a family home near the sea",
+                "Suche Haus in Nordzypern, gern Meernähe",
+                "Szukam domu na Cyprze Północnym",
+            )
+            for phrase in samples:
+                with self.subTest(phrase=phrase):
+                    lead, reason = v6.classify_text(phrase, group="North Cyprus Property")
+                    self.assertIsNotNone(lead, (phrase, reason))
+                    self.assertEqual("BUYER", lead["intent_type"])
+
     def test_recall_first_implicit_property_demand(self):
         with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
             samples = (
