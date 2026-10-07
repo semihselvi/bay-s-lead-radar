@@ -8,7 +8,7 @@ from typing import Any
 import nc_v6_broad_radar as radar
 
 
-VERSION = "1.1-property-object-firewall"
+VERSION = "1.2-recall-first-wide-net"
 
 
 def is_actionable_buyer(lead: dict[str, Any]) -> bool:
@@ -51,11 +51,11 @@ async def scan_once() -> dict[str, Any]:
     # Hard production policy. The old multi-source radar remains frozen/manual;
     # this core only searches public Telegram surfaces for direct buyers.
     os.environ["RADAR_SALES_ONLY"] = "1"
-    os.environ.setdefault("RADAR_GLOBAL_TELEGRAM_DAYS", "7")
-    os.environ.setdefault("RADAR_PUBLIC_PEER_SCAN_LIMIT", "90")
-    os.environ.setdefault("RADAR_LEARNED_TELEGRAM_QUERIES", "20")
-    os.environ.setdefault("RADAR_SOURCE_EXPANSION_SEEDS", "8")
-    os.environ.setdefault("RADAR_SOURCE_EXPANSION_CANDIDATES", "24")
+    os.environ.setdefault("RADAR_GLOBAL_TELEGRAM_DAYS", "30")
+    os.environ.setdefault("RADAR_PUBLIC_PEER_SCAN_LIMIT", "180")
+    os.environ.setdefault("RADAR_LEARNED_TELEGRAM_QUERIES", "40")
+    os.environ.setdefault("RADAR_SOURCE_EXPANSION_SEEDS", "16")
+    os.environ.setdefault("RADAR_SOURCE_EXPANSION_CANDIDATES", "48")
 
     started = datetime.now(timezone.utc)
     db = radar.core.db()
