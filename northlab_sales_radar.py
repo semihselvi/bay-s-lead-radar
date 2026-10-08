@@ -359,7 +359,8 @@ def classify(text: str) -> tuple[dict[str, Any] | None, str]:
         score = 82 + (6 if specific else 0)
         reasons.append("explicit_partner_search")
     elif demand and types and project_request:
-        lead_class = "HOT PROJECT" if (specific or business) else "WARM PROJECT"
+        high_value_types = {"INTEGRATION", "SOFTWARE", "MOBILE_APP", "BOOKING", "CRM", "AUTOMATION", "PAYMENT"}
+        lead_class = "HOT PROJECT" if (specific or business or bool(high_value_types.intersection(types))) else "WARM PROJECT"
         score = 88 if lead_class == "HOT PROJECT" else 74
         reasons.append("explicit_project_demand")
     elif problem and types:
