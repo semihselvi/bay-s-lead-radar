@@ -322,7 +322,7 @@ ROOMMATE_OR_RENTAL_LIFE_RE = re.compile(
 
 NONBUYER_SERVICE_RE = re.compile(
     r"(?:"
-    r"\bищу\s+(?:инвестора|соинвестора|колориста|нян[юя]|видеографа|фотографа|преподавателя|репетитора)\b|"
+    r"\bищу\b.{0,90}\b(?:инвестора|соинвестора|колориста|нян[юя]|видеографа|фотографа|преподавателя|репетитора)\b|"
     r"\b(?:investor|co[- ]?investor|videographer|photographer|nanny|tutor|teacher)\b|"
     r"\b(?:yat[ıi]r[ıi]mc[ıi]|videograf|foto[ğg]raf[çc][ıi]|bak[ıi]c[ıi]|[öo][ğg]retmen)\s+ar[ıi]yorum\b"
     r")", re.I,
@@ -552,11 +552,11 @@ def _hard_reject(text: str, author: str = "") -> str:
     if COMMERCIAL_PROVIDER_RE.search(text):
         return "commercial_provider"
     if NONBUYER_SERVICE_RE.search(text):
-        return "nonbuyer_service"
+        return "service_request"
     if ROOMMATE_OR_RENTAL_LIFE_RE.search(text):
-        return "rental_or_roommate"
+        return "rental_hard_excluded"
     if RENTAL_SUPPLY_RE.search(text):
-        return "rental_supply"
+        return "supply_or_agent"
     if IMPERATIVE_SALE_AD_RE.search(text):
         return "supply_or_agent"
     if SELLER_DIRECTION_RE.search(text) and PROPERTY_RE.search(text):
@@ -685,6 +685,13 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
         lead_class = "HOT TENANT" if specificity >= 1 else "WATCH"
         score = 78 + min(16, specificity * 4)
         reasons.append("explicit_rental_demand")
+    elif sales_only and buy and has_property:
+        intent_type = "BUYER"
+        lead_class = "HOT BUYER" if specificity >= 1 else "WARM BUYER"
+        score = 82 + min(14, specificity * 3)
+        reasons.append("explicit_purchase_intent")
+        if investor:
+            reasons.append("investment_property_buyer")
     elif sales_only and agent_client and has_property and demand and (has_purchase_sized_budget(own) or qualifier or investor):
         intent_type = "BUYER"
         lead_class = "HOT BUYER" if specificity >= 2 else "WARM BUYER"
