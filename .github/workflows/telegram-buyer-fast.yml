@@ -148,6 +148,8 @@ jobs:
           python villa_rental_demand_search.py
 
       - name: Audit recent buyer notifications
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
         run: python audit_recent_buyers.py
 
       - name: Run Prime Buyer Radar
@@ -163,11 +165,11 @@ jobs:
           RADAR_JOINED_TELEGRAM_HOURS: "336"
           # Re-run unit tests after repairing Russian rental expression syntax.
           # Joined groups and broadcast channels are both scanned; private DMs are excluded.
-          RADAR_GLOBAL_TELEGRAM_DAYS: "7"
-          RADAR_PUBLIC_PEER_SCAN_LIMIT: "90"
-          RADAR_LEARNED_TELEGRAM_QUERIES: "20"
-          RADAR_SOURCE_EXPANSION_SEEDS: "8"
-          RADAR_SOURCE_EXPANSION_CANDIDATES: "24"
+          RADAR_GLOBAL_TELEGRAM_DAYS: "30"
+          RADAR_PUBLIC_PEER_SCAN_LIMIT: "180"
+          RADAR_LEARNED_TELEGRAM_QUERIES: "40"
+          RADAR_SOURCE_EXPANSION_SEEDS: "16"
+          RADAR_SOURCE_EXPANSION_CANDIDATES: "48"
           RADAR_CRAWL4AI_RUN_BUDGET: "8"
           RADAR_CRAWL4AI_PER_CALL: "2"
         run: python northlab_lead_radar_core.py
