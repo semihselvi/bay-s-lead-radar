@@ -1,5 +1,98 @@
 {
-  "status": "failed_or_not_run",
-  "scanned_at": "2026-10-08T00:08:23.464465+00:00",
-  "error": "No Caesar rental scan report was produced"
+  "status": "completed",
+  "scanned_at": "2026-10-08T04:03:01.771220+00:00",
+  "groups": 109,
+  "messages": 19087,
+  "matches": 14,
+  "niche_studio": 0,
+  "one_bed": 14,
+  "unlinked": 0,
+  "errors": 0,
+  "public_offers": [
+    {
+      "kind": "1+1",
+      "date": "2026-10-07T06:20:22+00:00",
+      "url": "https://t.me/cyprusprop/976717",
+      "price_mentions": []
+    },
+    {
+      "kind": "1+1",
+      "date": "2026-10-06T15:05:38+00:00",
+      "url": "https://t.me/cyprusprop/976654",
+      "price_mentions": []
+    },
+    {
+      "kind": "1+1",
+      "date": "2026-10-05T11:03:50+00:00",
+      "url": "https://t.me/iskele_LongBeach/329075",
+      "price_mentions": []
+    },
+    {
+      "kind": "1+1",
+      "date": "2026-10-05T10:58:11+00:00",
+      "url": "https://t.me/Kibris_Cyprus/275140",
+      "price_mentions": []
+    },
+    {
+      "kind": "1+1",
+      "date": "2026-10-05T08:15:26+00:00",
+      "url": "https://t.me/NorthCyprus_Island/177046",
+      "price_mentions": []
+    },
+    {
+      "kind": "1+1",
+      "date": "2026-10-04T16:11:58+00:00",
+      "url": "https://t.me/NorthCyprus_Island/176966",
+      "price_mentions": []
+    },
+    {
+      "kind": "1+1",
+      "date": "2026-10-04T15:49:09+00:00",
+      "url": "https://t.me/base_north_cyprus/212315",
+      "price_mentions": []
+    },
+    {
+      "kind": "1+1",
+      "date": "2026-10-04T15:48:39+00:00",
+      "url": "https://t.me/severnyy_kipr_chat/179777",
+      "price_mentions": []
+    },
+    {
+      "kind": "1+1",
+      "date": "2026-10-04T15:47:54+00:00",
+      "url": "https://t.me/obyavleniya_cyprus_rabota1/64694",
+      "price_mentions": []
+    },
+    {
+      "kind": "1+1",
+      "date": "2026-10-01T11:07:57+00:00",
+      "url": "https://t.me/obyavleniya_cyprus_rabota1/64432",
+      "price_mentions": []
+    },
+    {
+      "kind": "1+1",
+      "date": "2026-10-01T11:01:21+00:00",
+      "url": "https://t.me/base_north_cyprus/212170",
+      "price_mentions": []
+    },
+    {
+      "kind": "1+1",
+      "date": "2026-09-23T20:26:50+00:00",
+      "url": "https://t.me/Kibris_Cyprus/274437",
+      "price_mentions": []
+    },
+    {
+      "kind": "1+1",
+      "date": "2026-09-23T20:23:37+00:00",
+      "url": "https://t.me/iskele_LongBeach/328122",
+      "price_mentions": []
+    },
+    {
+      "kind": "1+1",
+      "date": "2026-09-17T12:04:06+00:00",
+      "url": "https://t.me/severni_kipr_all/15404",
+      "price_mentions": []
+    }
+  ],
+  "private_or_unpublished_matches": 0
 }
