@@ -1,6 +1,6 @@
 name: PRIME KIBRIS - Buyer Radar
 # smart-notify explicit buyer gate rerun
-# wide-search strict-notify rerun after live false-positive audit
+# strict purchase-evidence firewall rerun after false-positive audit
 
 "on":
   workflow_dispatch:
