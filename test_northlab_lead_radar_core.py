@@ -52,5 +52,19 @@ class NorthlabLeadRadarCoreTests(unittest.TestCase):
         }))
 
 
+class SmartNotifyPolicyTests(unittest.TestCase):
+    def test_explicit_buyer_is_actionable(self):
+        lead = {
+            "market": "north_cyprus",
+            "intent_type": "BUYER",
+            "lead_class": "HOT BUYER",
+            "message": "Куплю квартиру 2+1 в Искеле",
+            "lead_reasons": ["explicit_purchase_intent"],
+            "intent_score": 86,
+            "specificity": 2,
+        }
+        self.assertTrue(core.is_actionable_buyer(lead))
+
+
 if __name__ == "__main__":
     unittest.main()
