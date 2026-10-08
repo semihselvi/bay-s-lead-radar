@@ -1,5 +1,5 @@
 name: PRIME KIBRIS - Buyer Radar
-# wide-net smart-notify rerun
+# smart-notify explicit buyer gate rerun
 # wide-search strict-notify rerun after live false-positive audit
 
 "on":
