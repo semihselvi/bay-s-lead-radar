@@ -2920,7 +2920,12 @@ def notify_lead(lead: dict[str, Any], prefix: str = "NEW") -> bool:
         "investment_property_demand",
         "agent_client_purchase_request",
     }
-    strong = bool(strong_reasons.intersection(reasons))
+    direct_purchase_text = bool(
+        BUY_RE.search(message_text)
+        or BUY_INTENT_VARIANTS_RE.search(message_text)
+        or (PURCHASE_MARKET_RE.search(message_text) and DEMAND_RE.search(message_text))
+    )
+    strong = bool(strong_reasons.intersection(reasons)) or direct_purchase_text
     implicit_high_conf = (
         "implicit_property_demand" in reasons
         and score >= 78
