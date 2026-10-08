@@ -2894,24 +2894,64 @@ def notify_lead(lead: dict[str, Any], prefix: str = "NEW") -> bool:
     lead_class = str(lead.get("lead_class") or "WATCH")
     intent_type = str(lead.get("intent_type") or "").upper()
     message_text = str(lead.get("message") or lead.get("text") or "")
+    reasons = list(lead.get("lead_reasons") or [])
+    score = int(lead.get("intent_score") or 0)
+    specificity = int(lead.get("specificity") or 0)
 
-    # Semih wants purchase leads only: no tenants, relocation, generic investors,
-    # REVIEW/WATCH, or ambiguous demand may reach Telegram.
+    # Wide capture stays broad in the database, but Telegram should only receive
+    # actionable purchase demand. Weak/early candidates remain stored as MAYBE.
     if intent_type != "BUYER":
         return False
     if lead_class not in {"HOT BUYER", "WARM BUYER"}:
         return False
     if RENT_DEMAND_RE.search(message_text):
         return False
-    # Never trust an upstream BUYER label without verifying the original text.
-    # Purchase of a car, phone or other non-property goods is not a sales lead.
     if _hard_reject(message_text, str(lead.get("author") or "")):
         return False
     if not PROPERTY_RE.search(message_text):
         return False
-    if "implicit_property_demand" in (lead.get("lead_reasons") or []):
-        if not DEMAND_RE.search(message_text):
-            return False
+    if "implicit_property_demand" in reasons and not DEMAND_RE.search(message_text):
+        return False
+
+    strong_reasons = {
+        "explicit_purchase_intent",
+        "purchase_budget_demand",
+        "title_or_resale_purchase_demand",
+        "investment_property_demand",
+        "agent_client_purchase_request",
+    }
+    strong = bool(strong_reasons.intersection(reasons))
+    implicit_high_conf = (
+        "implicit_property_demand" in reasons
+        and score >= 78
+        and specificity >= 3
+    )
+    early_high_conf = (
+        "early_property_buyer_signal" in reasons
+        and score >= 82
+        and specificity >= 4
+    )
+    if not (strong or implicit_high_conf or early_high_conf):
+        print("BUYER_MAYBE_HELD", {
+            "score": score,
+            "specificity": specificity,
+            "author": str(lead.get("author") or "")[:80],
+            "group": str(lead.get("group") or "")[:120],
+            "reasons": reasons,
+            "url": str(lead.get("url") or "")[:220],
+            "message": _clip(message_text, 260),
+        })
+        return False
+
+    print("BUYER_NOTIFY", {
+        "score": score,
+        "specificity": specificity,
+        "author": str(lead.get("author") or "")[:80],
+        "group": str(lead.get("group") or "")[:120],
+        "reasons": reasons,
+        "url": str(lead.get("url") or "")[:220],
+        "message": _clip(message_text, 260),
+    })
 
     emoji = "🔥" if lead_class == "HOT BUYER" else "🟡"
     criteria_text = ", ".join(lead.get("important_criteria") or []) or "-"
