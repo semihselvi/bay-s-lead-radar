@@ -1,8 +1,50 @@
 {
-  "status": "failed",
-  "finished_at": "2026-10-08T09:27:25.965476+00:00",
-  "reason": "No completed scan status",
-  "verify": "success",
-  "session": "success",
-  "scan": "failure"
+  "status": "success",
+  "version": "1.2-global-project-discovery",
+  "telegram_groups": 82,
+  "telegram_messages": 1264,
+  "telegram_global_queries": 22,
+  "telegram_global_messages": 0,
+  "web_raw": 215,
+  "web_accepted": 0,
+  "hub_raw": 25,
+  "hub_accepted": 0,
+  "hub_source_counts": {
+    "reddit": 25,
+    "bluesky": 0,
+    "youtube": 0,
+    "forums": 0
+  },
+  "hub_youtube_urls": 0,
+  "hub_forum_urls": 0,
+  "errors": [],
+  "rejects": {
+    "no_project_signal": 717,
+    "marketplace_ad": 84,
+    "duplicate_text": 264,
+    "bot_author": 144,
+    "education": 26,
+    "employment_vacancy": 8,
+    "weak_project_signal": 15,
+    "job_seeker": 6
+  },
+  "web_rejects": {
+    "no_project_signal": 138,
+    "platform_or_product_promo": 17,
+    "weak_project_signal": 19
+  },
+  "hub_rejects": {
+    "weak_project_signal": 7,
+    "no_project_signal": 15,
+    "education": 1,
+    "job_seeker": 1,
+    "employment_vacancy": 1
+  },
+  "accepted_classes": {},
+  "project_types": {},
+  "languages": {},
+  "started_at": "2026-10-08T10:29:56.890861+00:00",
+  "completed_at": "2026-10-08T10:30:55.749554+00:00",
+  "new_leads": 0,
+  "alerts": 0
 }
