@@ -12,7 +12,11 @@ VERSION = "1.2-recall-first-wide-net"
 
 
 def is_actionable_buyer(lead: dict[str, Any]) -> bool:
-    """Final production gate: only direct North Cyprus property buyers."""
+    """Final production gate: notify only buyers with concrete purchase evidence.
+
+    Upstream recall intentionally stays broad. This firewall prevents weak
+    research/implicit housing demand from being promoted to Telegram alerts.
+    """
     if str(lead.get("market") or "") != "north_cyprus":
         return False
 
@@ -30,7 +34,23 @@ def is_actionable_buyer(lead: dict[str, Any]) -> bool:
     if not radar.PROPERTY_RE.search(text):
         return False
 
-    return True
+    reasons = {str(x) for x in (lead.get("lead_reasons") or [])}
+    strong_reasons = {
+        "explicit_purchase_intent",
+        "agent_client_purchase_request",
+        "purchase_budget_demand",
+        "title_or_resale_purchase_demand",
+        "investment_property_demand",
+    }
+    if reasons & strong_reasons:
+        return True
+
+    # "Ищу кто продает от собственника 2+1 ..." is genuine buyer demand even
+    # without a literal buy verb, but only when the upstream signal is specific.
+    if "owner_direct_buyer_preference" in reasons and int(lead.get("specificity") or 0) >= 1:
+        return True
+
+    return False
 
 
 def _mark_notified(db, lead: dict[str, Any], when: datetime) -> None:
