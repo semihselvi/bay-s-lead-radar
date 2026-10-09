@@ -1,29 +1,29 @@
 {
   "status": "success",
-  "version": "1.4-news-context-guard",
+  "version": "1.6-service-provider-promo-guard",
   "telegram_groups": 82,
   "telegram_messages": 1312,
   "telegram_global_queries": 22,
-  "telegram_global_messages": 168,
-  "web_raw": 205,
-  "web_accepted": 3,
-  "hub_raw": 25,
-  "hub_accepted": 1,
+  "telegram_global_messages": 178,
+  "web_raw": 227,
+  "web_accepted": 4,
+  "hub_raw": 47,
+  "hub_accepted": 0,
   "hub_source_counts": {
     "reddit": 25,
     "bluesky": 0,
-    "youtube": 0,
+    "youtube": 22,
     "forums": 0
   },
-  "hub_youtube_urls": 0,
+  "hub_youtube_urls": 1,
   "hub_forum_urls": 0,
   "errors": [],
   "rejects": {
-    "no_project_signal": 713,
-    "duplicate_text": 288,
+    "no_project_signal": 712,
+    "duplicate_text": 294,
     "marketplace_ad": 111,
+    "bot_author": 136,
     "education": 39,
-    "bot_author": 131,
     "crypto_or_earnings_recruitment": 2,
     "weak_project_signal": 10,
     "job_seeker": 6,
@@ -31,14 +31,16 @@
     "news_content": 11
   },
   "web_rejects": {
-    "no_project_signal": 140,
-    "platform_or_product_promo": 15,
-    "weak_project_signal": 23
+    "no_project_signal": 150,
+    "platform_or_product_promo": 16,
+    "weak_project_signal": 25,
+    "education": 1
   },
   "hub_rejects": {
     "weak_project_signal": 7,
-    "no_project_signal": 15,
-    "education": 2
+    "no_project_signal": 36,
+    "provider_pricing_or_existing_client": 1,
+    "education": 3
   },
   "accepted_classes": {
     "WARM PROJECT": 3,
@@ -46,15 +48,13 @@
   },
   "project_types": {
     "WEBSITE": 4,
-    "AUTOMATION": 1,
-    "SOFTWARE": 1,
     "ECOMMERCE": 1
   },
   "languages": {
     "EN": 4
   },
-  "started_at": "2026-10-09T03:37:01.612341+00:00",
-  "completed_at": "2026-10-09T03:37:59.307623+00:00",
-  "new_leads": 3,
-  "alerts": 3
+  "started_at": "2026-10-09T03:39:50.713961+00:00",
+  "completed_at": "2026-10-09T03:40:52.883423+00:00",
+  "new_leads": 0,
+  "alerts": 0
 }
