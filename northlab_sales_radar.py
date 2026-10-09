@@ -17,7 +17,7 @@ import requests
 import main as core
 import northlab_sales_source_hub as source_hub
 
-VERSION = "1.5-provider-pricing-guard"
+VERSION = "1.6-service-provider-promo-guard"
 COLLECTION = "northlab_sales_project_leads"
 SCAN_COLLECTION = "northlab_sales_project_scans"
 TELEGRAM_HOURS = int(os.getenv("NORTHLAB_TELEGRAM_HOURS", "24"))
@@ -218,6 +218,23 @@ RECRUITMENT_PARTNER_RE = re.compile(
     re.I | re.S,
 )
 
+SERVICE_PROVIDER_PROMO_RE = re.compile(
+    r"(?:"
+    r"\bfor\s+hire\b|\bavailable\s+for\s+(?:hire|projects?|freelance\s+work)\b|"
+    r"\b(?:i|we)\s+(?:can|will)\s+(?:build|create|develop|design|fix|enhance|automate)\b|"
+    r"\b(?:i|we)\s+help\s+(?:businesses|companies|clients)\b|"
+    r"\b(?:my|our)\s+services?\b|"
+    r"\bfreelance\s+(?:web\s+)?developer\s+available\b|"
+    r"\bsoftware\s+(?:engineer|developer|expert)\s+for\s+hire\b|"
+    r"\bweb\s*developer\s+for\s+hire\b|"
+    r"\bi\s+have\s+\d+\s+years?\s+of\s+experience\b|"
+    r"\bhire\s+me\b|"
+    r"\bhizmet\s+veriyorum\b|\bproje\s+alabilirim\b|\bfreelance\s+yaz[ıi]l[ıi]mc[ıi]\b|"
+    r"\bоказываю\s+услуг\w*\b|\bберу\s+проекты\b|\bразработчик\s+на\s+заказ\b"
+    r")",
+    re.I | re.S,
+)
+
 PROVIDER_PRICING_RE = re.compile(
     r"(?:"
     r"\b(?:i|we)\s+(?:just\s+)?landed\s+(?:my|our|a)\s+(?:first\s+)?(?:big\s+)?(?:commission|client|project)\b|"
@@ -366,6 +383,8 @@ def classify(text: str) -> tuple[dict[str, Any] | None, str]:
         return None, "news_content"
     if PROVIDER_PRICING_RE.search(value):
         return None, "provider_pricing_or_existing_client"
+    if SERVICE_PROVIDER_PROMO_RE.search(value):
+        return None, "service_provider_promo"
     if PORTAL_SUPPORT_RE.search(value):
         return None, "portal_account_support"
     if DOCUMENT_ACCOUNT_CONTEXT_RE.search(value) and re.search(r"личн\w*\s+кабинет|account|hesap", value, re.I):
