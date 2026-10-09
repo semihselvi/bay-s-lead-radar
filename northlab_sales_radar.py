@@ -17,7 +17,7 @@ import requests
 import main as core
 import northlab_sales_source_hub as source_hub
 
-VERSION = "1.3-global-search-repair"
+VERSION = "1.4-news-context-guard"
 COLLECTION = "northlab_sales_project_leads"
 SCAN_COLLECTION = "northlab_sales_project_scans"
 TELEGRAM_HOURS = int(os.getenv("NORTHLAB_TELEGRAM_HOURS", "24"))
@@ -218,6 +218,16 @@ RECRUITMENT_PARTNER_RE = re.compile(
     re.I | re.S,
 )
 
+NEWS_CONTENT_RE = re.compile(
+    r"(?:"
+    r"подробнее\s+на\s+(?:нашем|сайте)|прислать\s+новост|"
+    r"глава\s+.{0,80}\s+заявил|оппозици\w*\s+в\s+парламент|"
+    r"more\s+details\s+on\s+our\s+(?:site|website)|read\s+more\s+on\s+our\s+(?:site|website)|"
+    r"detaylar\s+(?:web\s+)?sitemizde|devam[ıi]\s+sitemizde|haber\w*\s+g[öo]nder"
+    r")",
+    re.I | re.S,
+)
+
 PLATFORM_PROMO_RE = re.compile(
     r"(?:"
     r"everything\s+you\s+need\s+to\s+build\s+(?:your|a)\s+website|"
@@ -335,6 +345,8 @@ def classify(text: str) -> tuple[dict[str, Any] | None, str]:
         return None, "education"
     if MARKETPLACE_AD_RE.search(value):
         return None, "marketplace_ad"
+    if NEWS_CONTENT_RE.search(value):
+        return None, "news_content"
     if PORTAL_SUPPORT_RE.search(value):
         return None, "portal_account_support"
     if DOCUMENT_ACCOUNT_CONTEXT_RE.search(value) and re.search(r"личн\w*\s+кабинет|account|hesap", value, re.I):
