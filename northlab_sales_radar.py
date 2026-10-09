@@ -17,7 +17,7 @@ import requests
 import main as core
 import northlab_sales_source_hub as source_hub
 
-VERSION = "1.4-news-context-guard"
+VERSION = "1.5-provider-pricing-guard"
 COLLECTION = "northlab_sales_project_leads"
 SCAN_COLLECTION = "northlab_sales_project_scans"
 TELEGRAM_HOURS = int(os.getenv("NORTHLAB_TELEGRAM_HOURS", "24"))
@@ -218,6 +218,23 @@ RECRUITMENT_PARTNER_RE = re.compile(
     re.I | re.S,
 )
 
+PROVIDER_PRICING_RE = re.compile(
+    r"(?:"
+    r"\b(?:i|we)\s+(?:just\s+)?landed\s+(?:my|our|a)\s+(?:first\s+)?(?:big\s+)?(?:commission|client|project)\b|"
+    r"\b(?:my|our)\s+(?:client|friend|customer)\s+(?:wants|asked)\s+me\s+to\s+(?:build|create|develop|design)\b|"
+    r"\bwhat\s+should\s+i\s+(?:be\s+)?charg(?:e|ing)\b|"
+    r"\bhow\s+much\s+should\s+i\s+(?:charge|quote)\b|"
+    r"\bpricing\s+(?:my|this|the)\s+(?:first\s+)?(?:project|website|commission)\b|"
+    r"\bwhat\s+should\s+i\s+quote\b|"
+    r"\bclient\s+project\b.{0,100}\b(?:charge|quote|pricing|rate)\b|"
+    r"\b(?:ücret|fiyat)\s+ne\s+kadar\s+istemeliyim\b|"
+    r"\bmüşterim\s+.{0,100}\b(?:site|web|e[-\s]?ticaret|crm)\b.{0,100}\b(?:fiyat|ücret)\b|"
+    r"\bсколько\s+(?:мне\s+)?(?:взять|просить)\s+за\s+(?:сайт|проект|работу)\b|"
+    r"\bклиент\s+заказал\b.{0,120}\b(?:сайт|магазин|crm|разработк)\b"
+    r")",
+    re.I | re.S,
+)
+
 NEWS_CONTENT_RE = re.compile(
     r"(?:"
     r"подробнее\s+на\s+(?:нашем|сайте)|прислать\s+новост|"
@@ -347,6 +364,8 @@ def classify(text: str) -> tuple[dict[str, Any] | None, str]:
         return None, "marketplace_ad"
     if NEWS_CONTENT_RE.search(value):
         return None, "news_content"
+    if PROVIDER_PRICING_RE.search(value):
+        return None, "provider_pricing_or_existing_client"
     if PORTAL_SUPPORT_RE.search(value):
         return None, "portal_account_support"
     if DOCUMENT_ACCOUNT_CONTEXT_RE.search(value) and re.search(r"личн\w*\s+кабинет|account|hesap", value, re.I):
