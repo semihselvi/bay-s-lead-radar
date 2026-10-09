@@ -130,6 +130,15 @@ class NorthlabSalesRadarTests(unittest.TestCase):
             "education",
         )
 
+    def test_news_post_with_website_phrase_is_rejected(self):
+        text = ("Глава Kıb-Tek заявил, что тяжело пострадавший при взрыве трансформатора "
+                "рабочий пошёл туда один. Оппозиция в парламенте ТРСК это опровергла: "
+                "рядом были шесть человек, нужно расследование. Подробнее на нашем сайте. "
+                "Прислать новость")
+        signal, reason = radar.classify(text)
+        self.assertIsNone(signal)
+        self.assertEqual(reason, "news_content")
+
 
 if __name__ == "__main__":
     unittest.main()
