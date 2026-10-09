@@ -1,12 +1,12 @@
 {
   "status": "success",
-  "version": "1.3-global-search-repair",
+  "version": "1.4-news-context-guard",
   "telegram_groups": 82,
-  "telegram_messages": 1307,
+  "telegram_messages": 1312,
   "telegram_global_queries": 22,
-  "telegram_global_messages": 166,
-  "web_raw": 227,
-  "web_accepted": 0,
+  "telegram_global_messages": 168,
+  "web_raw": 205,
+  "web_accepted": 3,
   "hub_raw": 25,
   "hub_accepted": 1,
   "hub_source_counts": {
@@ -19,41 +19,42 @@
   "hub_forum_urls": 0,
   "errors": [],
   "rejects": {
-    "no_project_signal": 707,
-    "duplicate_text": 290,
+    "no_project_signal": 713,
+    "duplicate_text": 288,
     "marketplace_ad": 111,
-    "bot_author": 130,
-    "education": 38,
-    "weak_project_signal": 19,
-    "job_seeker": 5,
-    "portal_account_support": 1,
+    "education": 39,
+    "bot_author": 131,
+    "crypto_or_earnings_recruitment": 2,
+    "weak_project_signal": 10,
+    "job_seeker": 6,
     "employment_vacancy": 5,
-    "crypto_or_earnings_recruitment": 2
+    "news_content": 11
   },
   "web_rejects": {
-    "no_project_signal": 148,
-    "platform_or_product_promo": 18,
-    "weak_project_signal": 20
+    "no_project_signal": 140,
+    "platform_or_product_promo": 15,
+    "weak_project_signal": 23
   },
   "hub_rejects": {
-    "weak_project_signal": 6,
+    "weak_project_signal": 7,
     "no_project_signal": 15,
-    "education": 2,
-    "job_seeker": 1
+    "education": 2
   },
   "accepted_classes": {
-    "WARM PROJECT": 2
+    "WARM PROJECT": 3,
+    "HOT PROJECT": 1
   },
   "project_types": {
-    "WEBSITE": 2,
+    "WEBSITE": 4,
+    "AUTOMATION": 1,
+    "SOFTWARE": 1,
     "ECOMMERCE": 1
   },
   "languages": {
-    "RU": 1,
-    "EN": 1
+    "EN": 4
   },
-  "started_at": "2026-10-09T00:37:41.441109+00:00",
-  "completed_at": "2026-10-09T00:38:42.471019+00:00",
-  "new_leads": 1,
-  "alerts": 1
+  "started_at": "2026-10-09T03:37:01.612341+00:00",
+  "completed_at": "2026-10-09T03:37:59.307623+00:00",
+  "new_leads": 3,
+  "alerts": 3
 }
