@@ -2,10 +2,10 @@
   "status": "success",
   "version": "1.6-service-provider-promo-guard",
   "telegram_groups": 82,
-  "telegram_messages": 1277,
+  "telegram_messages": 1308,
   "telegram_global_queries": 22,
   "telegram_global_messages": 179,
-  "web_raw": 221,
+  "web_raw": 230,
   "web_accepted": 4,
   "hub_raw": 25,
   "hub_accepted": 1,
@@ -16,44 +16,47 @@
     "forums": 0
   },
   "hub_youtube_urls": 0,
-  "hub_forum_urls": 4,
+  "hub_forum_urls": 0,
   "errors": [],
   "rejects": {
-    "no_project_signal": 718,
-    "education": 25,
-    "marketplace_ad": 99,
-    "duplicate_text": 262,
-    "bot_author": 154,
-    "employment_vacancy": 5,
-    "weak_project_signal": 13,
-    "job_seeker": 4,
-    "news_content": 10
+    "no_project_signal": 736,
+    "marketplace_ad": 95,
+    "education": 28,
+    "duplicate_text": 271,
+    "bot_author": 165,
+    "weak_project_signal": 11,
+    "job_seeker": 5,
+    "employment_vacancy": 4,
+    "crypto_or_earnings_recruitment": 1,
+    "news_content": 6
   },
   "web_rejects": {
-    "no_project_signal": 152,
-    "platform_or_product_promo": 14,
-    "weak_project_signal": 20
+    "no_project_signal": 145,
+    "platform_or_product_promo": 17,
+    "weak_project_signal": 31,
+    "employment_vacancy": 1,
+    "education": 1
   },
   "hub_rejects": {
-    "no_project_signal": 13,
-    "weak_project_signal": 9,
+    "no_project_signal": 12,
+    "weak_project_signal": 10,
     "provider_pricing_or_existing_client": 1,
     "education": 1
   },
   "accepted_classes": {
-    "WARM PROJECT": 6,
+    "WARM PROJECT": 5,
     "HOT PROJECT": 1
   },
   "project_types": {
-    "WEBSITE": 7,
+    "WEBSITE": 6,
     "ECOMMERCE": 1
   },
   "languages": {
-    "RU": 2,
+    "RU": 1,
     "EN": 5
   },
-  "started_at": "2026-10-09T15:33:53.986486+00:00",
-  "completed_at": "2026-10-09T15:35:25.478462+00:00",
-  "new_leads": 1,
-  "alerts": 1
+  "started_at": "2026-10-09T19:46:19.564022+00:00",
+  "completed_at": "2026-10-09T19:47:22.647866+00:00",
+  "new_leads": 0,
+  "alerts": 0
 }
