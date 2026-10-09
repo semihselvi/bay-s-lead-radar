@@ -139,6 +139,14 @@ class NorthlabSalesRadarTests(unittest.TestCase):
         self.assertIsNone(signal)
         self.assertEqual(reason, "news_content")
 
+    def test_provider_pricing_post_is_rejected(self):
+        text = ("Need advice on setting the price on my first big project. I just landed my first "
+                "big commission. My friend wants me to create an ecommerce website. "
+                "What should I be charging him for this project?")
+        signal, reason = radar.classify(text)
+        self.assertIsNone(signal)
+        self.assertEqual(reason, "provider_pricing_or_existing_client")
+
 
 if __name__ == "__main__":
     unittest.main()
