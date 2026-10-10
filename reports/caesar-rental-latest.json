@@ -1,14 +1,20 @@
 {
   "status": "completed",
-  "scanned_at": "2026-10-10T12:25:06.882860+00:00",
+  "scanned_at": "2026-10-10T18:31:22.280395+00:00",
   "groups": 110,
-  "messages": 19400,
-  "matches": 19,
+  "messages": 19382,
+  "matches": 20,
   "niche_studio": 0,
-  "one_bed": 19,
+  "one_bed": 20,
   "unlinked": 0,
   "errors": 0,
   "public_offers": [
+    {
+      "kind": "1+1",
+      "date": "2026-10-10T17:38:28+00:00",
+      "url": "https://t.me/northern_cyprus_forum/338897",
+      "price_mentions": []
+    },
     {
       "kind": "1+1",
       "date": "2026-10-10T06:44:19+00:00",
