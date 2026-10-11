@@ -1,14 +1,38 @@
 {
   "status": "completed",
-  "scanned_at": "2026-10-11T05:38:49.952283+00:00",
+  "scanned_at": "2026-10-11T12:41:54.936996+00:00",
   "groups": 110,
-  "messages": 19436,
-  "matches": 20,
-  "niche_studio": 0,
-  "one_bed": 20,
+  "messages": 19347,
+  "matches": 22,
+  "niche_studio": 1,
+  "one_bed": 21,
   "unlinked": 0,
   "errors": 0,
   "public_offers": [
+    {
+      "kind": "1+1",
+      "date": "2026-10-11T12:27:59+00:00",
+      "url": "https://t.me/cyprusprop/977577",
+      "price_mentions": []
+    },
+    {
+      "kind": "1+1",
+      "date": "2026-10-11T12:27:49+00:00",
+      "url": "https://t.me/northern_cyprus_forum/338974",
+      "price_mentions": []
+    },
+    {
+      "kind": "1+1",
+      "date": "2026-10-11T12:27:39+00:00",
+      "url": "https://t.me/severnyi_kipr/1736642",
+      "price_mentions": []
+    },
+    {
+      "kind": "niche_studio",
+      "date": "2026-10-11T09:25:12+00:00",
+      "url": "https://t.me/NorthCyprus_Island/178148",
+      "price_mentions": []
+    },
     {
       "kind": "1+1",
       "date": "2026-10-10T17:38:28+00:00",
@@ -97,18 +121,6 @@
       "kind": "1+1",
       "date": "2026-10-04T15:49:09+00:00",
       "url": "https://t.me/base_north_cyprus/212315",
-      "price_mentions": []
-    },
-    {
-      "kind": "1+1",
-      "date": "2026-10-04T15:47:54+00:00",
-      "url": "https://t.me/obyavleniya_cyprus_rabota1/64694",
-      "price_mentions": []
-    },
-    {
-      "kind": "1+1",
-      "date": "2026-10-01T11:01:21+00:00",
-      "url": "https://t.me/base_north_cyprus/212170",
       "price_mentions": []
     },
     {
