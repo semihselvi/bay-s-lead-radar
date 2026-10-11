@@ -22,7 +22,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.32-wide-search-strict-notify"
+VERSION = "6.33-context-precision-guards"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -366,6 +366,20 @@ SUPPLY_STRONG_RE = re.compile(
     re.I | re.S,
 )
 
+AI_QUOTED_DISCUSSION_RE = re.compile(
+    r"(?:^|\n)\s*(?:ии\s+ответ|ai\s+(?:answer|response)|chatgpt\s+(?:answer|response))\b",
+    re.I,
+)
+
+NONPROPERTY_OBJECT_REQUEST_RE = re.compile(
+    r"(?:"
+    r"\bкуплю\b.{0,120}\b(?:коробк\w*|контейнер\w*|ящик\w*)\b|"
+    r"\b(?:коробк\w*|контейнер\w*|ящик\w*)\b.{0,140}\b(?:кошк\w*|котят\w*|собак\w*|животн\w*)\b|"
+    r"\b(?:buy|looking\s+for)\b.{0,100}\b(?:plastic\s+box|storage\s+box|container)\b"
+    r")",
+    re.I | re.S,
+)
+
 TIME_RE = re.compile(
     r"(?:\b(?:today|tomorrow|this\s+week|next\s+week|this\s+month|next\s+month|soon|december|january|february|march|april|may|june|july|august|september|october|november)\b|"
     r"\b(?:bug[üu]n|yar[ıi]n|bu\s+ay|gelecek\s+ay|aral[ıi]k|ocak|şubat|mart|nisan|may[ıi]s|haziran|temmuz|a[ğg]ustos|eyl[üu]l|ekim|kas[ıi]m)\b|"
@@ -534,6 +548,10 @@ def _hard_reject(text: str, author: str = "") -> str:
         return "bot_author"
     if batch_guard.is_nonproperty_goods_request(text):
         return "nonproperty_goods"
+    if NONPROPERTY_OBJECT_REQUEST_RE.search(text):
+        return "nonproperty_goods"
+    if AI_QUOTED_DISCUSSION_RE.search(text):
+        return "discussion_or_hypothetical"
     if FINANCIAL_OR_GOODS_RE.search(text):
         return "financial_or_goods"
     if POST_PURCHASE_OR_INFO_RE.search(text):
