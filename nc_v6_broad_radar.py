@@ -149,7 +149,9 @@ RENT_DEMAND_RE = re.compile(
     r"\bищу\s+в\s+аренд\w*\b|"
     r"\bищу\b.{0,150}\bв\s+аренд\w*\b|\bнужн(?:а|ы)\b.{0,100}\b(?:в\s+аренд\w*|на\s+аренд\w*)\b|"
     r"\bищу\s+(?:квартир\w*|дом\w*|вилл\w*|студи\w*)\b.{0,180}\b(?:на\s+месяц|на\s+год|на\s+долгий\s+срок|долгосроч\w*|долгосрок\w*|аренд\w*|сдавать\w*)\b|"
-    r"\bищу\b.{0,120}\b(?:квартир\w*|дом\w*|вилл\w*|студи\w*)\b.{0,120}\b(?:с\s+\d|по\s+\d|на\s+\d+\s+(?:дн|день|дней|недел|месяц))\b"
+    r"\bищу\b.{0,120}\b(?:квартир\w*|дом\w*|вилл\w*|студи\w*)\b.{0,120}\b(?:с\s+\d|по\s+\d|на\s+\d+\s+(?:дн|день|дней|недел|месяц))\b|"
+    r"\bищу\b.{0,180}\bна\s+(?:пол(?:-|\s+)года|(?:\d+|три|шесть|два)\s+месяц\w*)\b|"
+    r"\bищу\b.{0,180}\b(?:не\s+курю|без\s+(?:животн\w*|питомц\w*))\b"
     r")",
     re.I | re.S,
 )
@@ -1240,6 +1242,15 @@ TELEGRAM_VETTED_PUBLIC_GROUPS = (
     "kktcpazar",
 )
 
+# Public discussion communities with observed buyer/tenant questions.
+# Probe their public preview without automatically joining any group.
+# This avoids the source-discovery deadlock when no existing seed produced a buyer.
+TELEGRAM_BOOTSTRAP_DISCUSSION_SEEDS = (
+    "cyprusforum",
+    "northern_cyprus_forum",
+    "NCyprus_Iskele",
+)
+
 # Group discovery terms are intentionally multilingual. We search Telegram's
 # public directory and only consider public megagroups with explicit
 # North-Cyprus context.
@@ -2273,7 +2284,12 @@ async def broad_telegram_scan(db_client, started):
         # Only channels that already produced a valid buyer become seeds.
         # We inspect public preview links/mentions, then scan a bounded number
         # of newly discovered public channels without joining them.
-        DEBUG["source_expansion_seeds"] = len(source_expansion_seeds)
+        prioritized_seed_usernames = list(dict.fromkeys([
+            *TELEGRAM_BOOTSTRAP_DISCUSSION_SEEDS,
+            *sorted(source_expansion_seeds),
+        ]))
+        DEBUG["source_expansion_bootstrap_seeds"] = len(TELEGRAM_BOOTSTRAP_DISCUSSION_SEEDS)
+        DEBUG["source_expansion_seeds"] = len(prioritized_seed_usernames)
         graph_sources: dict[str, set[str]] = {}
         neighbor_entities: dict[str, Any] = {}
         seed_limit = max(1, min(12, int(os.getenv("RADAR_SOURCE_EXPANSION_SEEDS", "8") or "8")))
@@ -2283,7 +2299,7 @@ async def broad_telegram_scan(db_client, started):
         seed_html_seen: set[tuple[str, int]] = set()
         neighbor_keys: set[str] = set()
 
-        for seed in sorted(source_expansion_seeds)[:seed_limit]:
+        for seed in prioritized_seed_usernames[:seed_limit]:
             try:
                 page = await asyncio.to_thread(tpg.fetch_public_preview, seed, 15)
                 DEBUG["source_expansion_seed_fetch_ok"] += 1
