@@ -67,7 +67,29 @@ jobs:
         run: |
           python -m py_compile northlab_lead_radar_core.py nc_v6_broad_radar.py
           python -m unittest -q test_northlab_lead_radar_core.py
-          python -m unittest -q test_nc_v6_broad_radar.py
+          python -m unittest -q test_nc_v6_broad_radar.py test_prime_source_bootstrap.py
+
+      - name: Run Prime Buyer Radar
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION_PATH: telegram_radar_session/radar_session.session
+          RADAR_SALES_ONLY: "1"
+          RADAR_V5_TELEGRAM_HOURS: "6"
+          RADAR_JOINED_TELEGRAM_HOURS: "336"
+          # Re-run unit tests after repairing Russian rental expression syntax.
+          # Joined groups and broadcast channels are both scanned; private DMs are excluded.
+          RADAR_GLOBAL_TELEGRAM_DAYS: "30"
+          RADAR_PUBLIC_PEER_SCAN_LIMIT: "180"
+          RADAR_LEARNED_TELEGRAM_QUERIES: "40"
+          RADAR_SOURCE_EXPANSION_SEEDS: "16"
+          RADAR_SOURCE_EXPANSION_CANDIDATES: "48"
+          RADAR_CRAWL4AI_RUN_BUDGET: "8"
+          RADAR_CRAWL4AI_PER_CALL: "2"
+        run: python northlab_lead_radar_core.py
 
       - name: Scan Caesar Resort rental offers first
         timeout-minutes: 8
@@ -152,28 +174,6 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
         run: python audit_recent_buyers.py
-
-      - name: Run Prime Buyer Radar
-        env:
-          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
-          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
-          TELEGRAM_SESSION_PATH: telegram_radar_session/radar_session.session
-          RADAR_SALES_ONLY: "1"
-          RADAR_V5_TELEGRAM_HOURS: "6"
-          RADAR_JOINED_TELEGRAM_HOURS: "336"
-          # Re-run unit tests after repairing Russian rental expression syntax.
-          # Joined groups and broadcast channels are both scanned; private DMs are excluded.
-          RADAR_GLOBAL_TELEGRAM_DAYS: "30"
-          RADAR_PUBLIC_PEER_SCAN_LIMIT: "180"
-          RADAR_LEARNED_TELEGRAM_QUERIES: "40"
-          RADAR_SOURCE_EXPANSION_SEEDS: "16"
-          RADAR_SOURCE_EXPANSION_CANDIDATES: "48"
-          RADAR_CRAWL4AI_RUN_BUDGET: "8"
-          RADAR_CRAWL4AI_PER_CALL: "2"
-        run: python northlab_lead_radar_core.py
 
       - name: Cleanup Telegram session
         if: always()
