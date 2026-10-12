@@ -1,11 +1,11 @@
 {
   "status": "completed",
-  "scanned_at": "2026-10-12T15:23:07.170761+00:00",
+  "scanned_at": "2026-10-12T23:03:18.614212+00:00",
   "groups": 110,
-  "messages": 19432,
-  "matches": 28,
+  "messages": 19474,
+  "matches": 25,
   "niche_studio": 6,
-  "one_bed": 22,
+  "one_bed": 19,
   "unlinked": 0,
   "errors": 0,
   "public_offers": [
@@ -131,18 +131,6 @@
     },
     {
       "kind": "1+1",
-      "date": "2026-10-09T05:41:26+00:00",
-      "url": "https://t.me/northern_cyprus_forum/338524",
-      "price_mentions": []
-    },
-    {
-      "kind": "1+1",
-      "date": "2026-10-09T05:39:21+00:00",
-      "url": "https://t.me/northern_cyprus_forum/338522",
-      "price_mentions": []
-    },
-    {
-      "kind": "1+1",
       "date": "2026-10-05T11:03:50+00:00",
       "url": "https://t.me/iskele_LongBeach/329075",
       "price_mentions": []
@@ -151,12 +139,6 @@
       "kind": "1+1",
       "date": "2026-10-05T10:58:11+00:00",
       "url": "https://t.me/Kibris_Cyprus/275140",
-      "price_mentions": []
-    },
-    {
-      "kind": "1+1",
-      "date": "2026-10-04T15:49:09+00:00",
-      "url": "https://t.me/base_north_cyprus/212315",
       "price_mentions": []
     },
     {
