@@ -5,9 +5,9 @@ from telethon import TelegramClient
 from telethon.tl.types import PeerChannel
 
 PROJECT=re.compile(r"(?:grand\s*sapphire|гранд\s*сапфир|сапфир)",re.I)
-LAYOUT=re.compile(r"(?<!\d)2\s*[+＋]\s*1(?!\d)",re.I)
+LAYOUT=re.compile(r"(?<!\d)1\s*[+＋]\s*1(?!\d)",re.I)
 SALE=re.compile(r"(?:sat[ıi]l[ıi]k|sat[ıi]yorum|sat[ıi]l[ıi]yor|for\s+sale|selling|sale|продаю|продам|прода[её]тся|продажа)",re.I)
-BUY_DEMAND=re.compile(r"(?:куплю|ищу\b.{0,80}\b(?:2\s*[+＋]\s*1|квартир)|looking\s+to\s+buy|want\s+to\s+buy|buying|sat[ıi]n\s+al(?:mak|acağım)|ar[ıi]yorum)",re.I|re.S)
+BUY_DEMAND=re.compile(r"(?:куплю|ищу\b.{0,80}\b(?:1\s*[+＋]\s*1|квартир)|looking\s+to\s+buy|want\s+to\s+buy|buying|sat[ıi]n\s+al(?:mak|acağım)|ar[ıi]yorum)",re.I|re.S)
 PRICE=re.compile(r"(?:[£€$]\s*\d[\d\s,.]*|\d[\d\s,.]*\s*(?:gbp|eur|usd|sterlin|pounds?|фунт\w*))",re.I)
 FLOOR=re.compile(r"(?:\b(?:kat|floor)\s*[:\-]?\s*(\d{1,2})\b|\b(\d{1,2})(?:st|nd|rd|th)\s+floor\b|\b(?:этаж|этаже)\s*[:\-]?\s*(\d{1,2})\b|\b(\d{1,2})\s*(?:этаж|этаже)\b)",re.I)
 SEA=re.compile(r"(?:sea\s*view|deniz\s+manzara|вид\s+на\s+море|море)",re.I)
