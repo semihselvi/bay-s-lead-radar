@@ -27,5 +27,3 @@ Unified lead-intelligence infrastructure for **Prime Kıbrıs** and **NorthLab**
 - `TELEGRAM_API_ID`
 - `TELEGRAM_API_HASH`
 - `TELEGRAM_STRING_SESSION_PRIME`
-
-> This repository no longer represents the legacy BAY-S project. It is the shared radar infrastructure for Prime Kıbrıs and NorthLab.
