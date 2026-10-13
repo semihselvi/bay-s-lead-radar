@@ -1,14 +1,38 @@
 {
   "status": "completed",
-  "scanned_at": "2026-10-13T06:50:22.108155+00:00",
+  "scanned_at": "2026-10-13T08:23:09.737898+00:00",
   "groups": 110,
-  "messages": 19463,
-  "matches": 23,
-  "niche_studio": 5,
-  "one_bed": 18,
+  "messages": 19498,
+  "matches": 27,
+  "niche_studio": 6,
+  "one_bed": 21,
   "unlinked": 0,
   "errors": 0,
   "public_offers": [
+    {
+      "kind": "niche_studio",
+      "date": "2026-10-13T07:05:23+00:00",
+      "url": "https://t.me/cyprusprop/977913",
+      "price_mentions": []
+    },
+    {
+      "kind": "1+1",
+      "date": "2026-10-13T07:01:49+00:00",
+      "url": "https://t.me/cyprusprop/977912",
+      "price_mentions": []
+    },
+    {
+      "kind": "1+1",
+      "date": "2026-10-13T06:58:30+00:00",
+      "url": "https://t.me/severnyy_kipr_chat/180471",
+      "price_mentions": []
+    },
+    {
+      "kind": "1+1",
+      "date": "2026-10-13T06:57:38+00:00",
+      "url": "https://t.me/Kibris_Cyprus/275698",
+      "price_mentions": []
+    },
     {
       "kind": "1+1",
       "date": "2026-10-12T08:01:05+00:00",
