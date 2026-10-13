@@ -22,7 +22,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.33-context-precision-guards"
+VERSION = "6.34-title-tax-context-guard"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -215,6 +215,9 @@ POST_PURCHASE_OR_INFO_RE = re.compile(
     r"(?:"
     r"\b(?:получил[аи]?|у\s+меня\s+есть|своя)\b.{0,80}\b(?:титул\w*|квартир\w*|дом\w*|вилл\w*)\b|"
     r"\b(?:титул\w*|договор\s+покупк\w*)\b.{0,100}\b(?:внж|подаю|документ\w*|полици\w*)\b|"
+    r"\b(?:налог\w*|доплат\w*|земельн\w*\s+комитет\w*|перевод\s+титул\w*|ставк\w*\s+до\s+\d+%)\b.{0,220}\b(?:титул\w*|договор\w*|оплачен\w*|плат[её]ж\w*|земельн\w*\s+комитет\w*)\b|"
+    r"\b(?:tax(?:es)?|additional\s+payment|land\s+registry|title\s+transfer)\b.{0,220}\b(?:title|deed|contract|paid|payment|registry)\b|"
+    r"\b(?:vergi|ek\s+[öo]deme|tapu\s+devri|tapu\s+dairesi)\b.{0,220}\b(?:tapu|s[öo]zle[sş]me|[öo]dendi|[öo]deme|devir)\b|"
     r"\bпосле\s+окончания\s+университета\b|\bперечень\s+должен\s+быть\b"
     r")",
     re.I | re.S,
@@ -390,8 +393,13 @@ TIME_RE = re.compile(
 )
 
 ROOM_RE = re.compile(
-    r"(?:\b(?:studio|st[üu]dyo|студи\w*|[0-6]\s*\+\s*[0-3]|one|two|three|1|2|3)\s*(?:bed(?:room)?s?)?\b|"
-    r"\b(?:bir|iki|üç|uc|1|2|3)\s+yatak\s+odal[ıi]\b)",
+    r"(?:"
+    r"\b(?:studio|st[üu]dyo|студи\w*)\b|"
+    r"\b[0-6]\s*[+＋]\s*[0-3]\b|"
+    r"\b(?:one|two|three|1|2|3)\s+bed(?:room)?s?\b|"
+    r"\b(?:bir|iki|üç|uc|1|2|3)\s+yatak\s+odal[ıi]\b|"
+    r"\b(?:1|2|3|4)\s*(?:спальн\w*|комнат\w*)\b"
+    r")",
     re.I,
 )
 
