@@ -180,6 +180,16 @@ jobs:
           GS_SALE_DAYS: "30"
         run: python grand_sapphire_2p1_sale_search.py
 
+      - name: Scan Grand Sapphire 1+1 sale offers
+        timeout-minutes: 8
+        continue-on-error: true
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION_PATH: telegram_radar_session/radar_session.session
+          GS_SALE_DAYS: "30"
+        run: python grand_sapphire_1p1_sale_search.py
+
       - name: Audit recent buyer notifications
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
