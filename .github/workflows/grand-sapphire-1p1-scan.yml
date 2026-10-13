@@ -1,4 +1,5 @@
 name: PRIME - Grand Sapphire 1+1 Scan
+# rerun after Telegram session refresh
 
 "on":
   workflow_dispatch:
