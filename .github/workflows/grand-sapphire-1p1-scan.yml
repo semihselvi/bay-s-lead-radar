@@ -8,8 +8,8 @@ name: PRIME - Grand Sapphire 1+1 Scan
       - ".github/workflows/grand-sapphire-1p1-scan.yml"
 
 concurrency:
-  group: grand-sapphire-1p1-scan
-  cancel-in-progress: true
+  group: nc-lead-radar-production
+  cancel-in-progress: false
 
 jobs:
   scan:
