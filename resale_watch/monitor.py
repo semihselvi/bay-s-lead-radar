@@ -10,7 +10,6 @@ import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin
-from zoneinfo import ZoneInfo
 
 import requests
 from bs4 import BeautifulSoup
@@ -270,11 +269,6 @@ def send_telegram(report):
 
 
 async def main():
-    # Two UTC crons cover Cyprus summer/winter time. Run only at 08 local.
-    if os.getenv("GITHUB_EVENT_NAME") == "schedule":
-        if datetime.now(ZoneInfo("Asia/Famagusta")).hour != 8:
-            print("Skip scheduled non-08:00 Cyprus execution")
-            return
     previous = json.loads(STATE_PATH.read_text(encoding="utf-8")) if STATE_PATH.exists() else {}
     sites, pages = scan_site()
     current, client, entity = await scan_telegram()
