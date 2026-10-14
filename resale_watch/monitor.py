@@ -151,6 +151,8 @@ async def scan_telegram():
                 "excerpt": re.sub(r"\s+", " ", text)[:160],
                 **description(text),
             }
+        if not records:
+            raise RuntimeError("No priced real-estate messages readable; baseline unchanged")
         return records, client, entity
     except Exception:
         await client.disconnect()
@@ -197,9 +199,9 @@ async def compare(previous, sites, current, client, entity):
             if len(messages) != len(ids):
                 raise RuntimeError("Deletion verification returned incomplete Telegram results")
             for mid, item in zip(ids, messages):
-                if item is None or getattr(item, "empty", False):
+                if item is None or getattr(item, "empty", False) or type(item).__name__ == "MessageEmpty":
                     removed.append(before[str(mid)])
-                elif not sale_message(item.message or ""):
+                elif not sale_message(getattr(item, "message", "") or ""):
                     edited_to_other.append(before[str(mid)])
                 # A valid message still exists: do not mark it deleted.
     old_sites = previous.get("site", {})
@@ -288,7 +290,10 @@ async def main():
                                      "telegram": current}, ensure_ascii=False) + "\n", encoding="utf-8")
     print("RESALE_WATCH", json.dumps({k: len(v) if isinstance(v, list) else v
           for k, v in report.items() if k not in ("checked_at", "pages")}, ensure_ascii=False))
-    send_telegram(report)
+    try:
+        send_telegram(report)
+    except requests.RequestException as exc:
+        print("Telegram bot delivery error; snapshot still saved:", type(exc).__name__)
 
 
 if __name__ == "__main__":
