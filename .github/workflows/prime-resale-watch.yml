@@ -1,0 +1,74 @@
+name: PRIME KIBRIS - Telegram Resale Watch
+
+"on":
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "resale_watch/**"
+      - ".github/workflows/prime-resale-watch.yml"
+  schedule:
+    # Cyprus is UTC+3 in summer, UTC+2 in winter. Python enforces local 08:00.
+    - cron: "0 5,6 * * *"
+
+# Reuse the same concurrency group as Prime Buyer Radar to avoid
+# simultaneous use of the SAME Telegram authorization on GitHub runners.
+concurrency:
+  group: nc-lead-radar-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  resale-watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install monitor dependencies
+        run: python -m pip install "telethon>=1.36,<2" "requests>=2.31,<3" "beautifulsoup4>=4.12,<5"
+
+      - name: Test parsing and Telegram deletion safeguards
+        run: python -m unittest resale_watch.test_monitor -v
+
+      - name: Restore previous daily snapshot
+        if: github.event_name != 'pull_request'
+        uses: actions/cache/restore@v4
+        with:
+          path: resale_watch_state.json
+          key: prime-resale-watch-${{ github.run_id }}
+          restore-keys: |
+            prime-resale-watch-
+
+      - name: Scan all Prime resale pages and Telegram channel
+        if: github.event_name != 'pull_request'
+        env:
+          TELEGRAM_STRING_SESSION_PRIME: ${{ secrets.TELEGRAM_STRING_SESSION_PRIME }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RESALE_WATCH_STATE: resale_watch_state.json
+          RESALE_WATCH_REPORT: resale-watch-report/report.json
+        run: python -m resale_watch.monitor
+
+      - name: Save new snapshot
+        if: github.event_name != 'pull_request' && success()
+        uses: actions/cache/save@v4
+        with:
+          path: resale_watch_state.json
+          key: prime-resale-watch-${{ github.run_id }}
+
+      - name: Archive comparison report
+        if: github.event_name != 'pull_request' && success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prime-resale-daily-report
+          path: resale-watch-report/report.json
+          if-no-files-found: ignore
+          retention-days: 14
