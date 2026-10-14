@@ -1,11 +1,11 @@
 {
   "status": "completed",
-  "scanned_at": "2026-10-14T07:39:50.686781+00:00",
+  "scanned_at": "2026-10-14T13:48:38.718050+00:00",
   "groups": 110,
-  "messages": 19570,
-  "matches": 26,
+  "messages": 19600,
+  "matches": 20,
   "niche_studio": 6,
-  "one_bed": 20,
+  "one_bed": 14,
   "unlinked": 0,
   "errors": 0,
   "public_offers": [
@@ -97,42 +97,6 @@
       "kind": "1+1",
       "date": "2026-10-10T17:38:28+00:00",
       "url": "https://t.me/northern_cyprus_forum/338897",
-      "price_mentions": []
-    },
-    {
-      "kind": "1+1",
-      "date": "2026-10-10T06:44:11+00:00",
-      "url": "https://t.me/NorthCyprus_Island/177914",
-      "price_mentions": []
-    },
-    {
-      "kind": "1+1",
-      "date": "2026-10-10T06:43:54+00:00",
-      "url": "https://t.me/northern_cyprus_forum/338772",
-      "price_mentions": []
-    },
-    {
-      "kind": "1+1",
-      "date": "2026-10-09T05:47:16+00:00",
-      "url": "https://t.me/northernkiprrealestate/14192",
-      "price_mentions": []
-    },
-    {
-      "kind": "1+1",
-      "date": "2026-10-09T05:46:52+00:00",
-      "url": "https://t.me/northernkiprrealestate/14191",
-      "price_mentions": []
-    },
-    {
-      "kind": "1+1",
-      "date": "2026-10-09T05:46:20+00:00",
-      "url": "https://t.me/northernkiprrealestate/14190",
-      "price_mentions": []
-    },
-    {
-      "kind": "1+1",
-      "date": "2026-10-09T05:45:55+00:00",
-      "url": "https://t.me/northernkiprrealestate/14189",
       "price_mentions": []
     },
     {
