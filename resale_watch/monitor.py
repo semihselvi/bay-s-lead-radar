@@ -131,6 +131,7 @@ async def scan_telegram():
         raise RuntimeError("Prime Telegram session/API secrets are unavailable")
     client = TelegramClient(StringSession(session), int(api_id), api_hash)
     records = {}
+    recent_sample = []
     try:
         await client.connect()
         if not await client.is_user_authorized():
@@ -138,6 +139,12 @@ async def scan_telegram():
         entity = await client.get_entity(CHANNEL)
         async for message in client.iter_messages(entity, limit=5000):
             text = (message.message or "").strip()
+            if len(recent_sample) < 60:
+                recent_sample.append({"id": message.id,
+                    "date": message.date.isoformat() if message.date else None,
+                    "edited": message.edit_date.isoformat() if message.edit_date else None,
+                    "sale_filter": sale_message(text), "has_media": bool(message.media),
+                    "excerpt": re.sub(r"\s+", " ", text)[:230]})
             if not text or not sale_message(text):
                 continue
             mid = str(message.id)
@@ -150,6 +157,7 @@ async def scan_telegram():
                 "excerpt": re.sub(r"\s+", " ", text)[:160],
                 **description(text),
             }
+        print("RESALE_RECENT_MESSAGES", json.dumps(recent_sample, ensure_ascii=False))
         if not records:
             raise RuntimeError("No priced real-estate messages readable; baseline unchanged")
         return records, client, entity
