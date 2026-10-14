@@ -184,10 +184,14 @@ def possible_site_matches(message, sites):
 
 
 async def compare(previous, sites, current, client, entity):
+    """Only new posts since the saved baseline and verified deletions.
+
+    Historical listings stay in state so subsequent deletions can be verified,
+    but are never themselves reported as newly added.
+    """
     first = "checked_at" not in previous
     before = previous.get("telegram", {})
     removed = []
-    edited_to_other = []
     if not first:
         missing = [int(key) for key in before if key not in current]
         for start in range(0, len(missing), 100):
@@ -199,73 +203,67 @@ async def compare(previous, sites, current, client, entity):
                 raise RuntimeError("Deletion verification returned incomplete Telegram results")
             for mid, item in zip(ids, messages):
                 if item is None or getattr(item, "empty", False) or type(item).__name__ == "MessageEmpty":
-                    removed.append(before[str(mid)])
-                elif not sale_message(getattr(item, "message", "") or ""):
-                    edited_to_other.append(before[str(mid)])
-                # A valid message still exists: do not mark it deleted.
-    old_sites = previous.get("site", {})
-    new = [v for k, v in current.items() if k not in before] if not first else []
-    edited = [{"previous": before[k], "current": v} for k, v in current.items()
-              if k in before and before[k]["hash"] != v["hash"]]
-    site_new = [v for k, v in sites.items() if k not in old_sites] if not first else []
-    site_missing = [v for k, v in old_sites.items() if k not in sites] if not first else []
-    site_price = [{"previous": old_sites[k], "current": v} for k, v in sites.items()
-                  if k in old_sites and old_sites[k]["price_gbp"] != v["price_gbp"]]
-    for rec in current.values():
-        rec["site_candidates"] = possible_site_matches(rec, sites)
-    # Deletion is factual only after a Telegram message-ID lookup.
-    for rec in removed:
-        rec["site_candidates"] = possible_site_matches(rec, sites)
-    price_review = []
-    for rec in current.values():
-        for ref in rec["site_candidates"]:
-            site = sites[ref]
-            if site["price_gbp"] is None or rec["price_gbp"] is None:
-                continue
-            ratio = site["price_gbp"] / rec["price_gbp"]
-            if ratio < 1 or ratio > 1.10:
-                price_review.append({"telegram": rec["link"], "ref": ref, "source": rec["price_gbp"],
-                                     "site": site["price_gbp"], "ratio": round(ratio, 4),
-                                     "status": "review_only_not_proven_same_unit"})
-    return {"first_run_baseline": first, "telegram_count": len(current), "site_count": len(sites),
-            "telegram_new": new, "telegram_deleted_verified": removed,
-            "telegram_edited": edited, "telegram_edited_non_offer": edited_to_other,
-            "site_new": site_new, "site_missing": site_missing,
-            "site_price_changes": site_price, "price_review_candidates": price_review}
+                    removed.append(dict(before[str(mid)]))
+                # Existing or edited messages aren't deletions.
 
+    new = []
+    if not first:
+        cutoff = datetime.fromisoformat(previous["checked_at"])
+        for k, item in current.items():
+            if k in before or not item.get("published"):
+                continue
+            # Old posts that only become visible later (or were edited)
+            # are not 'new Telegram posts'.
+            if datetime.fromisoformat(item["published"]) <= cutoff:
+                continue
+            new.append(dict(item))
+
+    for record in new + removed:
+        # Candidate matches only; the monitor never claims identity without
+        # independently confirmed unit details.
+        record["site_candidates"] = possible_site_matches(record, sites)
+        record["site_status"] = ("candidate_match" if record["site_candidates"]
+                                 else "no_strong_match_in_current_site")
+    return {
+        "first_run_baseline": first,
+        "telegram_count": len(current),
+        "site_count": len(sites),
+        "telegram_new": sorted(new, key=lambda x: x.get("published") or ""),
+        "telegram_deleted_verified": removed,
+    }
 
 def send_telegram(report):
+    """Daily digest: only new Telegram posts and confirmed deletions."""
     token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     chat = os.getenv("TELEGRAM_CHAT_ID", "")
     if not token or not chat:
         print("Bot delivery unavailable: report saved as artifact")
         return
-    lines = ["PRIME KIBRIS | IKINCI EL GUNLUK TAKIP",
-             "Site: " + str(report["site_count"]) + " ilan, Telegram: "
-             + str(report["telegram_count"]) + " fiyatli gayrimenkul mesaji"]
+    lines = ["PRIME KIBRIS | 2. EL TELEGRAM TAKIP",
+             "Yeni eklenen: " + str(len(report["telegram_new"])),
+             "Silindigi dogrulanan: " + str(len(report["telegram_deleted_verified"]))]
     if report["first_run_baseline"]:
-        lines.append("Ilk calisma: referans alindi; eski mesajlar yeni olarak sayilmadi.")
+        lines.append("Ilk tarama: eski mesajlar yalnizca referans olarak kaydedildi.")
     for key, caption in (
-        ("telegram_new", "Telegram yeni"),
-        ("telegram_deleted_verified", "Telegram SILINDI (ID dogrulandi)"),
-        ("telegram_edited", "Telegram duzenlendi"),
-        ("telegram_edited_non_offer", "Telegram satilik olmaktan cikarildi"),
-        ("site_new", "Site yeni"),
-        ("site_missing", "Site kaldirildi"),
-        ("site_price_changes", "Site fiyat degisikligi"),
-        ("price_review_candidates", "Fiyat farki >%10 / negatif (aday)"),
+        ("telegram_new", "YENI"),
+        ("telegram_deleted_verified", "SILINEN"),
     ):
-        entries = report[key]
-        lines.append(caption + ": " + str(len(entries)))
-        for entry in entries[:5]:
-            raw = entry.get("current", entry)
-            lines.append(" - " + str(raw.get("ref") or raw.get("link") or
-                                   raw.get("telegram") or "")[:135])
-    lines.append("Site ve Telegram ayni daire eslesmesi adaydir; ilanlari otomatik degistirmeyin.")
-    data = "\n".join(lines)[:3900]
-    r = requests.post("https://api.telegram.org/bot" + token + "/sendMessage",
-                      data={"chat_id": chat, "text": data, "disable_web_page_preview": "true"}, timeout=20)
-    r.raise_for_status()
+        for item in report[key][:15]:
+            lines.append(caption + ": " + (item.get("excerpt") or "")[:100])
+            lines.append(item.get("link", ""))
+            candidates = item.get("site_candidates") or []
+            if candidates:
+                lines.append("Sitede olasi eslesme: " + ", ".join(candidates))
+            else:
+                lines.append("Sitede guclu eslesme bulunamadi")
+    lines.append("Eski ilan listesi ve fiyat farklari bu rapora dahil edilmez.")
+    response = requests.post(
+        "https://api.telegram.org/bot" + token + "/sendMessage",
+        data={"chat_id": chat, "text": "\n".join(lines)[:3950],
+              "disable_web_page_preview": "true"},
+        timeout=20,
+    )
+    response.raise_for_status()
 
 
 async def main():
@@ -282,8 +280,7 @@ async def main():
     OUT_PATH.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     STATE_PATH.write_text(json.dumps({"checked_at": report["checked_at"], "site": sites,
                                      "telegram": current}, ensure_ascii=False) + "\n", encoding="utf-8")
-    print("RESALE_WATCH", json.dumps({k: len(v) if isinstance(v, list) else v
-          for k, v in report.items() if k not in ("checked_at", "pages")}, ensure_ascii=False))
+    print("RESALE_WATCH", json.dumps({"first_run_baseline": report["first_run_baseline"], "telegram_count": report["telegram_count"], "site_count": report["site_count"], "telegram_new": len(report["telegram_new"]), "telegram_deleted_verified": len(report["telegram_deleted_verified"])}, ensure_ascii=False))
     try:
         send_telegram(report)
     except requests.RequestException as exc:
