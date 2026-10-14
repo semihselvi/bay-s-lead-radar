@@ -214,17 +214,24 @@ async def compare(previous, sites, current, client, entity):
                     removed.append(dict(before[str(mid)]))
                 # Existing or edited messages aren't deletions.
 
+    # One-time correction: the first snapshot was taken on 14 Oct after
+    # four offers had already been posted on 13 Oct. Their absence from the
+    # initial "new" report is a baseline bug, not absence of Telegram posts.
+    # Backfill ONLY 13 Oct 08:00 to 14 Oct 08:00 Cyprus time once.
+    catchup_needed = not first and not previous.get("oct13_catchup_complete", False)
+    backfill_start = datetime(2026, 10, 13, 5, 0, tzinfo=timezone.utc)
+    backfill_end = datetime(2026, 10, 14, 5, 0, tzinfo=timezone.utc)
     new = []
     if not first:
         cutoff = datetime.fromisoformat(previous["checked_at"])
         for k, item in current.items():
-            if k in before or not item.get("published"):
+            if not item.get("published"):
                 continue
-            # Old posts that only become visible later (or were edited)
-            # are not 'new Telegram posts'.
-            if datetime.fromisoformat(item["published"]) <= cutoff:
-                continue
-            new.append(dict(item))
+            published = datetime.fromisoformat(item["published"])
+            recent_unseen = k not in before and published > cutoff
+            one_time_catchup = catchup_needed and backfill_start <= published < backfill_end
+            if recent_unseen or one_time_catchup:
+                new.append(dict(item))
 
     for record in new + removed:
         # Candidate matches only; the monitor never claims identity without
@@ -234,6 +241,7 @@ async def compare(previous, sites, current, client, entity):
                                  else "no_strong_match_in_current_site")
     return {
         "first_run_baseline": first,
+        "oct13_catchup_applied": catchup_needed,
         "telegram_count": len(current),
         "site_count": len(sites),
         "telegram_new": sorted(new, key=lambda x: x.get("published") or ""),
@@ -290,7 +298,8 @@ async def main():
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     STATE_PATH.write_text(json.dumps({"checked_at": report["checked_at"], "site": sites,
-                                     "telegram": current}, ensure_ascii=False) + "\n", encoding="utf-8")
+                                     "telegram": current,
+                                     "oct13_catchup_complete": True}, ensure_ascii=False) + "\n", encoding="utf-8")
     print("RESALE_WATCH", json.dumps({"first_run_baseline": report["first_run_baseline"], "telegram_count": report["telegram_count"], "site_count": report["site_count"], "telegram_new": len(report["telegram_new"]), "telegram_deleted_verified": len(report["telegram_deleted_verified"])}, ensure_ascii=False))
     try:
         send_telegram(report)
