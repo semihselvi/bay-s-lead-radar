@@ -158,6 +158,7 @@ async def scan_telegram():
                 **description(text),
             }
         print("RESALE_RECENT_MESSAGES", json.dumps(recent_sample, ensure_ascii=False))
+        print("RESALE_LATEST_OFFERS", json.dumps(list(records.values())[:75], ensure_ascii=False))
         if not records:
             raise RuntimeError("No priced real-estate messages readable; baseline unchanged")
         return records, client, entity
