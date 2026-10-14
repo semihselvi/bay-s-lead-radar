@@ -233,7 +233,10 @@ async def compare(previous, sites, current, client, entity):
     }
 
 def send_telegram(report):
-    """Daily digest: only new Telegram posts and confirmed deletions."""
+    """Notify only on newly added or verified-deleted Telegram sale posts."""
+    if not report.get("telegram_new") and not report.get("telegram_deleted_verified"):
+        print("NO_CHANGES_NO_NOTIFICATION")
+        return
     token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     chat = os.getenv("TELEGRAM_CHAT_ID", "")
     if not token or not chat:
