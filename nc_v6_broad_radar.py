@@ -22,7 +22,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.34-title-tax-context-guard"
+VERSION = "6.35-direct-buyer-only"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -221,6 +221,29 @@ POST_PURCHASE_OR_INFO_RE = re.compile(
     r"\bпосле\s+окончания\s+университета\b|\bперечень\s+должен\s+быть\b"
     r")",
     re.I | re.S,
+)
+
+AGENT_OR_CLIENT_REP_RE = re.compile(
+    r"(?:"
+    r"\bдля\s+(?:моего\s+)?клиент\w*\b|"
+    r"\bищу\s+для\s+клиент\w*\b|"
+    r"\bклиент\s+(?:ищет|хочет|готов\w*\s+купить)\b|"
+    r"\bfor\s+(?:my|a|the)\s+client\b|"
+    r"\bclient\s+(?:is\s+)?looking\s+(?:to\s+buy|for)\b|"
+    r"\bon\s+behalf\s+of\s+(?:my\s+)?client\b|"
+    r"\bm[üu][şs]terim\s+i[çc]in\b|"
+    r"\bm[üu][şs]terim\s+(?:arıyor|almak\s+istiyor)\b"
+    r")",
+    re.I | re.S,
+)
+
+AGENT_IDENTITY_RE = re.compile(
+    r"(?:"
+    r"\b(?:риелтор|риэлтор|агент\w*\s+по\s+недвижимост\w*|брокер\w*|маклер\w*)\b|"
+    r"\b(?:realtor|real\s+estate\s+agent|property\s+agent|broker)\b|"
+    r"\b(?:emlak[çc][ıi]|gayrimenkul\s+dan[ıi][şs]man[ıi]|broker)\b"
+    r")",
+    re.I,
 )
 
 AGENT_CLIENT_RE = re.compile(
@@ -566,6 +589,10 @@ def _hard_reject(text: str, author: str = "") -> str:
         return "financial_or_goods"
     if POST_PURCHASE_OR_INFO_RE.search(text):
         return "post_purchase_or_info"
+    if AGENT_OR_CLIENT_REP_RE.search(text):
+        return "agent_or_client_representative"
+    if AGENT_IDENTITY_RE.search(text) and not OWNER_NO_AGENT_RE.search(text):
+        return "agent_or_client_representative"
     # "Owner direct / no agents" is still a real buyer signal. Do not throw
     # purchase demand away just because the person prefers the owner directly.
     # Rental demand is handled by the dedicated rental exclusion below.
@@ -720,11 +747,6 @@ def classify_text(text: str, *, group: str = "", author: str = "", explicit_geo:
         reasons.append("explicit_purchase_intent")
         if investor:
             reasons.append("investment_property_buyer")
-    elif sales_only and agent_client and has_property and demand and (has_purchase_sized_budget(own) or qualifier or investor):
-        intent_type = "BUYER"
-        lead_class = "HOT BUYER" if specificity >= 2 else "WARM BUYER"
-        score = 76 + min(18, specificity * 4)
-        reasons.append("agent_client_purchase_request")
     elif sales_only and has_property and demand and (has_purchase_sized_budget(own) or PURCHASE_MARKET_RE.search(own) or investment_property_request):
         intent_type = "BUYER"
         lead_class = "HOT BUYER" if specificity >= 2 else "WARM BUYER"
