@@ -1006,6 +1006,24 @@ class BroadIntentTests(unittest.TestCase):
                     lead, reason = v6.classify_text(phrase, group="North Cyprus Property")
                     self.assertIsNotNone(lead, (phrase, reason))
                     self.assertEqual("BUYER", lead["intent_type"])
+    def test_agent_searching_for_client_is_rejected(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            lead, reason = v6.classify_text(
+                "Ищу для клиента Северный Кипр. Только от собственника. Куплю готовые апартаменты с видом на море. Бюджет до £80 000.",
+                group="Северный Кипр Недвижимость",
+            )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "agent_or_client_representative")
+
+    def test_direct_owner_preference_buyer_is_still_accepted(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            lead, reason = v6.classify_text(
+                "Куплю квартиру 2+1 в Grand Sapphire напрямую от собственника.",
+                group="СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+            )
+        self.assertIsNotNone(lead, reason)
+        self.assertEqual("BUYER", lead["intent_type"])
+
 
 if __name__ == "__main__":
     unittest.main()
