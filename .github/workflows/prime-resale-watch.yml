@@ -2,13 +2,18 @@ name: PRIME KIBRIS - Telegram Resale Watch
 
 "on":
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "resale_watch/**"
+      - ".github/workflows/prime-resale-watch.yml"
   pull_request:
     paths:
       - "resale_watch/**"
       - ".github/workflows/prime-resale-watch.yml"
   schedule:
-    # Cyprus is UTC+3 in summer, UTC+2 in winter. Python enforces local 08:00.
-    - cron: "0 5,6 * * *"
+    - cron: "0 8 * * *"
+      timezone: "Asia/Famagusta"
 
 # Reuse the same concurrency group as Prime Buyer Radar to avoid
 # simultaneous use of the SAME Telegram authorization on GitHub runners.
