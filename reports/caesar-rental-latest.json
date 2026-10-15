@@ -1,14 +1,20 @@
 {
   "status": "completed",
-  "scanned_at": "2026-10-15T11:30:49.852795+00:00",
+  "scanned_at": "2026-10-15T17:02:53.659080+00:00",
   "groups": 110,
-  "messages": 19638,
-  "matches": 15,
-  "niche_studio": 5,
+  "messages": 19668,
+  "matches": 14,
+  "niche_studio": 4,
   "one_bed": 10,
   "unlinked": 0,
   "errors": 0,
   "public_offers": [
+    {
+      "kind": "1+1",
+      "date": "2026-10-15T11:30:31+00:00",
+      "url": "https://t.me/cyprusprop/978485",
+      "price_mentions": []
+    },
     {
       "kind": "niche_studio",
       "date": "2026-10-15T06:46:09+00:00",
@@ -57,18 +63,6 @@
       "kind": "niche_studio",
       "date": "2026-10-11T13:57:19+00:00",
       "url": "https://t.me/Kibris_Cyprus/275569",
-      "price_mentions": []
-    },
-    {
-      "kind": "niche_studio",
-      "date": "2026-10-11T13:55:24+00:00",
-      "url": "https://t.me/NorthCyprus_Island/178192",
-      "price_mentions": []
-    },
-    {
-      "kind": "1+1",
-      "date": "2026-10-11T13:45:21+00:00",
-      "url": "https://t.me/NorthCyprus_Island/178190",
       "price_mentions": []
     },
     {
