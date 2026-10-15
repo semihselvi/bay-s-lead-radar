@@ -22,7 +22,7 @@ radar = batch_guard.radar
 core = radar.core
 v5 = radar.v5
 
-VERSION = "6.35-direct-buyer-only"
+VERSION = "6.36-marketing-content-guard"
 for _module in (radar, radar.v53, radar.v53.v52, radar.v53.gate, v5):
     _module.VERSION = VERSION
 
@@ -394,6 +394,19 @@ SUPPLY_STRONG_RE = re.compile(
     re.I | re.S,
 )
 
+PROPERTY_MARKETING_CONTENT_RE = re.compile(
+    r"(?:"
+    r"\bчто\s+можно\s+купить\b.{0,240}\b(?:за\s*[£€$]?\s*\d|в\s+комплекс\w*|на\s+вторичн\w*\s+рынк\w*)\b|"
+    r"\bв\s+новом\s+видео\s+(?:показываем|рассказываем)\b|"
+    r"\bсмотрите\s+(?:в|на)\s+видео\b|"
+    r"\b(?:youtube|dzen|rutube|youtube|дзен|рутуб)\b.{0,160}\b(?:смотрите|видео|обзор)\b|"
+    r"\bwhat\s+can\s+you\s+buy\b.{0,220}\b(?:for\s*[£€$]?\s*\d|property|apartment|villa)\b|"
+    r"\bin\s+our\s+new\s+video\b.{0,160}\b(?:show|tour|review)\b|"
+    r"\byeni\s+videomuzda\b.{0,160}\b(?:gösteriyoruz|anlatıyoruz|inceledik)\b"
+    r")",
+    re.I | re.S,
+)
+
 AI_QUOTED_DISCUSSION_RE = re.compile(
     r"(?:^|\n)\s*(?:ии\s+ответ|ai\s+(?:answer|response)|chatgpt\s+(?:answer|response))\b",
     re.I,
@@ -585,6 +598,8 @@ def _hard_reject(text: str, author: str = "") -> str:
         return "nonproperty_goods"
     if AI_QUOTED_DISCUSSION_RE.search(text):
         return "discussion_or_hypothetical"
+    if PROPERTY_MARKETING_CONTENT_RE.search(text):
+        return "property_marketing_content"
     if FINANCIAL_OR_GOODS_RE.search(text):
         return "financial_or_goods"
     if POST_PURCHASE_OR_INFO_RE.search(text):
