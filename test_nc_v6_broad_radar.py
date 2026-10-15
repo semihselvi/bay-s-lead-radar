@@ -213,7 +213,7 @@ class BroadIntentTests(unittest.TestCase):
             group="North Cyprus Expats",
         )
         self.assertIsNone(lead)
-        self.assertEqual(reason, "service_request")
+        self.assertIn(reason, {"service_request", "agent_or_client_representative"})
 
     def test_realtor_request_is_service_not_property_lead(self):
         lead, reason = v6.classify_text(
@@ -276,13 +276,13 @@ class BroadIntentTests(unittest.TestCase):
         )
         self.assertIsNone(lead)
 
-    def test_agent_client_request_is_not_rejected_for_being_agent(self):
+    def test_agent_client_request_is_rejected(self):
         lead, reason = v6.classify_text(
             "ищу для клиента виллу в лапте ближе к морю",
             group="СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
         )
-        self.assertIsNotNone(lead)
-        self.assertEqual(reason, "accepted")
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "agent_or_client_representative")
 
     def test_housekeeper_job_rejected(self):
         lead, reason = v6.classify_text(
@@ -400,25 +400,23 @@ class BroadIntentTests(unittest.TestCase):
 
 
 
-    def test_owner_direct_only_request_kept_as_buyer(self):
+    def test_owner_direct_client_request_is_rejected_as_agent(self):
         with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
             lead, reason = v6.classify_text(
                 "Ищу 2+1 в Искеле для клиента, бюджет £120000, только от собственника",
                 group="СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
             )
-        self.assertIsNotNone(lead, reason)
-        self.assertEqual("BUYER", lead["intent_type"])
-        self.assertIn("owner_direct_buyer_preference", lead["lead_reasons"])
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "agent_or_client_representative")
 
-    def test_turkish_owner_only_request_kept_as_buyer(self):
+    def test_turkish_client_request_is_rejected_as_agent(self):
         with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
             lead, reason = v6.classify_text(
                 "Müşterim için İskele'de 1+1 arıyorum, bütçe £100000, sadece sahibinden",
                 group="Kuzey Kıbrıs Emlak",
             )
-        self.assertIsNotNone(lead, reason)
-        self.assertEqual("BUYER", lead["intent_type"])
-        self.assertIn("owner_direct_buyer_preference", lead["lead_reasons"])
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "agent_or_client_representative")
 
     def test_sales_only_rejects_rental(self):
         with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
