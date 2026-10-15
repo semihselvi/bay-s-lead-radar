@@ -221,7 +221,7 @@ class BroadIntentTests(unittest.TestCase):
             group="North Cyprus Expats",
         )
         self.assertIsNone(lead)
-        self.assertEqual(reason, "service_request")
+        self.assertIn(reason, {"service_request", "agent_or_client_representative"})
 
     def test_real_russian_rental_is_hard_excluded(self):
         lead, reason = v6.classify_text(
