@@ -1022,6 +1022,26 @@ class BroadIntentTests(unittest.TestCase):
         self.assertIsNotNone(lead, reason)
         self.assertEqual("BUYER", lead["intent_type"])
 
+    def test_leverage_investments_marketing_video_is_rejected(self):
+        lead, reason = v6.classify_text(
+            "Что можно купить на Северном Кипре за £105,000? В курортном комплексе Reflection в Татлысу квартиру с одной спальней на вторичном рынке! "
+            "А если бюджет больше, можно рассмотреть двухуровневые пентхаусы от £262,500 с видами на Средиземное море. "
+            "В новом видео показываем двухуровневый пентхаус-лофт площадью 126 м². Смотрите в видео на YouTube / Dzen / Rutube.",
+            group="НЕДВИЖИМОСТЬ СЕВЕРНЫЙ КИПР- Leverage Investments",
+            author="@leverageinvestmentsofficial",
+        )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "property_marketing_content")
+
+    def test_sea_shell_direct_cash_buyer_is_accepted(self):
+        with patch.dict("os.environ", {"RADAR_SALES_ONLY": "1"}):
+            lead, reason = v6.classify_text(
+                "куплю от собственника квартиру в Искеле Лонг бич в комплексе Sea Shell. оплата сразу 100%",
+                group="СЕВЕРНЫЙ КИПР | НЕДВИЖИМОСТЬ",
+            )
+        self.assertIsNotNone(lead, reason)
+        self.assertEqual("BUYER", lead["intent_type"])
+
 
 if __name__ == "__main__":
     unittest.main()
