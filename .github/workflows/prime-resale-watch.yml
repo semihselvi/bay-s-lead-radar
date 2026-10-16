@@ -12,7 +12,10 @@ name: PRIME KIBRIS - Telegram Resale Watch
       - "resale_watch/**"
       - ".github/workflows/prime-resale-watch.yml"
   schedule:
+    # Keep the requested 08:00 check; use 08:17 as a fallback for GitHub scheduler drops.
     - cron: "0 8 * * *"
+      timezone: "Asia/Famagusta"
+    - cron: "17 8 * * *"
       timezone: "Asia/Famagusta"
 
 # Reuse the same concurrency group as Prime Buyer Radar to avoid
