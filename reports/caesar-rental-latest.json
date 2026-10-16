@@ -1,14 +1,28 @@
 {
   "status": "completed",
-  "scanned_at": "2026-10-16T08:44:40.427264+00:00",
+  "scanned_at": "2026-10-16T13:24:16.335855+00:00",
   "groups": 110,
-  "messages": 19603,
-  "matches": 13,
-  "niche_studio": 3,
-  "one_bed": 10,
+  "messages": 19576,
+  "matches": 15,
+  "niche_studio": 4,
+  "one_bed": 11,
   "unlinked": 0,
   "errors": 0,
   "public_offers": [
+    {
+      "kind": "1+1",
+      "date": "2026-10-16T12:22:54+00:00",
+      "url": "https://t.me/NorthCyprus_Island/179476",
+      "price_mentions": []
+    },
+    {
+      "kind": "niche_studio",
+      "date": "2026-10-16T10:20:36+00:00",
+      "url": "https://t.me/NorthCyprus_Island/179445",
+      "price_mentions": [
+        "450 фунтов"
+      ]
+    },
     {
       "kind": "1+1",
       "date": "2026-10-16T04:46:57+00:00",
