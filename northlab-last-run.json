@@ -2,11 +2,11 @@
   "status": "success",
   "version": "1.7-context-precision-guards",
   "telegram_groups": 82,
-  "telegram_messages": 1255,
+  "telegram_messages": 1268,
   "telegram_global_queries": 22,
-  "telegram_global_messages": 181,
-  "web_raw": 224,
-  "web_accepted": 3,
+  "telegram_global_messages": 183,
+  "web_raw": 221,
+  "web_accepted": 0,
   "hub_raw": 25,
   "hub_accepted": 0,
   "hub_source_counts": {
@@ -16,46 +16,36 @@
     "forums": 0
   },
   "hub_youtube_urls": 0,
-  "hub_forum_urls": 0,
+  "hub_forum_urls": 1,
   "errors": [],
   "rejects": {
-    "no_project_signal": 709,
-    "marketplace_ad": 99,
-    "bot_author": 170,
-    "job_seeker": 2,
-    "duplicate_text": 237,
-    "weak_project_signal": 12,
-    "education": 27,
+    "no_project_signal": 719,
+    "marketplace_ad": 97,
+    "education": 35,
+    "duplicate_text": 236,
     "crypto_or_earnings_recruitment": 2,
-    "news_content": 9,
-    "employment_vacancy": 3
+    "bot_author": 165,
+    "weak_project_signal": 16,
+    "news_content": 8,
+    "employment_vacancy": 4,
+    "job_seeker": 3
   },
   "web_rejects": {
-    "no_project_signal": 129,
-    "weak_project_signal": 32,
-    "platform_or_product_promo": 23,
-    "education": 2,
-    "employment_vacancy": 4
+    "no_project_signal": 144,
+    "platform_or_product_promo": 17,
+    "weak_project_signal": 19,
+    "education": 1
   },
   "hub_rejects": {
-    "no_project_signal": 19,
-    "weak_project_signal": 5,
+    "no_project_signal": 20,
+    "weak_project_signal": 4,
     "employment_vacancy": 1
   },
-  "accepted_classes": {
-    "WARM PROJECT": 2,
-    "HOT PROJECT": 1
-  },
-  "project_types": {
-    "WEBSITE": 3,
-    "ECOMMERCE": 1
-  },
-  "languages": {
-    "RU": 2,
-    "EN": 1
-  },
-  "started_at": "2026-10-15T23:17:14.517655+00:00",
-  "completed_at": "2026-10-15T23:18:19.549311+00:00",
-  "new_leads": 3,
-  "alerts": 3
+  "accepted_classes": {},
+  "project_types": {},
+  "languages": {},
+  "started_at": "2026-10-16T07:31:00.701432+00:00",
+  "completed_at": "2026-10-16T07:31:59.066724+00:00",
+  "new_leads": 0,
+  "alerts": 0
 }
