@@ -1,5 +1,5 @@
-# rerun after remaining realtor test fix
-# direct-buyer-only test alignment rerun
+# Production fix: keep buyer scan and inventory checks in separate sequential jobs.
+# Each job gets an independent timeout while sharing no concurrent Telegram session.
 name: PRIME KIBRIS - Buyer Radar
 # smart-notify explicit buyer gate rerun
 # strict purchase-evidence firewall rerun after false-positive audit
@@ -93,9 +93,66 @@ jobs:
           RADAR_CRAWL4AI_PER_CALL: "2"
         run: python northlab_lead_radar_core.py
 
+      - name: Audit recent buyer notifications
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: python audit_recent_buyers.py
+
+      - name: Cleanup Telegram session
+        if: always()
+        run: rm -rf telegram_radar_session
+
+  rental-supply:
+    name: Caesar and east-region villa rentals
+    needs: telegram-fast
+    if: ${{ always() && !cancelled() }}
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout NC production branch
+        uses: actions/checkout@v6
+        with:
+          ref: production/radar
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Restore dedicated Prime Telegram session
+        env:
+          TELEGRAM_STRING_SESSION: ${{ secrets.TELEGRAM_STRING_SESSION_PRIME }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from telethon.sessions import StringSession, SQLiteSession
+
+          value=os.environ.get("TELEGRAM_STRING_SESSION","").strip()
+          if not value:
+              raise SystemExit("ERROR: TELEGRAM_STRING_SESSION_PRIME missing")
+
+          src=StringSession(value)
+          base=Path("telegram_radar_session/radar_session")
+          base.parent.mkdir(parents=True, exist_ok=True)
+          dst=SQLiteSession(str(base))
+          dst.set_dc(src.dc_id, src.server_address, src.port)
+          dst.auth_key=src.auth_key
+          dst.save()
+          dst.close()
+          print("Dedicated Prime Telegram session restored")
+          PY
+
       - name: Scan Caesar Resort rental offers first
         timeout-minutes: 8
-        continue-on-error: true
         env:
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
@@ -162,6 +219,7 @@ jobs:
           PY
 
       - name: Scan 3+1 and 4+1 east-region villa rental offers
+        if: ${{ always() && !cancelled() }}
         # Mağusa/Yeniboğaziçi/İskele + villa/müstakil/detached/дом
         timeout-minutes: 8
         env:
@@ -172,9 +230,61 @@ jobs:
           python -m unittest -q test_villa_rental_demand_search.py
           python villa_rental_demand_search.py
 
+      - name: Cleanup Telegram session
+        if: always()
+        run: rm -rf telegram_radar_session
+
+  grand-sapphire-sales:
+    name: Grand Sapphire sale inventory
+    needs: rental-supply
+    if: ${{ always() && !cancelled() }}
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout NC production branch
+        uses: actions/checkout@v6
+        with:
+          ref: production/radar
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Restore dedicated Prime Telegram session
+        env:
+          TELEGRAM_STRING_SESSION: ${{ secrets.TELEGRAM_STRING_SESSION_PRIME }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from telethon.sessions import StringSession, SQLiteSession
+
+          value=os.environ.get("TELEGRAM_STRING_SESSION","").strip()
+          if not value:
+              raise SystemExit("ERROR: TELEGRAM_STRING_SESSION_PRIME missing")
+
+          src=StringSession(value)
+          base=Path("telegram_radar_session/radar_session")
+          base.parent.mkdir(parents=True, exist_ok=True)
+          dst=SQLiteSession(str(base))
+          dst.set_dc(src.dc_id, src.server_address, src.port)
+          dst.auth_key=src.auth_key
+          dst.save()
+          dst.close()
+          print("Dedicated Prime Telegram session restored")
+          PY
+
       - name: Scan Grand Sapphire 2+1 sale offers
         timeout-minutes: 8
-        continue-on-error: true
         env:
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
@@ -183,19 +293,14 @@ jobs:
         run: python grand_sapphire_2p1_sale_search.py
 
       - name: Scan Grand Sapphire 1+1 sale offers
+        if: ${{ always() && !cancelled() }}
         timeout-minutes: 8
-        continue-on-error: true
         env:
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           TELEGRAM_SESSION_PATH: telegram_radar_session/radar_session.session
           GS_SALE_DAYS: "30"
         run: python grand_sapphire_1p1_sale_search.py
-
-      - name: Audit recent buyer notifications
-        env:
-          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
-        run: python audit_recent_buyers.py
 
       - name: Cleanup Telegram session
         if: always()
