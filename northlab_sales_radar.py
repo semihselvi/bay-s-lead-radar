@@ -17,7 +17,7 @@ import requests
 import main as core
 import northlab_sales_source_hub as source_hub
 
-VERSION = "1.7-context-precision-guards"
+VERSION = "1.8-community-directory-guard"
 COLLECTION = "northlab_sales_project_leads"
 SCAN_COLLECTION = "northlab_sales_project_scans"
 TELEGRAM_HOURS = int(os.getenv("NORTHLAB_TELEGRAM_HOURS", "24"))
@@ -309,6 +309,16 @@ MARKETPLACE_DIRECTORY_RE = re.compile(
     re.I | re.S,
 )
 
+COMMUNITY_DIRECTORY_RE = re.compile(
+    r"(?:"
+    r"\bthis\s+group\s+is\s+(?:created|for)\b.{0,180}\b(?:talents?|needs?|developers?|designers?|freelancers?)\b|"
+    r"\bpost\s+(?:your|the)\s+(?:talents?|needs?|jobs?|projects?)\b|"
+    r"\bgroup\s+(?:for|of)\s+(?:web\s+)?(?:developers?|designers?|freelancers?|clients?)\b|"
+    r"\bcommunity\s+(?:for|of)\s+(?:web\s+)?(?:developers?|designers?|freelancers?)\b"
+    r")",
+    re.I | re.S,
+)
+
 GENERIC_SUPPORT_THREAD_RE = re.compile(
     r"(?:"
     r"amazon['’]?s?\s+us[-\s]?based\s+customer\s+service|"
@@ -429,6 +439,8 @@ def classify(text: str) -> tuple[dict[str, Any] | None, str]:
         return None, "existing_job_help"
     if MARKETPLACE_DIRECTORY_RE.search(value):
         return None, "marketplace_directory"
+    if COMMUNITY_DIRECTORY_RE.search(value):
+        return None, "community_directory"
     if GENERIC_SUPPORT_THREAD_RE.search(value):
         return None, "generic_support_thread"
     if PORTAL_SUPPORT_RE.search(value):
