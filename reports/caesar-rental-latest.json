@@ -1,11 +1,11 @@
 {
   "status": "completed",
-  "scanned_at": "2026-10-17T12:19:43.867716+00:00",
+  "scanned_at": "2026-10-17T15:40:05.114451+00:00",
   "groups": 110,
-  "messages": 19404,
-  "matches": 16,
+  "messages": 19433,
+  "matches": 15,
   "niche_studio": 4,
-  "one_bed": 12,
+  "one_bed": 11,
   "unlinked": 0,
   "errors": 0,
   "public_offers": [
@@ -13,12 +13,6 @@
       "kind": "1+1",
       "date": "2026-10-16T18:55:25+00:00",
       "url": "https://t.me/severni_kipr_all/15572",
-      "price_mentions": []
-    },
-    {
-      "kind": "1+1",
-      "date": "2026-10-16T18:54:48+00:00",
-      "url": "https://t.me/severnyi_kipr/1737647",
       "price_mentions": []
     },
     {
