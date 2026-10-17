@@ -147,6 +147,14 @@ class NorthlabSalesRadarTests(unittest.TestCase):
         self.assertIsNone(signal)
         self.assertEqual(reason, "provider_pricing_or_existing_client")
 
+    def test_facebook_web_developer_group_description_is_not_project(self):
+        lead, reason = radar.classify(
+            "Do you need a Website Designer or Web Developer? This group is created to holds it's integrity "
+            "for the best talents worldwide. Post your Talents or Needs."
+        )
+        self.assertIsNone(lead)
+        self.assertEqual(reason, "community_directory")
+
 
 if __name__ == "__main__":
     unittest.main()
