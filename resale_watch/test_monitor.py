@@ -70,6 +70,26 @@ class ResaleAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(report["telegram_new"], [])
         self.assertTrue(report["first_run_baseline"])
 
+    async def test_reposted_identical_listing_is_not_new_or_deleted(self):
+        old = {"checked_at": "2026-10-16T00:00:00+00:00", "telegram": {
+            "12216": {"id": 12216, "link": "https://t.me/h0t_real_estate/12216",
+                      "hash": "samehash", "excerpt": "Caesar Resort-1 Julius 1+1 65 кв м 7 этаж 78.000£",
+                      "published": "2026-10-15T10:00:00+00:00",
+                      "beds": 1, "area_m2": 65, "floor": 7, "price_gbp": 78000}
+        }, "site": {}, "oct13_catchup_complete": True}
+        current = {
+            "17070": {"id": 17070, "link": "https://t.me/h0t_real_estate/17070",
+                      "hash": "samehash", "excerpt": "Caesar Resort-1 Julius 1+1 65 кв м 7 этаж 78.000£",
+                      "published": "2026-10-17T10:00:00+00:00",
+                      "beds": 1, "area_m2": 65, "floor": 7, "price_gbp": 78000}
+        }
+        client = type("FakeClient", (), {})()
+        client.get_messages = AsyncMock(return_value=[None])
+        report = await compare(old, {}, current, client, object())
+        self.assertEqual(report["telegram_new"], [])
+        self.assertEqual(report["telegram_deleted_verified"], [])
+        self.assertEqual(len(report["telegram_reposts_suppressed"]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
