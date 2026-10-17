@@ -234,6 +234,27 @@ async def compare(previous, sites, current, client, entity):
             if recent_unseen or one_time_catchup:
                 new.append(dict(item))
 
+    # If Telegram deletes an old post and republishes the exact same
+    # listing under a new message id, that is a repost, not one new + one deleted
+    # inventory event. Pair identical message hashes and suppress both sides.
+    reposts = []
+    removed_by_hash = {}
+    for item in removed:
+        if item.get("hash"):
+            removed_by_hash.setdefault(item["hash"], []).append(item)
+    kept_new = []
+    paired_removed_ids = set()
+    for item in new:
+        bucket = removed_by_hash.get(item.get("hash")) or []
+        old_item = next((x for x in bucket if x.get("id") not in paired_removed_ids), None)
+        if old_item:
+            paired_removed_ids.add(old_item.get("id"))
+            reposts.append({"old": old_item, "new": item})
+        else:
+            kept_new.append(item)
+    new = kept_new
+    removed = [x for x in removed if x.get("id") not in paired_removed_ids]
+
     for record in new + removed:
         # Candidate matches only; the monitor never claims identity without
         # independently confirmed unit details.
@@ -247,6 +268,7 @@ async def compare(previous, sites, current, client, entity):
         "site_count": len(sites),
         "telegram_new": sorted(new, key=lambda x: x.get("published") or ""),
         "telegram_deleted_verified": removed,
+        "telegram_reposts_suppressed": reposts,
     }
 
 def send_telegram(report):
